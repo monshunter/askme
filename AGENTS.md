@@ -9,13 +9,22 @@
 
 ## 1. 项目概述与项目结构
 
-<!--
-由 Agent 在首次接入项目或本节尚未填充时，根据 README、源码、构建配置、测试和现有文档自主完成：
-- 项目概述：说明目标、核心能力、主要技术栈、运行或交付形态及关键边界。
-- 项目结构：使用精简目录树列出主要目录或模块及职责，不罗列生成物、缓存或无语义叶子目录。
-- 只写入经当前仓库事实验证的内容；无法确认的内容明确标注，结构变化时同步更新。
-完成后删除本注释。
--->
+Askme 是 Personal Career Knowledge Agent：Candidate 将职业资料组织为默认私有、可审核、可发布的知识库，Interviewer 通过 Agent 对话获取带 Citation 的授权回答，Platform Admin 负责公开内容与平台运行治理。产品行为以根 `SPEC.md`、`asserts/images/` 和 `docs/specs/SPEC-001.md` 为基线。
+
+当前仓库采用 Next.js App Router、React、TypeScript、PostgreSQL 与独立 Node worker；Docker Compose 是已验证的本地交付入口，DeepSeek OpenAI-compatible Chat Completions 默认模型为 `deepseek-v4-flash`。当前已闭环工程、数据库、身份会话、角色授权、配置与运行健康基础；资料处理、知识库、隐私、Agent、发布、公共 Chat、Admin 产品页与最终 UI 仍按 `PROGRESS.md` 持续交付，不能从基础健康状态推断为已完成。
+
+```text
+.
+├── src/app/             Next.js 页面、Route Handlers 与全局 UI
+├── src/server/          配置、身份、AI adapter、数据库 schema 与服务端边界
+├── src/worker.ts        后台 worker 入口与 heartbeat
+├── migrations/          顺序执行、版本化的 PostgreSQL SQL migration
+├── scripts/             migration、bootstrap、Docker、AI 与 HTTP smoke 入口
+├── asserts/images/      产品 UI 参考图与水墨视觉资产
+├── docs/                Spec、Design、Plan、Review、Operation 等事实 owner
+├── Dockerfile           Web、worker 与 migration 共用镜像
+└── docker-compose.yml   本地 db、migrate、web、worker 与持久 volume
+```
 
 ---
 

@@ -1,0 +1,84 @@
+name: askme-local
+
+x-database-environment: &database-environment
+  DATABASE_URL: postgresql://${ASKME_POSTGRES_USER:-askme}:${ASKME_POSTGRES_PASSWORD:-askme-local-only}@db:5432/${ASKME_POSTGRES_DB:-askme}
+
+x-runtime-environment: &runtime-environment
+  <<: *database-environment
+  UPLOAD_ROOT: /data/uploads
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ASKME_POSTGRES_DB:-askme}
+      POSTGRES_USER: ${ASKME_POSTGRES_USER:-askme}
+      POSTGRES_PASSWORD: ${ASKME_POSTGRES_PASSWORD:-askme-local-only}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - askme_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ASKME_POSTGRES_USER:-askme} -d ${ASKME_POSTGRES_DB:-askme}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["sh", "-c", "npm run db:migrate && npm run db:bootstrap"]
+    environment:
+      <<: *database-environment
+      ASKME_CANDIDATE_EMAIL: ${ASKME_CANDIDATE_EMAIL:-candidate@askme.local}
+      ASKME_CANDIDATE_PASSWORD: ${ASKME_CANDIDATE_PASSWORD:-Candidate-local-2026!}
+      ASKME_ADMIN_EMAIL: ${ASKME_ADMIN_EMAIL:-admin@askme.local}
+      ASKME_ADMIN_PASSWORD: ${ASKME_ADMIN_PASSWORD:-Admin-local-2026!}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      <<: *runtime-environment
+      ALLOW_INSECURE_LOCAL_COOKIE: "true"
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - askme_uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment: *runtime-environment
+    volumes:
+      - askme_uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  askme_pgdata:
+    name: askme_local_pgdata
+  askme_uploads:
+    name: askme_local_uploads
