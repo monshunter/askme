@@ -136,14 +136,14 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 ## 4. 验收 Checklist
 
 - [x] `AC-AUTH-001` Candidate 与 Admin 可使用真实凭证登录、恢复会话并注销，匿名权限被限制。
-- [ ] `AC-AUTH-002` 跨 Candidate 资源访问和错误角色操作被服务端拒绝，且测试证明 owner 隔离。
-- [ ] `AC-DASH-001` Candidate Dashboard 的指标、最近资料、工作流与下一步全部来自当前数据库状态。
-- [ ] `AC-MAT-001` 六类文件的成功上传、50 MiB 边界和无效文件拒绝均有自动化或真实运行 Evidence。
-- [ ] `AC-MAT-002` GitHub、Notion 与 Website 至少各完成一次真实导入路径或可控官方 API 测试替身的契约验证。
-- [ ] `AC-MAT-003` 后台 job 可从 queued 收敛到 indexed/failed，失败可重试且不会重复派生数据。
-- [ ] `AC-MAT-004` 删除资料同步清理 owner 范围内文件和派生关系，其他资料与其他 owner 不受影响。
-- [ ] `AC-KB-001` Knowledge Base 的分类、搜索、筛选、分页和详情对真实索引结果生效。
-- [ ] `AC-KB-002` Candidate 编辑知识摘要后持久化且保留来源与 Citation 追溯。
+- [x] `AC-AUTH-002` 跨 Candidate 资源访问和错误角色操作被服务端拒绝，且测试证明 owner 隔离。
+- [x] `AC-DASH-001` Candidate Dashboard 的指标、最近资料、工作流与下一步全部来自当前数据库状态。
+- [x] `AC-MAT-001` 六类文件的成功上传、50 MiB 边界和无效文件拒绝均有自动化或真实运行 Evidence。
+- [x] `AC-MAT-002` GitHub、Notion 与 Website 至少各完成一次真实导入路径或可控官方 API 测试替身的契约验证。
+- [x] `AC-MAT-003` 后台 job 可从 queued 收敛到 indexed/failed，失败可重试且不会重复派生数据。
+- [x] `AC-MAT-004` 删除资料同步清理 owner 范围内文件和派生关系，其他资料与其他 owner 不受影响。
+- [x] `AC-KB-001` Knowledge Base 的分类、搜索、筛选、分页和详情对真实索引结果生效。
+- [x] `AC-KB-002` Candidate 编辑知识摘要后持久化且保留来源与 Citation 追溯。
 - [ ] `AC-PRIV-001` 四级可见性矩阵由服务端统一执行，Candidate 预览与公共回答的证据集合符合合同。
 - [ ] `AC-PRIV-002` 隐私修改即时影响后续公共请求，发布前确认状态被持久化。
 - [ ] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。

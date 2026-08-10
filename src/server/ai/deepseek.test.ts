@@ -23,13 +23,19 @@ describe("DeepSeekClient", () => {
       { fetcher, timeoutMs: 2_000 },
     );
 
-    const result = await client.complete([{ role: "user", content: "hello" }]);
+    const result = await client.complete([{ role: "user", content: "return JSON" }], { jsonObject: true, maxTokens: 2_000, temperature: 0.2 });
 
     expect(result).toEqual({ content: "grounded answer", inputTokens: 10, outputTokens: 4 });
     const [url, init] = fetcher.mock.calls[0] ?? [];
     expect(url).toBe("https://api.deepseek.com/chat/completions");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer secret" });
-    expect(JSON.parse(String(init?.body))).toMatchObject({ model: "deepseek-v4-flash", thinking: { type: "disabled" } });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      model: "deepseek-v4-flash",
+      thinking: { type: "disabled" },
+      response_format: { type: "json_object" },
+      max_tokens: 2_000,
+      temperature: 0.2,
+    });
   });
 
   it("maps authentication failures to a stable safe error", async () => {

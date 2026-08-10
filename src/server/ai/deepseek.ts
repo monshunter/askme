@@ -16,6 +16,12 @@ type ClientOptions = {
   timeoutMs?: number;
 };
 
+export type CompletionOptions = {
+  jsonObject?: boolean;
+  maxTokens?: number;
+  temperature?: number;
+};
+
 type CompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -30,7 +36,7 @@ export class DeepSeekClient {
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
-  async complete(messages: ChatMessage[]) {
+  async complete(messages: ChatMessage[], options: CompletionOptions = {}) {
     if (!this.config.apiKey) {
       throw new AppError("AI_NOT_CONFIGURED", "The AI provider is not configured.", 503);
     }
@@ -49,6 +55,9 @@ export class DeepSeekClient {
           model: this.config.model,
           messages,
           thinking: { type: "disabled" },
+          ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
+          ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
+          ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
           stream: false,
         }),
         signal: controller.signal,

@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -169,6 +170,22 @@ export const knowledgeSources = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.knowledgeItemId, table.materialId] }), index("knowledge_sources_owner_idx").on(table.ownerId)],
+);
+
+export const knowledgeEvidence = pgTable(
+  "knowledge_evidence",
+  {
+    knowledgeItemId: uuid("knowledge_item_id").notNull(),
+    chunkId: uuid("chunk_id").notNull(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.knowledgeItemId, table.chunkId] }),
+    foreignKey({ columns: [table.knowledgeItemId, table.ownerId], foreignColumns: [knowledgeItems.id, knowledgeItems.ownerId] }).onDelete("cascade"),
+    foreignKey({ columns: [table.chunkId, table.ownerId], foreignColumns: [chunks.id, chunks.ownerId] }).onDelete("cascade"),
+    index("knowledge_evidence_owner_idx").on(table.ownerId),
+  ],
 );
 
 export const privacyConfirmations = pgTable("privacy_confirmations", {
