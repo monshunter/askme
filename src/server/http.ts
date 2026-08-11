@@ -23,7 +23,18 @@ export function apiData<T>(data: T, id: string, init?: ResponseInit) {
 
 export function apiFailure(error: unknown, id: string) {
   const appError = toAppError(error);
-  return NextResponse.json(
+  if (appError.status >= 500) {
+    console.error(
+      JSON.stringify({
+        event: "api.request.failed",
+        requestId: id,
+        code: appError.code,
+        status: appError.status,
+        causeType: error instanceof Error ? error.name : "UnknownError",
+      }),
+    );
+  }
+  const response = NextResponse.json(
     {
       data: null,
       error: { code: appError.code, message: appError.message, details: appError.details ?? null },
@@ -31,4 +42,7 @@ export function apiFailure(error: unknown, id: string) {
     },
     { status: appError.status },
   );
+  const retryAfterSeconds = appError.details?.retryAfterSeconds;
+  if (appError.status === 429 && typeof retryAfterSeconds === "number") response.headers.set("Retry-After", String(retryAfterSeconds));
+  return response;
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiClientError, requestApi } from "./api-client";
+import { formatUploadFeedback } from "./material-upload-feedback";
 
 type Material = {
   id: string;
@@ -91,7 +92,7 @@ export function MaterialsClient({ initialMaterials }: { initialMaterials: Materi
       });
       request.addEventListener("load", () => {
         setUploadProgress(null);
-        let payload: { data?: { failures?: number }; error?: { message?: string } } = {};
+        let payload: { data?: { failures?: number; items?: Array<{ ok: boolean; name?: string; error?: { message?: string } }> }; error?: { message?: string } } = {};
         try {
           payload = JSON.parse(request.responseText);
         } catch {
@@ -100,7 +101,7 @@ export function MaterialsClient({ initialMaterials }: { initialMaterials: Materi
         }
         if (request.status === 201 || request.status === 207) {
           const failures = payload.data?.failures ?? 0;
-          setFeedback({ tone: failures > 0 ? "error" : "success", message: failures > 0 ? `${files.length - failures} files queued; ${failures} failed validation.` : `${files.length} file${files.length === 1 ? "" : "s"} queued for indexing.` });
+          setFeedback({ tone: failures > 0 ? "error" : "success", message: formatUploadFeedback(files.length, payload.data ?? {}) });
           void refresh();
         } else {
           setFeedback({ tone: "error", message: payload.error?.message ?? "The files could not be uploaded." });
@@ -201,7 +202,11 @@ export function MaterialsClient({ initialMaterials }: { initialMaterials: Materi
               type="file"
               multiple
               accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,application/pdf,text/plain,text/markdown"
-              onChange={(event) => uploadFiles(Array.from(event.target.files ?? []))}
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.currentTarget.value = "";
+                uploadFiles(files);
+              }}
             />
             <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()}><FileArchive size={18} /> Select Files</button>
             {uploadProgress !== null ? <div className="upload-transfer" role="status"><span><LoaderCircle className="spin" size={16} /> Transferring files</span><strong>{uploadProgress}%</strong><div><i style={{ width: `${uploadProgress}%` }} /></div></div> : null}

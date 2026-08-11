@@ -15,5 +15,8 @@ describe("resource identifiers", () => {
     expect(() => requireResourceId("../private", "knowledge")).toThrowError(
       expect.objectContaining({ code: "KNOWLEDGE_NOT_FOUND", status: 404 }) as Partial<AppError>,
     );
+    expect(() => requireResourceId("bad", "message")).toThrowError(
+      expect.objectContaining({ code: "MESSAGE_NOT_FOUND", status: 404 }) as Partial<AppError>,
+    );
   });
 });

@@ -7,6 +7,7 @@ import { toAppError } from "./server/errors";
 import { failIngestionJob } from "./server/jobs/fail-ingestion";
 import { claimNextIngestionJob } from "./server/jobs/ingestion-jobs";
 import { processIngestionLease } from "./server/jobs/process-ingestion";
+import { maintainEphemeralPublicState } from "./server/jobs/public-retention";
 import { startWorkerHeartbeat } from "./server/jobs/worker-heartbeat";
 
 const POLL_INTERVAL_MS = 1_000;
@@ -25,6 +26,10 @@ async function heartbeat(pool: Pool) {
      ON CONFLICT (worker_id) DO UPDATE SET version=excluded.version,last_seen_at=excluded.last_seen_at`,
     [workerId, process.env.npm_package_version ?? "0.1.0"],
   );
+  const removed = await maintainEphemeralPublicState(pool);
+  if (removed.conversations > 0 || removed.rateLimits > 0) {
+    console.info(JSON.stringify({ event: "worker.public-retention.completed", workerId, ...removed }));
+  }
 }
 
 async function main() {

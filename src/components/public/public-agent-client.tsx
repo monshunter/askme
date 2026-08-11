@@ -1,0 +1,218 @@
+"use client";
+
+import { AlertCircle, Bot, BookOpen, Check, Clock3, Download, ExternalLink, FileText, Globe2, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import Link from "next/link";
+import { FormEvent, useEffect, useRef, useState } from "react";
+
+import { ApiClientError, requestApi } from "@/components/candidate/api-client";
+
+type Citation = { chunkId: string; rank: number; excerpt: string; materialId: string; materialTitle: string; materialKind: string; externalUrl: string | null };
+type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[] };
+type Thread = { conversation: { id: string; expiresAt: string }; messages: PublicMessage[]; idempotent?: boolean; pending?: boolean };
+type PublicProjection = {
+  profile: { displayName: string; headline: string; location: string | null; bio: string | null; avatarUrl: string | null };
+  agent: { slug: string; status: "published"; publishedAt: string; updatedAt: string };
+  stats: { publicKnowledgeItems: number; publicSources: number };
+  highlights: Array<{ id: string; type: string; title: string; summary: string; highlights: string[] }>;
+  suggestedQuestions: string[];
+};
+type Envelope<T> = { data?: T; error?: { code?: string; message?: string; details?: { retryAfterSeconds?: number } } | null };
+
+function connectionFeedback(error: unknown, action: string) {
+  return error instanceof ApiClientError && error.kind === "invalid_response" ? `The ${action} returned an invalid response.` : `The ${action} connection failed. Try again.`;
+}
+
+function answerLabel(code: string) {
+  if (code === "INSUFFICIENT_EVIDENCE") return "More evidence needed";
+  if (code === "QUESTION_INJECTION" || code === "QUESTION_DATA_EXFILTRATION") return "Safely refused";
+  if (code === "QUESTION_OUT_OF_SCOPE") return "Career questions only";
+  if (code === "SOURCE_PERMISSION_CHANGED") return "Source permission changed";
+  return "Answer failed";
+}
+
+export function PublicAgentClient({ slug, initialProjection }: { slug: string; initialProjection: PublicProjection }) {
+  const [thread, setThread] = useState<Thread | null>(null);
+  const [suggestions, setSuggestions] = useState(initialProjection.suggestedQuestions);
+  const [question, setQuestion] = useState("");
+  const [sessionState, setSessionState] = useState<"starting" | "ready" | "failed">("starting");
+  const [sending, setSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [feedbackSaving, setFeedbackSaving] = useState<string | null>(null);
+  const [agentUnavailable, setAgentUnavailable] = useState(false);
+  const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const initialized = useRef(false);
+  const threadEnd = useRef<HTMLDivElement>(null);
+
+  async function loadThread() {
+    const { response, payload } = await requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, { cache: "no-store" });
+    if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") {
+      setAgentUnavailable(true);
+      return null;
+    }
+    if (!response.ok) throw new Error(payload.error?.message ?? "The conversation could not be loaded.");
+    if (!payload.data) throw new ApiClientError("invalid_response");
+    setThread(payload.data);
+    return payload.data;
+  }
+
+  async function initializeSession() {
+    setSessionState("starting");
+    const { response, payload } = await requestApi<Envelope<{ conversationId: string }>>(`/api/public/agents/${slug}/session`, { method: "POST" });
+    if (!response.ok) {
+      if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
+      setSessionState("failed");
+      setNotice({ tone: "error", message: payload.error?.message ?? "A secure interviewer session could not be started." });
+      return false;
+    }
+    await loadThread();
+    setSessionState("ready");
+    return true;
+  }
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    void initializeSession().catch((error) => {
+      setSessionState("failed");
+      setNotice({ tone: "error", message: connectionFeedback(error, "session") });
+    });
+    // The session initializer is intentionally bound to this immutable public slug.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [thread?.messages.length]);
+
+  async function sendQuestion(value: string) {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized || sending) return;
+    setSending(true);
+    setNotice(null);
+    setRetryQuestion(null);
+    const clientMessageId = crypto.randomUUID();
+    try {
+      const perform = () => requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientMessageId, question: normalized }),
+      });
+      let result = await perform();
+      if (result.response.status === 401 && await initializeSession()) result = await perform();
+      if (!result.response.ok) {
+        if (result.payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
+        await loadThread().catch(() => undefined);
+        setRetryQuestion(normalized);
+        const wait = result.payload.error?.details?.retryAfterSeconds;
+        setNotice({ tone: "error", message: wait ? `Too many questions. Try again in about ${wait} seconds.` : result.payload.error?.message ?? "The Agent could not answer." });
+        return;
+      }
+      if (!result.payload.data) throw new ApiClientError("invalid_response");
+      setThread(result.payload.data);
+      setQuestion("");
+    } catch (error) {
+      setRetryQuestion(normalized);
+      setNotice({ tone: "error", message: connectionFeedback(error, "Agent answer") });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void sendQuestion(question);
+  }
+
+  async function refreshSuggestions() {
+    setRefreshing(true);
+    setNotice(null);
+    try {
+      const { response, payload } = await requestApi<Envelope<{ suggestedQuestions: string[] }>>(`/api/public/agents/${slug}/suggestions/refresh`, { method: "POST" });
+      if (!response.ok) {
+        if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
+        setNotice({ tone: "error", message: payload.error?.message ?? "Suggested questions could not be refreshed." });
+        return;
+      }
+      if (!payload.data) throw new ApiClientError("invalid_response");
+      setSuggestions(payload.data.suggestedQuestions);
+    } catch (error) {
+      setNotice({ tone: "error", message: connectionFeedback(error, "question refresh") });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function saveFeedback(message: PublicMessage, value: "up" | "down") {
+    setFeedbackSaving(message.id);
+    try {
+      const { response, payload } = await requestApi<Envelope<{ value: "up" | "down" }>>(`/api/public/agents/${slug}/messages/${message.id}/feedback`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      if (!response.ok) {
+        if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
+        setNotice({ tone: "error", message: payload.error?.message ?? "Feedback could not be saved." });
+        return;
+      }
+      setThread((current) => current ? { ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, feedback: value } : item) } : current);
+    } catch (error) {
+      setNotice({ tone: "error", message: connectionFeedback(error, "feedback") });
+    } finally {
+      setFeedbackSaving(null);
+    }
+  }
+
+  function downloadLink() {
+    const href = URL.createObjectURL(new Blob([`Ask ${initialProjection.profile.displayName}'s Askme Agent\n${window.location.href}\n`], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `${initialProjection.profile.displayName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-askme-agent.txt`;
+    anchor.click();
+    URL.revokeObjectURL(href);
+  }
+
+  const initials = initialProjection.profile.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  if (agentUnavailable) {
+    return <main className="public-unavailable"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><section><span><AlertCircle size={34} /></span><h1>This Agent is unavailable</h1><p>Public access changed after this page was opened. No additional Candidate information is available.</p><Link href="/">Return to Askme</Link></section></main>;
+  }
+  return (
+    <div className="public-agent-page">
+      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>Trusted &amp; Public</strong><small>Answers use authorized Candidate evidence.</small></span></div></header>
+      <div className="public-agent-layout">
+        <aside className="public-candidate-sidebar">
+          <section className="public-candidate-card">
+            <span className="public-candidate-avatar">
+              {/* Candidate avatar URLs are user data and may not belong to a preconfigured Next image host. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {initialProjection.profile.avatarUrl ? <img src={initialProjection.profile.avatarUrl} alt="" /> : initials}
+            </span>
+            <h1>{initialProjection.profile.displayName}</h1><span className="public-agent-label"><Globe2 size={13} /> Public Agent</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? "Ask this Candidate Agent about authorized experience, projects, and skills."}</p>
+            <div className="public-candidate-facts"><span><i className="ready" /> Agent Status <strong>Ready</strong></span><span><Clock3 size={15} /> Last Updated <strong>{new Date(initialProjection.agent.updatedAt).toLocaleDateString()}</strong></span><span><BookOpen size={15} /> Knowledge Items <strong>{initialProjection.stats.publicKnowledgeItems}</strong></span><span><FileText size={15} /> Public Sources <strong>{initialProjection.stats.publicSources}</strong></span></div>
+          </section>
+          <button className="download-agent-link" type="button" onClick={downloadLink}><Download size={19} /><span><strong>Download Candidate Agent Link</strong><small>Share this public link with others.</small></span></button>
+        </aside>
+
+        <main className="public-agent-main">
+          <section className="public-agent-hero"><p className="page-kicker">Ask this Candidate&apos;s Agent.</p><h1>Don&apos;t browse my resume. <em>Ask my Agent.</em> <span className="title-seal" aria-hidden="true">问候</span></h1><p>Get grounded answers about {initialProjection.profile.displayName}&apos;s experience, projects, and skills. Every factual answer links to its authorized sources.</p></section>
+          {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> Retry</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
+
+          <div className="public-chat-shell">
+            <section className="public-chat-column" aria-label="Public Candidate Agent conversation">
+              <div className="public-chat-thread" aria-live="polite">
+                {sessionState === "starting" && !thread ? <div className="empty-state public-chat-empty"><LoaderCircle className="spin" size={26} /><h2>Starting a secure session…</h2></div> : sessionState === "failed" && !thread ? <div className="empty-state public-chat-empty"><AlertCircle size={28} /><h2>Chat is temporarily unavailable</h2><button className="secondary-button" type="button" onClick={() => void initializeSession()}>Try Again</button></div> : thread?.messages.length ? thread.messages.map((message) => message.role === "user" ? <article className="public-message public-user-message" key={message.id}><span><UserRound size={20} /></span><div><p>{message.content}</p></div></article> : <article className={`public-message public-assistant-message ${message.status}`} key={message.id}><span><Bot size={20} /></span><div><p>{message.status === "pending" ? "Grounding the answer in authorized evidence…" : message.content}</p>{message.errorCode ? <small className={`answer-outcome ${message.status}`}>{answerLabel(message.errorCode)}</small> : null}{message.citations.length > 0 ? <section className="public-answer-sources"><h3>Sources</h3>{message.citations.map((citation) => <article key={citation.chunkId}><FileText size={16} /><span><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()}</small><p>{citation.excerpt}</p></span>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer" aria-label={`Open ${citation.materialTitle}`}><ExternalLink size={15} /></a> : null}</article>)}</section> : null}<footer><span>{message.citations.length > 0 ? `${message.citations.length} public citation${message.citations.length === 1 ? "" : "s"}` : ""}</span>{message.status === "completed" ? <span><button className={message.feedback === "up" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "up")} aria-label="Helpful answer"><ThumbsUp size={15} /></button><button className={message.feedback === "down" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "down")} aria-label="Unhelpful answer"><ThumbsDown size={15} /></button></span> : null}</footer></div></article>) : <div className="empty-state public-chat-empty"><Bot size={30} /><h2>Ask a grounded career question</h2><p>Choose a suggestion below or ask about projects, experience, skills, and measurable impact.</p></div>}
+                <div ref={threadEnd} />
+              </div>
+              <form className="public-chat-composer" onSubmit={submit}><label className="sr-only" htmlFor="public-agent-question">Ask a question about the Candidate</label><textarea id="public-agent-question" value={question} maxLength={500} rows={2} disabled={sending || sessionState !== "ready"} onChange={(event) => setQuestion(event.target.value)} placeholder={`Ask about ${initialProjection.profile.displayName}'s experience, projects, or skills…`} /><button type="submit" disabled={sending || sessionState !== "ready" || !question.trim()} aria-label="Send question">{sending ? <LoaderCircle className="spin" size={20} /> : <Send size={20} />}</button></form>
+              <div className="public-suggestions"><div>{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending || sessionState !== "ready"} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={14} /> {suggestion}</button>)}<button className="refresh-public-suggestions" type="button" disabled={refreshing || sessionState !== "ready"} onClick={() => void refreshSuggestions()} aria-label="Refresh suggested questions">{refreshing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}</button></div></div>
+            </section>
+
+            <aside className="public-highlights-column"><section><h2>Candidate Highlights</h2>{initialProjection.highlights.length === 0 ? <p>No public highlights are enabled.</p> : initialProjection.highlights.map((highlight) => <article key={highlight.id}><span><Sparkles size={17} /></span><div><strong>{highlight.title}</strong><p>{highlight.summary}</p></div></article>)}</section><section className="public-learn-more"><h2>Want to learn more?</h2><p>Try a recommended question to get the best evidence-backed answers.</p></section></aside>
+          </div>
+        </main>
+      </div>
+      <footer className="public-footer"><span>© 2026 Askme. All rights reserved.</span><span>Privacy · Terms · Support</span><span><Globe2 size={13} /> English</span></footer>
+    </div>
+  );
+}

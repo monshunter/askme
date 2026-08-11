@@ -144,16 +144,16 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-MAT-004` 删除资料同步清理 owner 范围内文件和派生关系，其他资料与其他 owner 不受影响。
 - [x] `AC-KB-001` Knowledge Base 的分类、搜索、筛选、分页和详情对真实索引结果生效。
 - [x] `AC-KB-002` Candidate 编辑知识摘要后持久化且保留来源与 Citation 追溯。
-- [ ] `AC-PRIV-001` 四级可见性矩阵由服务端统一执行，Candidate 预览与公共回答的证据集合符合合同。
-- [ ] `AC-PRIV-002` 隐私修改即时影响后续公共请求，发布前确认状态被持久化。
-- [ ] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。
-- [ ] `AC-AGENT-002` 无证据、AI 未配置、超时和上游失败具有不同反馈且不产生伪造答案。
-- [ ] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
-- [ ] `AC-PUB-001` 发布前置条件、不可推断链接、持久发布状态、撤销与再发布行为通过集成测试。
-- [ ] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
-- [ ] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
-- [ ] `AC-CHAT-002` 私有数据、跨 owner 数据、原文件下载、提示注入和完整知识库索取被拒绝或隔离。
-- [ ] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
+- [x] `AC-PRIV-001` 四级可见性矩阵由服务端统一执行，Candidate 预览与公共回答的证据集合符合合同。
+- [x] `AC-PRIV-002` 隐私修改即时影响后续公共请求，发布前确认状态被持久化。
+- [x] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。
+- [x] `AC-AGENT-002` 无证据、AI 未配置、超时和上游失败具有不同反馈且不产生伪造答案。
+- [x] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
+- [x] `AC-PUB-001` 发布前置条件、不可推断链接、持久发布状态、撤销与再发布行为通过集成测试。
+- [x] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
+- [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
+- [x] `AC-CHAT-002` 私有数据、跨 owner 数据、原文件下载、提示注入和完整知识库索取被拒绝或隔离。
+- [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
 - [ ] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
 - [ ] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
 - [ ] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。

@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const userRole = pgEnum("user_role", ["candidate", "admin"]);
 export const accountStatus = pgEnum("account_status", ["active", "suspended"]);
@@ -194,6 +195,12 @@ export const privacyConfirmations = pgTable("privacy_confirmations", {
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
 });
 
+export const privacyPolicyStates = pgTable("privacy_policy_states", {
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).primaryKey(),
+  revision: integer("revision").default(1).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const agentSettings = pgTable("agent_settings", {
   ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).primaryKey(),
   answerTone: text("answer_tone").default("professional").notNull(),
@@ -216,7 +223,12 @@ export const publications = pgTable(
     pauseReason: text("pause_reason"),
     ...timestamps,
   },
-  (table) => [uniqueIndex("publications_slug_unique").on(table.slug), uniqueIndex("publications_id_owner_unique").on(table.id, table.ownerId), index("publications_owner_idx").on(table.ownerId)],
+  (table) => [
+    uniqueIndex("publications_slug_unique").on(table.slug),
+    uniqueIndex("publications_id_owner_unique").on(table.id, table.ownerId),
+    uniqueIndex("publications_owner_active_unique").on(table.ownerId).where(sql`${table.status} in ('draft','published','paused')`),
+    index("publications_owner_idx").on(table.ownerId),
+  ],
 );
 
 export const conversations = pgTable(
@@ -228,10 +240,27 @@ export const conversations = pgTable(
     mode: conversationMode("mode").notNull(),
     visitorTokenHash: text("visitor_token_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
+    suggestionCursor: integer("suggestion_cursor").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     lastActivityAt: timestamp("last_activity_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("conversations_id_owner_unique").on(table.id, table.ownerId), index("conversations_publication_idx").on(table.publicationId)],
+  (table) => [
+    uniqueIndex("conversations_id_owner_unique").on(table.id, table.ownerId),
+    uniqueIndex("conversations_public_visitor_unique").on(table.publicationId, table.visitorTokenHash).where(sql`${table.mode} = 'public'`),
+    index("conversations_publication_idx").on(table.publicationId),
+    index("conversations_public_expiry_idx").on(table.expiresAt).where(sql`${table.mode} = 'public'`),
+  ],
+);
+
+export const publicRateLimits = pgTable(
+  "public_rate_limits",
+  {
+    scopeKey: text("scope_key").primaryKey(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+    requestCount: integer("request_count").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("public_rate_limits_updated_idx").on(table.updatedAt)],
 );
 
 export const messages = pgTable(
@@ -242,13 +271,21 @@ export const messages = pgTable(
     ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     role: messageRole("role").notNull(),
     status: messageStatus("status").default("completed").notNull(),
+    clientMessageId: text("client_message_id"),
+    replyToMessageId: uuid("reply_to_message_id"),
     content: text("content").notNull(),
     model: text("model"),
     latencyMs: integer("latency_ms"),
     errorCode: text("error_code"),
+    sourceInvalidatedAt: timestamp("source_invalidated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("messages_id_owner_unique").on(table.id, table.ownerId), index("messages_conversation_idx").on(table.conversationId, table.createdAt)],
+  (table) => [
+    uniqueIndex("messages_id_owner_unique").on(table.id, table.ownerId),
+    uniqueIndex("messages_conversation_client_unique").on(table.conversationId, table.clientMessageId),
+    uniqueIndex("messages_reply_unique").on(table.replyToMessageId),
+    index("messages_conversation_idx").on(table.conversationId, table.createdAt),
+  ],
 );
 
 export const messageCitations = pgTable(
