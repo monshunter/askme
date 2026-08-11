@@ -1,39 +1,45 @@
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { createTranslator } from "@/i18n/core";
+import { getRequestLocale } from "@/i18n/server";
+
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+  const [{ error }, locale] = await Promise.all([searchParams, getRequestLocale()]);
+  const t = createTranslator(locale);
 
   return (
     <main className="login-page">
       <section className="login-story" aria-labelledby="login-story-title">
-        <Link className="wordmark" href="/" aria-label="Askme home">
+        <Link className="wordmark" href="/" aria-label="Askme">
           Askme <span aria-hidden="true">问候</span>
         </Link>
         <div className="story-copy">
-          <p className="eyebrow">Personal Career Knowledge Agent</p>
-          <h1 id="login-story-title">Don&apos;t browse my resume. Ask my Agent.</h1>
-          <p>Turn your real career materials into an evidence-based Agent that interviewers can ask.</p>
+          <p className="eyebrow">{t("login.eyebrow")}</p>
+          <h1 id="login-story-title">{t("login.hero")}</h1>
+          <p>{t("login.heroCopy")}</p>
         </div>
-        <p className="trust-line"><ShieldCheck size={18} /> Your source materials stay private until you decide what can be used.</p>
+        <p className="trust-line"><ShieldCheck size={18} /> {t("login.trust")}</p>
       </section>
 
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-card">
+          <LanguageSwitcher locale={locale} />
           <p className="seal" aria-hidden="true">问候</p>
-          <h2 id="login-title">Welcome back</h2>
-          <p className="muted">Sign in to manage your career Agent or the Askme platform.</p>
+          <h2 id="login-title">{t("login.title")}</h2>
+          <p className="muted">{t("login.copy")}</p>
 
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {error ? <p className="form-error" role="alert">{t("login.invalid")}</p> : null}
 
           <form action="/api/auth/login" method="post">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">{t("login.email")}</label>
             <input id="email" name="email" type="email" autoComplete="email" required />
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("login.password")}</label>
             <input id="password" name="password" type="password" autoComplete="current-password" required />
-            <button type="submit">Sign in <ArrowRight size={18} /></button>
+            <button type="submit">{t("login.submit")} <ArrowRight size={18} /></button>
           </form>
-          <p className="local-note">Local accounts are configured through Docker environment variables.</p>
+          <p className="local-note">{t("login.local")}</p>
         </div>
       </section>
     </main>

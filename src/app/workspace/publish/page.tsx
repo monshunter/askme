@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 
 import { PublishClient } from "@/components/candidate/publish-client";
+import { getRequestLocale } from "@/i18n/server";
 import { requirePageUser } from "@/server/auth/current";
 import { loadPublicationOverview } from "@/server/publication/publication-service";
 
@@ -13,7 +14,7 @@ function pageOrigin(values: Headers) {
 
 export default async function PublishPage() {
   const user = await requirePageUser("candidate");
-  const [overview, requestHeaders] = await Promise.all([loadPublicationOverview(user.id), headers()]);
+  const [overview, requestHeaders, locale] = await Promise.all([loadPublicationOverview(user.id), headers(), getRequestLocale()]);
   const shareUrl = overview.publication ? new URL(`/a/${overview.publication.slug}`, pageOrigin(requestHeaders)).toString() : null;
-  return <PublishClient initialOverview={JSON.parse(JSON.stringify({ ...overview, shareUrl }))} />;
+  return <PublishClient initialOverview={JSON.parse(JSON.stringify({ ...overview, shareUrl }))} locale={locale} />;
 }

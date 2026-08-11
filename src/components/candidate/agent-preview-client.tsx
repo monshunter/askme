@@ -22,6 +22,9 @@ import {
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { createTranslator, type Locale } from "@/i18n/core";
+
 import { ApiClientError, requestApi } from "./api-client";
 
 type Visibility = "private" | "agent_only" | "citation_allowed" | "public_preview";
@@ -62,24 +65,27 @@ type AgentSettings = {
 };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string } | null };
 
-function connectionFeedback(error: unknown, action: string) {
+function connectionFeedback(error: unknown, action: string, locale: Locale) {
+  const t = createTranslator(locale);
   return error instanceof ApiClientError && error.kind === "invalid_response"
-    ? `The ${action} returned an invalid response.`
-    : `The ${action} connection failed. Try again.`;
+    ? t("agent.connectionInvalid", { action })
+    : t("agent.connectionFailed", { action });
 }
 
-function timeLabel(value: string) {
-  return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
+function timeLabel(value: string, locale: Locale) {
+  return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(value));
 }
 
-function visibilityLabel(visibility: Visibility) {
-  if (visibility === "agent_only") return "Agent-only · not public";
-  if (visibility === "public_preview") return "Public preview";
-  if (visibility === "citation_allowed") return "Citation allowed";
-  return "Private";
+function visibilityLabel(visibility: Visibility, locale: Locale) {
+  const t = createTranslator(locale);
+  if (visibility === "agent_only") return t("agent.visibility.agent");
+  if (visibility === "public_preview") return t("agent.visibility.public");
+  if (visibility === "citation_allowed") return t("agent.visibility.citation");
+  return t("agent.visibility.private");
 }
 
-export function AgentPreviewClient({ initialThread, initialSettings }: { initialThread: PreviewThread; initialSettings: AgentSettings }) {
+export function AgentPreviewClient({ initialThread, initialSettings, locale }: { initialThread: PreviewThread; initialSettings: AgentSettings; locale: Locale }) {
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const [thread, setThread] = useState(initialThread);
   const [settings, setSettings] = useState(initialSettings);
   const [question, setQuestion] = useState("");
@@ -99,7 +105,7 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
 
   async function refreshThread() {
     const { response, payload } = await requestApi<ApiEnvelope<PreviewThread>>("/api/agent/preview", { cache: "no-store" });
-    if (!response.ok) throw new Error(payload.error?.message ?? "The conversation could not be refreshed.");
+    if (!response.ok) throw new Error(t("agent.refreshFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setThread(payload.data);
     return payload.data;
@@ -124,7 +130,7 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
       if (!response.ok) {
         await refreshThread().catch(() => undefined);
         setRetryQuestion(normalized);
-        setNotice({ tone: "error", message: payload.error?.message ?? "The Agent could not answer. Retry when the service is available." });
+        setNotice({ tone: "error", message: t("agent.answerFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
@@ -134,7 +140,7 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
       setQuestion("");
     } catch (error) {
       setRetryQuestion(normalized);
-      setNotice({ tone: "error", message: connectionFeedback(error, "Agent answer") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.answer"), locale) });
     } finally {
       setSending(false);
     }
@@ -158,15 +164,15 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
       });
       if (!response.ok) {
         setSettings(previous);
-        setNotice({ tone: "error", message: payload.error?.message ?? "The Agent setting could not be saved." });
+        setNotice({ tone: "error", message: t("agent.settingFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
       setSettings(payload.data);
-      setNotice({ tone: "success", message: "Agent settings saved. New answers will use this configuration." });
+      setNotice({ tone: "success", message: t("agent.settingSaved") });
     } catch (error) {
       setSettings(previous);
-      setNotice({ tone: "error", message: connectionFeedback(error, "settings update") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.settings"), locale) });
     } finally {
       setSavingSetting(null);
     }
@@ -178,13 +184,13 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
     try {
       const { response, payload } = await requestApi<ApiEnvelope<AgentSettings>>("/api/agent/settings/suggestions/refresh", { method: "POST" });
       if (!response.ok) {
-        setNotice({ tone: "error", message: payload.error?.message ?? "Suggested questions could not be refreshed." });
+        setNotice({ tone: "error", message: t("agent.suggestionsFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
       setSettings(payload.data);
     } catch (error) {
-      setNotice({ tone: "error", message: connectionFeedback(error, "question refresh") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.suggestions"), locale) });
     } finally {
       setRefreshingSuggestions(false);
     }
@@ -194,18 +200,18 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
     setFeedbackSaving(message.id);
     setNotice(null);
     try {
-      const { response, payload } = await requestApi<ApiEnvelope<{ value: "up" | "down" }>>(`/api/agent/messages/${message.id}/feedback`, {
+      const { response } = await requestApi<ApiEnvelope<{ value: "up" | "down" }>>(`/api/agent/messages/${message.id}/feedback`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ value }),
       });
       if (!response.ok) {
-        setNotice({ tone: "error", message: payload.error?.message ?? "Feedback could not be saved." });
+        setNotice({ tone: "error", message: t("agent.feedbackFailed") });
         return;
       }
       setThread((current) => ({ ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, feedback: value } : item) }));
     } catch (error) {
-      setNotice({ tone: "error", message: connectionFeedback(error, "feedback") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.feedback"), locale) });
     } finally {
       setFeedbackSaving(null);
     }
@@ -214,33 +220,33 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
   return (
     <div className="candidate-page agent-preview-page">
       <section className="page-hero compact-hero agent-hero">
-        <p className="page-kicker">Candidate Agent</p>
-        <h1>Agent Preview <span className="title-seal" aria-hidden="true">问候</span></h1>
-        <p>Test how your career Agent answers interviewer questions before publishing.</p>
-        <span className="agent-evidence-note"><ShieldCheck size={18} /> Answers are grounded in your authorized evidence.</span>
+        <p className="page-kicker">{t("agent.kicker")}</p>
+        <h1>{t("agent.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <p>{t("agent.copy")}</p>
+        <span className="agent-evidence-note"><ShieldCheck size={18} /> {t("agent.evidence")}</span>
       </section>
 
-      {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> Retry</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
+      {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> {t("agent.retry")}</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label={t("shared.dismiss")}><X size={16} /></button></div> : null}
 
       <div className="agent-preview-grid">
-        <section className="paper-card agent-chat-card" aria-label="Candidate Agent preview conversation">
+        <section className="paper-card agent-chat-card" aria-label={t("agent.conversation")}>
           <div className="agent-thread" aria-live="polite">
             {thread.messages.length === 0 ? (
-              <div className="empty-state agent-empty"><span><Bot size={28} /></span><h2>Ask your Agent a question</h2><p>Try a suggested question or ask about your projects, experience, skills, and evidence.</p></div>
+              <div className="empty-state agent-empty"><span><Bot size={28} /></span><h2>{t("agent.empty.title")}</h2><p>{t("agent.empty.copy")}</p></div>
             ) : thread.messages.map((message) => message.role === "user" ? (
               <article className="chat-message user-message" key={message.id}>
                 <span className="chat-avatar user"><CircleUserRound size={24} /></span>
-                <div><p>{message.content}</p><time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time></div>
+                <div><p>{message.content}</p><time dateTime={message.createdAt}>{timeLabel(message.createdAt, locale)}</time></div>
               </article>
             ) : (
               <article className={`chat-message assistant-message ${message.status}`} key={message.id} onClick={() => setSelectedAnswerId(message.id)}>
                 <span className="chat-avatar agent"><Bot size={22} /></span>
                 <div className="assistant-bubble">
-                  {message.status === "pending" ? <p className="answer-status"><LoaderCircle className="spin" size={16} /> Agent is grounding the answer…</p> : <p>{message.content}</p>}
-                  {message.errorCode ? <span className={`answer-outcome ${message.status}`}>{message.errorCode === "INSUFFICIENT_EVIDENCE" ? "More evidence needed" : message.errorCode === "REFUSED" ? "Safely refused" : "Answer failed"}</span> : null}
+                  {message.status === "pending" ? <p className="answer-status"><LoaderCircle className="spin" size={16} /> {t("agent.grounding")}</p> : <p>{message.content}</p>}
+                  {message.errorCode ? <span className={`answer-outcome ${message.status}`}>{message.errorCode === "INSUFFICIENT_EVIDENCE" ? t("agent.outcome.moreEvidence") : message.errorCode === "REFUSED" ? t("agent.outcome.refused") : t("agent.outcome.failed")}</span> : null}
                   <footer>
-                    <span>{message.citations.length > 0 ? `${message.citations.length} cited source${message.citations.length === 1 ? "" : "s"}` : message.status === "completed" ? "No source exposed" : ""}</span>
-                    {message.status === "completed" ? <span className="answer-feedback" aria-label="Rate this answer"><button className={message.feedback === "up" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={(event) => { event.stopPropagation(); void saveFeedback(message, "up"); }} aria-label="Helpful answer"><ThumbsUp size={15} /></button><button className={message.feedback === "down" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={(event) => { event.stopPropagation(); void saveFeedback(message, "down"); }} aria-label="Unhelpful answer"><ThumbsDown size={15} /></button></span> : null}
+                    <span>{message.citations.length > 0 ? t("agent.citedSources", { count: message.citations.length }) : message.status === "completed" ? t("agent.noSource") : ""}</span>
+                    {message.status === "completed" ? <span className="answer-feedback" aria-label={t("agent.rate")}><button className={message.feedback === "up" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={(event) => { event.stopPropagation(); void saveFeedback(message, "up"); }} aria-label={t("agent.helpful")}><ThumbsUp size={15} /></button><button className={message.feedback === "down" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={(event) => { event.stopPropagation(); void saveFeedback(message, "down"); }} aria-label={t("agent.unhelpful")}><ThumbsDown size={15} /></button></span> : null}
                   </footer>
                 </div>
               </article>
@@ -248,34 +254,34 @@ export function AgentPreviewClient({ initialThread, initialSettings }: { initial
           </div>
 
           <form className="agent-composer" onSubmit={submit}>
-            <label htmlFor="agent-question">Ask about your career evidence</label>
-            <div><textarea id="agent-question" value={question} maxLength={500} rows={2} disabled={sending} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about a project, skill, or measurable impact…" /><button type="submit" disabled={sending || !question.trim()} aria-label="Send question">{sending ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>
-            <small>{question.length}/500 · Only authorized sources enter the answer context.</small>
+            <label htmlFor="agent-question">{t("agent.question.label")}</label>
+            <div><textarea id="agent-question" value={question} maxLength={500} rows={2} disabled={sending} onChange={(event) => setQuestion(event.target.value)} placeholder={t("agent.question.placeholder")} /><button type="submit" disabled={sending || !question.trim()} aria-label={t("agent.question.send")}>{sending ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>
+            <small>{t("agent.question.context", { count: question.length })}</small>
           </form>
 
           <section className="suggestion-section" aria-labelledby="suggestion-title">
-            <div><h2 id="suggestion-title">Try asking something else</h2><button type="button" disabled={refreshingSuggestions} onClick={() => void refreshSuggestions()}>{refreshingSuggestions ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} Refresh</button></div>
+            <div><h2 id="suggestion-title">{t("agent.suggestions.title")}</h2><button type="button" disabled={refreshingSuggestions} onClick={() => void refreshSuggestions()}>{refreshingSuggestions ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {t("agent.suggestions.refresh")}</button></div>
             <div className="suggestion-grid">{settings.suggestedQuestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={16} />{suggestion}</button>)}</div>
           </section>
         </section>
 
-        <aside className="paper-card citations-card" aria-label="Citations and sources">
-          <header><span><h2>Citations &amp; Sources</h2><small>{activeAnswer ? "Sources used in the selected answer" : "Select a grounded answer"}</small></span><strong>{activeAnswer?.citations.length ?? 0} sources</strong></header>
-          {!activeAnswer || activeAnswer.citations.length === 0 ? <div className="empty-state citations-empty"><FileText size={26} /><p>No citations to show for this answer.</p><small>Grounded answers expose only the sources they actually use.</small></div> : (
-            <ol className="citation-list">{activeAnswer.citations.map((citation) => <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility)}</small><p>{citation.excerpt}</p>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer"><Link2 size={13} /> Open original link</a> : null}</div></li>)}</ol>
+        <aside className="paper-card citations-card" aria-label={t("agent.citations.label")}>
+          <header><span><h2>{t("agent.citations.title")}</h2><small>{activeAnswer ? t("agent.citations.used") : t("agent.citations.select")}</small></span><strong>{t("agent.citations.count", { count: activeAnswer?.citations.length ?? 0 })}</strong></header>
+          {!activeAnswer || activeAnswer.citations.length === 0 ? <div className="empty-state citations-empty"><FileText size={26} /><p>{t("agent.citations.empty")}</p><small>{t("agent.citations.copy")}</small></div> : (
+            <ol className="citation-list">{activeAnswer.citations.map((citation) => <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer"><Link2 size={13} /> {t("agent.citations.open")}</a> : null}</div></li>)}</ol>
           )}
-          <Link className="knowledge-deep-link" href="/workspace/knowledge"><FileText size={17} /> View all in Knowledge Base <ChevronRight size={17} /></Link>
+          <Link className="knowledge-deep-link" href="/workspace/knowledge"><FileText size={17} /> {t("agent.citations.viewAll")} <ChevronRight size={17} /></Link>
         </aside>
       </div>
 
-      <section className="agent-settings-grid" aria-label="Agent settings">
-        <label className="paper-card agent-setting"><span className="setting-icon"><Sparkles size={19} /></span><span><strong>Answer Tone</strong><small>Controls the style of new answers.</small></span><select value={settings.answerTone} disabled={savingSetting === "answerTone"} onChange={(event) => void updateSetting("answerTone", event.target.value as AgentSettings["answerTone"])}><option value="professional">Professional</option><option value="concise">Concise</option><option value="conversational">Conversational</option></select></label>
-        <label className="paper-card agent-setting"><span className="setting-icon"><Globe2 size={19} /></span><span><strong>Public Mode</strong><small>Stores your intent to answer interviewers.</small></span><select value={settings.publicMode ? "on" : "off"} disabled={savingSetting === "publicMode"} onChange={(event) => void updateSetting("publicMode", event.target.value === "on")}><option value="on">On</option><option value="off">Off</option></select></label>
-        <label className="paper-card agent-setting"><span className="setting-icon"><ShieldCheck size={19} /></span><span><strong>Privacy-Safe Mode</strong><small>Omits unnecessary sensitive detail.</small></span><select value={settings.privacySafeMode ? "on" : "off"} disabled={savingSetting === "privacySafeMode"} onChange={(event) => void updateSetting("privacySafeMode", event.target.value === "on")}><option value="on">On</option><option value="off">Off</option></select></label>
+      <section className="agent-settings-grid" aria-label={t("agent.settings.label")}>
+        <label className="paper-card agent-setting"><span className="setting-icon"><Sparkles size={19} /></span><span><strong>{t("agent.settings.tone")}</strong><small>{t("agent.settings.toneCopy")}</small></span><select value={settings.answerTone} disabled={savingSetting === "answerTone"} onChange={(event) => void updateSetting("answerTone", event.target.value as AgentSettings["answerTone"])}><option value="professional">{t("agent.settings.professional")}</option><option value="concise">{t("agent.settings.concise")}</option><option value="conversational">{t("agent.settings.conversational")}</option></select></label>
+        <label className="paper-card agent-setting"><span className="setting-icon"><Globe2 size={19} /></span><span><strong>{t("agent.settings.public")}</strong><small>{t("agent.settings.publicCopy")}</small></span><select value={settings.publicMode ? "on" : "off"} disabled={savingSetting === "publicMode"} onChange={(event) => void updateSetting("publicMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
+        <label className="paper-card agent-setting"><span className="setting-icon"><ShieldCheck size={19} /></span><span><strong>{t("agent.settings.privacy")}</strong><small>{t("agent.settings.privacyCopy")}</small></span><select value={settings.privacySafeMode ? "on" : "off"} disabled={savingSetting === "privacySafeMode"} onChange={(event) => void updateSetting("privacySafeMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
       </section>
 
-      <section className="paper-card preview-publish-card"><span className="publish-icon"><Globe2 size={26} /></span><span><h2>Publish Your Agent</h2><p>Review readiness, generate a share link, and control interviewer access.</p></span><Link className="secondary-button" href="/workspace/publish"><Link2 size={17} /> Generate Share Link</Link><Link className="primary-button" href="/workspace/publish"><Send size={17} /> Publish Agent</Link></section>
-      <footer className="candidate-footer"><span>© 2026 Askme. All rights reserved.</span><span>Privacy · Terms · Support</span><span>English</span></footer>
+      <section className="paper-card preview-publish-card"><span className="publish-icon"><Globe2 size={26} /></span><span><h2>{t("agent.publish.title")}</h2><p>{t("agent.publish.copy")}</p></span><Link className="secondary-button" href="/workspace/publish"><Link2 size={17} /> {t("agent.publish.generate")}</Link><Link className="primary-button" href="/workspace/publish"><Send size={17} /> {t("agent.publish.submit")}</Link></section>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
     </div>
   );
 }

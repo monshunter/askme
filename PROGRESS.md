@@ -36,5 +36,5 @@ Plans:
 - [x] [PLAN-002：闭环资料导入与职业知识库](docs/plans/PLAN-002.md)
 - [x] [PLAN-003：闭环隐私、Agent 与公共问答](docs/plans/PLAN-003.md)
 - [x] [PLAN-004：闭环 Platform Admin 与真实数据审计](docs/plans/PLAN-004.md)
-- [ ] [PLAN-005：闭环全界面视觉、双语与可访问性](docs/plans/PLAN-005.md)
+- [x] [PLAN-005：闭环全界面视觉、双语与可访问性](docs/plans/PLAN-005.md)
 ---

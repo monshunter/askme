@@ -2,8 +2,11 @@
 
 import { AlertCircle, Check, CheckCircle2, Clipboard, Download, ExternalLink, FileText, Globe2, Link2, LoaderCircle, LockKeyhole, RefreshCw, Send, ShieldCheck, X, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useModalFocus } from "@/components/use-modal-focus";
+import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 import { ApiClientError, requestApi } from "./api-client";
 
 type ReadinessKey = "indexed_material" | "privacy_confirmation" | "public_identity";
@@ -27,10 +30,11 @@ type PublicationOverview = {
 };
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } | null };
 
-function connectionFeedback(error: unknown, action: string) {
+function connectionFeedback(error: unknown, action: string, locale: Locale) {
+  const t = createTranslator(locale);
   return error instanceof ApiClientError && error.kind === "invalid_response"
-    ? `The ${action} returned an invalid response.`
-    : `The ${action} connection failed. Try again.`;
+    ? t("publish.connectionInvalid", { action })
+    : t("publish.connectionFailed", { action });
 }
 
 function requirementHref(key: ReadinessKey) {
@@ -39,15 +43,23 @@ function requirementHref(key: ReadinessKey) {
   return "/workspace";
 }
 
-export function PublishClient({ initialOverview }: { initialOverview: PublicationOverview }) {
+function requirementText(key: ReadinessKey, ready: boolean, field: "label" | "detail"): TranslationKey {
+  if (key === "indexed_material") return field === "label" ? "publish.requirement.indexed" : ready ? "publish.requirement.indexedReady" : "publish.requirement.indexedBlocked";
+  if (key === "privacy_confirmation") return field === "label" ? "publish.requirement.privacy" : ready ? "publish.requirement.privacyReady" : "publish.requirement.privacyBlocked";
+  return field === "label" ? "publish.requirement.identity" : ready ? "publish.requirement.identityReady" : "publish.requirement.identityBlocked";
+}
+
+export function PublishClient({ initialOverview, locale }: { initialOverview: PublicationOverview; locale: Locale }) {
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const [overview, setOverview] = useState(initialOverview);
   const [action, setAction] = useState<"generate" | "publish" | "revoke" | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const revokeDialogRef = useModalFocus(confirmRevoke, () => setConfirmRevoke(false), action === "revoke");
 
   async function refresh() {
     const { response, payload } = await requestApi<ApiEnvelope<PublicationOverview>>("/api/publications/current", { cache: "no-store" });
-    if (!response.ok) throw new Error(payload.error?.message ?? "Publishing status could not be refreshed.");
+    if (!response.ok) throw new Error(t("publish.refreshFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setOverview(payload.data);
     return payload.data;
@@ -59,17 +71,17 @@ export function PublishClient({ initialOverview }: { initialOverview: Publicatio
     try {
       const { response, payload } = await requestApi<ApiEnvelope<{ changed: boolean; publication: Publication; shareUrl?: string }>>(path, { method: "POST" });
       if (!response.ok) {
-        setNotice({ tone: "error", message: payload.error?.message ?? `The ${kind} action could not be completed.` });
+        setNotice({ tone: "error", message: t("publish.actionFailed", { action: t(`publish.action.${kind}` as TranslationKey) }) });
         await refresh().catch(() => undefined);
         return;
       }
       const current = await refresh();
-      if (kind === "generate") setNotice({ tone: "success", message: payload.data?.changed ? "A private draft share link was generated." : "The existing share link is ready." });
-      if (kind === "publish") setNotice({ tone: "success", message: payload.data?.changed ? "Your Agent is now available to interviewers." : "Your Agent was already published." });
-      if (kind === "revoke") setNotice({ tone: "success", message: "Public access was revoked. The old link no longer works." });
+      if (kind === "generate") setNotice({ tone: "success", message: payload.data?.changed ? t("publish.generated") : t("publish.existing") });
+      if (kind === "publish") setNotice({ tone: "success", message: payload.data?.changed ? t("publish.nowPublic") : t("publish.already") });
+      if (kind === "revoke") setNotice({ tone: "success", message: t("publish.revoked") });
       if (kind === "revoke" || !current.publication) setConfirmRevoke(false);
     } catch (error) {
-      setNotice({ tone: "error", message: connectionFeedback(error, kind) });
+      setNotice({ tone: "error", message: connectionFeedback(error, t(`publish.action.${kind}` as TranslationKey), locale) });
     } finally {
       setAction(null);
     }
@@ -79,9 +91,9 @@ export function PublishClient({ initialOverview }: { initialOverview: Publicatio
     if (!overview.shareUrl) return;
     try {
       await navigator.clipboard.writeText(overview.shareUrl);
-      setNotice({ tone: "success", message: "Share link copied to the clipboard." });
+      setNotice({ tone: "success", message: t("publish.copied") });
     } catch {
-      setNotice({ tone: "error", message: "The browser blocked clipboard access. Select and copy the link manually." });
+      setNotice({ tone: "error", message: t("publish.copyBlocked") });
     }
   }
 
@@ -94,49 +106,49 @@ export function PublishClient({ initialOverview }: { initialOverview: Publicatio
     anchor.download = "askme-agent-link.txt";
     anchor.click();
     URL.revokeObjectURL(href);
-    setNotice({ tone: "success", message: "Agent link information downloaded." });
+    setNotice({ tone: "success", message: t("publish.downloaded") });
   }
 
   const published = overview.publication?.status === "published";
   return (
     <div className="candidate-page publish-page">
-      <section className="page-hero compact-hero publish-hero"><p className="page-kicker">Controlled Sharing</p><h1>Publish Agent <span className="title-seal" aria-hidden="true">问候</span></h1><p>Review readiness, create an opaque link, and control interviewer access.</p></section>
-      {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}<button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
+      <section className="page-hero compact-hero publish-hero"><p className="page-kicker">{t("publish.kicker")}</p><h1>{t("publish.title")} <span className="title-seal" aria-hidden="true">问候</span></h1><p>{t("publish.copy")}</p></section>
+      {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}<button type="button" onClick={() => setNotice(null)} aria-label={t("shared.dismiss")}><X size={16} /></button></div> : null}
 
       <div className="publish-layout">
         <section className="paper-card readiness-card">
-          <header><span className={overview.readiness.ready ? "ready" : "blocked"}>{overview.readiness.ready ? <ShieldCheck size={24} /> : <AlertCircle size={24} />}</span><span><h2>{overview.readiness.ready ? "Ready to publish" : "Complete publishing requirements"}</h2><p>Every blocking check is calculated from current database state.</p></span><button className="icon-button" type="button" onClick={() => void refresh().catch((error) => setNotice({ tone: "error", message: connectionFeedback(error, "status refresh") }))} aria-label="Refresh publishing readiness"><RefreshCw size={17} /></button></header>
-          <div className="readiness-list">{overview.readiness.checks.map((check) => <article className={check.ready ? "ready" : "blocked"} key={check.key}>{check.ready ? <CheckCircle2 size={20} /> : <XCircle size={20} />}<span><strong>{check.label}</strong><small>{check.detail}</small></span>{!check.ready ? <Link href={requirementHref(check.key)}>Resolve</Link> : null}</article>)}</div>
-          <p className={`public-evidence-note ${overview.publicEvidence > 0 ? "ready" : "warning"}`}><FileText size={16} /> {overview.publicEvidence > 0 ? `${overview.publicEvidence} source${overview.publicEvidence === 1 ? "" : "s"} can support public answers.` : "No Citation Allowed or Public Preview sources exist yet; publishing is allowed, but answers will report insufficient evidence."}</p>
+          <header><span className={overview.readiness.ready ? "ready" : "blocked"}>{overview.readiness.ready ? <ShieldCheck size={24} /> : <AlertCircle size={24} />}</span><span><h2>{overview.readiness.ready ? t("publish.readiness.ready") : t("publish.readiness.blocked")}</h2><p>{t("publish.readiness.copy")}</p></span><button className="icon-button" type="button" onClick={() => void refresh().catch((error) => setNotice({ tone: "error", message: connectionFeedback(error, t("publish.action.refresh"), locale) }))} aria-label={t("publish.readiness.refresh")}><RefreshCw size={17} /></button></header>
+          <div className="readiness-list">{overview.readiness.checks.map((check) => <article className={check.ready ? "ready" : "blocked"} key={check.key}>{check.ready ? <CheckCircle2 size={20} /> : <XCircle size={20} />}<span><strong>{t(requirementText(check.key, check.ready, "label"))}</strong><small>{t(requirementText(check.key, check.ready, "detail"))}</small></span>{!check.ready ? <Link href={requirementHref(check.key)}>{t("publish.requirement.resolve")}</Link> : null}</article>)}</div>
+          <p className={`public-evidence-note ${overview.publicEvidence > 0 ? "ready" : "warning"}`}><FileText size={16} /> {overview.publicEvidence > 0 ? t("publish.evidence.ready", { count: overview.publicEvidence }) : t("publish.evidence.empty")}</p>
         </section>
 
         <section className="paper-card publication-status-card">
           <div className={`publication-orb ${published ? "published" : overview.publication ? "draft" : "none"}`}>{published ? <Globe2 size={31} /> : <LockKeyhole size={30} />}</div>
-          <span className={`publication-status ${published ? "published" : overview.publication ? "draft" : "none"}`}>{published ? "Published" : overview.publication ? "Draft link" : "Not published"}</span>
-          <h2>{published ? "Your Agent is public" : overview.publication ? "Your link is private until publishing" : "Create a secure share link"}</h2>
-          <p>{published ? overview.publicMode ? "Anonymous interviewers can open the link and ask grounded questions." : "Public Mode is off, so anonymous access is unavailable." : "The link uses a random, non-identifying slug and reveals nothing until publication."}</p>
-          {overview.publication?.publishedAt ? <small>Published {new Date(overview.publication.publishedAt).toLocaleString()}</small> : null}
+          <span className={`publication-status ${published ? "published" : overview.publication ? "draft" : "none"}`}>{published ? t("status.published") : overview.publication ? t("publish.status.draftLink") : t("publish.status.notPublished")}</span>
+          <h2>{published ? t("publish.status.publicTitle") : overview.publication ? t("publish.status.draftTitle") : t("publish.status.createTitle")}</h2>
+          <p>{published ? overview.publicMode ? t("publish.status.publicCopy") : t("publish.status.modeOff") : t("publish.status.privateCopy")}</p>
+          {overview.publication?.publishedAt ? <small>{t("publish.status.publishedAt", { date: new Date(overview.publication.publishedAt).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US", { timeZone: "UTC" }) })}</small> : null}
         </section>
 
         <section className="paper-card share-link-card">
-          <div className="section-heading"><span><h2>Candidate Agent Link</h2><small>Generate once, preview with public permissions, then publish when ready.</small></span></div>
-          {overview.shareUrl ? <div className="share-link-box"><Link2 size={18} /><label><span className="sr-only">Candidate Agent share link</span><input readOnly value={overview.shareUrl} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => void copyLink()}><Clipboard size={17} /> Copy</button></div> : <div className="empty-link"><Link2 size={24} /><p>No share link has been generated.</p></div>}
+          <div className="section-heading"><span><h2>{t("publish.link.title")}</h2><small>{t("publish.link.copy")}</small></span></div>
+          {overview.shareUrl ? <div className="share-link-box"><Link2 size={18} /><label><span className="sr-only">{t("publish.link.label")}</span><input readOnly value={overview.shareUrl} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => void copyLink()}><Clipboard size={17} /> {t("publish.link.copyButton")}</button></div> : <div className="empty-link"><Link2 size={24} /><p>{t("publish.link.empty")}</p></div>}
           <div className="share-actions">
-            <button className="secondary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("generate", "/api/publications/link")}>{action === "generate" ? <LoaderCircle className="spin" size={17} /> : <Link2 size={17} />} {overview.shareUrl ? "Keep Current Link" : "Generate Share Link"}</button>
-            {overview.shareUrl ? <button className="secondary-button" type="button" onClick={downloadLink}><Download size={17} /> Download Link</button> : null}
-            {overview.publication ? <Link className="secondary-button" href="/workspace/publish/preview"><ExternalLink size={17} /> Public Preview</Link> : null}
-            {published && overview.shareUrl ? <a className="secondary-button" href={overview.shareUrl} target="_blank" rel="noreferrer"><Globe2 size={17} /> Open Public Page</a> : null}
+            <button className="secondary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("generate", "/api/publications/link")}>{action === "generate" ? <LoaderCircle className="spin" size={17} /> : <Link2 size={17} />} {overview.shareUrl ? t("publish.link.keep") : t("publish.link.generate")}</button>
+            {overview.shareUrl ? <button className="secondary-button" type="button" onClick={downloadLink}><Download size={17} /> {t("publish.link.download")}</button> : null}
+            {overview.publication ? <Link className="secondary-button" href="/workspace/publish/preview"><ExternalLink size={17} /> {t("publish.link.preview")}</Link> : null}
+            {published && overview.shareUrl ? <a className="secondary-button" href={overview.shareUrl} target="_blank" rel="noreferrer"><Globe2 size={17} /> {t("publish.link.open")}</a> : null}
           </div>
         </section>
 
         <section className="paper-card publish-action-card">
-          <span className="publish-action-icon"><Send size={23} /></span><span><h2>{published ? "Manage public access" : "Publish your Agent"}</h2><p>{published ? "Republishing is idempotent. Revoke to make the current link unavailable immediately." : "Publishing also enables Public Mode for interviewer answers."}</p></span>
-          {!published ? <button className="primary-button" type="button" disabled={Boolean(action) || !overview.readiness.ready} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />} Publish Agent</button> : <div className="published-actions">{!overview.publicMode ? <button className="primary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Globe2 size={17} />} Enable Public Access</button> : null}<button className="danger-button" type="button" disabled={Boolean(action)} onClick={() => setConfirmRevoke(true)}><LockKeyhole size={17} /> Revoke Access</button></div>}
+          <span className="publish-action-icon"><Send size={23} /></span><span><h2>{published ? t("publish.manage.title") : t("publish.manage.publishTitle")}</h2><p>{published ? t("publish.manage.copy") : t("publish.manage.publishCopy")}</p></span>
+          {!published ? <button className="primary-button" type="button" disabled={Boolean(action) || !overview.readiness.ready} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />} {t("agent.publish.submit")}</button> : <div className="published-actions">{!overview.publicMode ? <button className="primary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Globe2 size={17} />} {t("publish.manage.enable")}</button> : null}<button className="danger-button" type="button" disabled={Boolean(action)} onClick={() => setConfirmRevoke(true)}><LockKeyhole size={17} /> {t("publish.manage.revoke")}</button></div>}
         </section>
       </div>
 
-      {confirmRevoke ? <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmRevoke(false); }}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-title" aria-describedby="revoke-description"><span className="confirm-icon"><AlertCircle size={26} /></span><h2 id="revoke-title">Revoke public Agent access?</h2><p id="revoke-description">The current link will stop working immediately. A later republish creates a new opaque link.</p><div><button className="secondary-button" type="button" autoFocus onClick={() => setConfirmRevoke(false)}>Keep Published</button><button className="danger-button" type="button" disabled={action === "revoke"} onClick={() => void mutate("revoke", "/api/publications/revoke")}>{action === "revoke" ? <LoaderCircle className="spin" size={17} /> : <LockKeyhole size={17} />} Revoke Link</button></div></section></div> : null}
-      <footer className="candidate-footer"><span>© 2026 Askme. All rights reserved.</span><span>Privacy · Terms · Support</span><span>English</span></footer>
+      {confirmRevoke ? <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmRevoke(false); }}><section ref={revokeDialogRef} className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-title" aria-describedby="revoke-description" tabIndex={-1}><span className="confirm-icon"><AlertCircle size={26} /></span><h2 id="revoke-title">{t("publish.confirm.title")}</h2><p id="revoke-description">{t("publish.confirm.copy")}</p><div><button className="secondary-button" type="button" data-autofocus onClick={() => setConfirmRevoke(false)}>{t("publish.confirm.keep")}</button><button className="danger-button" type="button" disabled={action === "revoke"} onClick={() => void mutate("revoke", "/api/publications/revoke")}>{action === "revoke" ? <LoaderCircle className="spin" size={17} /> : <LockKeyhole size={17} />} {t("publish.confirm.revoke")}</button></div></section></div> : null}
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
     </div>
   );
 }

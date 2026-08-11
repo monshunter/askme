@@ -19,4 +19,8 @@ describe("material upload feedback", () => {
   it("reports successful single-file uploads", () => {
     expect(formatUploadFeedback(1, { failures: 0 })).toBe("1 file queued for indexing.");
   });
+
+  it("keeps partial upload feedback in the selected Chinese locale", () => {
+    expect(formatUploadFeedback(3, { failures: 1 }, "zh-CN")).toBe("2 个文件已进入队列；1 个未通过校验。");
+  });
 });

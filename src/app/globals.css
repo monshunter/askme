@@ -26,6 +26,15 @@ button, input, select, textarea { font: inherit; }
 button, summary, select { cursor: pointer; }
 a { color: inherit; }
 .sr-only, .sr-only-focusable:not(:focus) { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+.skip-link { position: fixed; top: 10px; left: 10px; z-index: 1000; padding: 10px 14px; border: 2px solid var(--jade-800); border-radius: 7px; color: #fff; background: var(--jade-950); font-size: 12px; font-weight: 700; text-decoration: none; transform: translateY(-180%); transition: transform .16s ease; }
+.skip-link:focus { transform: translateY(0); }
+#main-content, #public-main { scroll-margin-top: 84px; }
+.language-switcher { position: relative; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; min-height: 36px; color: #4f605d; }
+.language-switcher select { min-height: 34px; max-width: 132px; border: 1px solid #ddd7cd; border-radius: 7px; padding: 0 27px 0 9px; color: #243230; background: #fffdf9; font: inherit; cursor: pointer; }
+.language-switcher select:disabled { cursor: wait; opacity: .65; }
+.language-switcher.compact { min-height: 30px; }
+.language-switcher.compact select { min-height: 30px; border: 0; padding-left: 4px; background: transparent; font-size: inherit; }
+.language-switch-error { position: absolute; right: 0; top: calc(100% + 5px); z-index: 50; width: max-content; max-width: 260px; border: 1px solid #e2b8af; border-radius: 7px; padding: 7px 9px; color: #8c2f21; background: #fff7f4; box-shadow: var(--shadow); font-size: 11px; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -74,6 +83,7 @@ a { color: inherit; }
 
 .login-panel { display: grid; place-items: center; padding: 32px; background: rgba(251, 249, 244, 0.78); backdrop-filter: blur(18px); }
 .login-card { width: min(100%, 480px); padding: clamp(30px, 5vw, 56px); border: 1px solid var(--line); border-radius: 20px; background: rgba(255, 255, 255, 0.88); box-shadow: var(--shadow); }
+.login-card > .language-switcher { display: flex; margin: -14px -14px 3px auto; }
 .login-card h2 { margin: 14px 0 8px; font: 600 44px/1.1 Georgia, "Times New Roman", serif; }
 .muted, .local-note { color: var(--muted); line-height: 1.6; }
 .login-card form { display: grid; gap: 10px; margin-top: 28px; }
@@ -141,6 +151,7 @@ details > summary::-webkit-details-marker { display: none; }
 .profile-copy strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
 .profile-copy small { margin-top: 4px; color: #707675; font-size: 11px; }
 .profile-popover p { margin: 6px 8px 12px; color: #626967; font-size: 13px; }
+.profile-popover .language-switcher,.admin-profile > div .language-switcher { display: flex; margin: 0 4px 8px; }
 .profile-popover button { width: 100%; min-height: 38px; border: 1px solid #ddd7cd; border-radius: 7px; background: #fff; }
 .mobile-nav-menu { display: none; position: relative; }
 .mobile-nav-menu > summary { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #ded8ce; border-radius: 8px; }
@@ -449,6 +460,10 @@ details > summary::-webkit-details-marker { display: none; }
   .knowledge-row > span:last-child { display: inline-flex; }
   .knowledge-grid { grid-template-columns: 1fr; }
   .candidate-footer { font-size: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
 /* Privacy control */

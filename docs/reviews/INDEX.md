@@ -23,4 +23,7 @@
 | REVIEW-018 | REVIEW-018：PLAN-004 响应式验收调整 Plan Review | [REVIEW-018.md](REVIEW-018.md) |
 | REVIEW-019 | REVIEW-019：PLAN-004 Change Review（精确视口 Reconcile 后终审） | [REVIEW-019.md](REVIEW-019.md) |
 | REVIEW-020 | REVIEW-020：PLAN-005 Plan Review | [REVIEW-020.md](REVIEW-020.md) |
+| REVIEW-021 | REVIEW-021：PLAN-005 Platform Admin 范围补充 Plan Review | [REVIEW-021.md](REVIEW-021.md) |
+| REVIEW-022 | REVIEW-022：DESIGN-003 Design Review | [REVIEW-022.md](REVIEW-022.md) |
+| REVIEW-023 | REVIEW-023：PLAN-005 Change Review | [REVIEW-023.md](REVIEW-023.md) |
 <!-- AGENT-HARNESS:END INDEX -->

@@ -2,7 +2,10 @@
 
 import { AlertCircle, BookOpen, Check, ChevronDown, Eye, FileText, Github, Globe2, Link2, LoaderCircle, LockKeyhole, Plus, Quote, RefreshCw, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
 
@@ -25,19 +28,19 @@ type PrivacyOverview = {
 };
 type ApiEnvelope<T = unknown> = { data?: T; error?: { message?: string } | null };
 
-const visibilityOptions: Array<{ value: Visibility; label: string; short: string }> = [
-  { value: "private", label: "Private", short: "Private" },
-  { value: "agent_only", label: "Agent-readable only", short: "Agent only" },
-  { value: "citation_allowed", label: "Citation allowed", short: "Citation" },
-  { value: "public_preview", label: "Public preview allowed", short: "Public preview" },
+const visibilityOptions: Array<{ value: Visibility; labelKey: TranslationKey; shortKey: TranslationKey }> = [
+  { value: "private", labelKey: "privacy.visibility.private", shortKey: "privacy.visibility.private" },
+  { value: "agent_only", labelKey: "privacy.visibility.agentOnly", shortKey: "privacy.visibility.short.agent" },
+  { value: "citation_allowed", labelKey: "privacy.visibility.citation", shortKey: "privacy.visibility.short.citation" },
+  { value: "public_preview", labelKey: "privacy.visibility.publicPreview", shortKey: "privacy.visibility.short.public" },
 ];
 
 const permissionRows = [
-  { label: "Agent can read", values: [false, true, true, true] },
-  { label: "Visible in public answers", values: [false, false, true, true] },
-  { label: "Can be cited", values: [false, false, true, true] },
-  { label: "Shown in public highlights", values: [false, false, false, true] },
-  { label: "Downloadable by interviewers", values: [false, false, false, false] },
+  { labelKey: "privacy.permission.read" as TranslationKey, values: [false, true, true, true] },
+  { labelKey: "privacy.permission.answers" as TranslationKey, values: [false, false, true, true] },
+  { labelKey: "privacy.permission.cited" as TranslationKey, values: [false, false, true, true] },
+  { labelKey: "privacy.permission.highlights" as TranslationKey, values: [false, false, false, true] },
+  { labelKey: "privacy.permission.download" as TranslationKey, values: [false, false, false, false] },
 ];
 
 function sourceIcon(kind: Material["kind"]) {
@@ -47,13 +50,15 @@ function sourceIcon(kind: Material["kind"]) {
   return FileText;
 }
 
-function feedbackFor(error: unknown, action: string) {
+function feedbackFor(error: unknown, action: string, locale: Locale) {
+  const t = createTranslator(locale);
   return error instanceof ApiClientError && error.kind === "invalid_response"
-    ? `The ${action} returned an invalid response.`
-    : `The ${action} connection failed. Try again.`;
+    ? t("privacy.connectionInvalid", { action })
+    : t("privacy.connectionFailed", { action });
 }
 
-export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOverview }) {
+export function PrivacyClient({ initialOverview, locale }: { initialOverview: PrivacyOverview; locale: Locale }) {
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const [overview, setOverview] = useState(initialOverview);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -61,11 +66,11 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
 
   const refresh = useCallback(async () => {
     const { response, payload } = await requestApi<ApiEnvelope<PrivacyOverview>>("/api/privacy?pageSize=20", { cache: "no-store" });
-    if (!response.ok) throw new Error(payload.error?.message ?? "Privacy settings could not be refreshed.");
+    if (!response.ok) throw new Error(t("privacy.refreshFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setOverview(payload.data);
     return payload.data;
-  }, []);
+  }, [t]);
 
   async function changeVisibility(material: Material, visibility: Visibility) {
     setSavingId(material.id);
@@ -77,7 +82,7 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
         body: JSON.stringify({ visibility }),
       });
       if (!response.ok) {
-        setFeedback({ tone: "error", message: payload.error?.message ?? "Source visibility could not be saved." });
+        setFeedback({ tone: "error", message: t("privacy.saveFailed") });
         return;
       }
       setOverview((current) => ({
@@ -86,9 +91,10 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
         confirmation: payload.data?.changed ? { ...current.confirmation, confirmed: false, confirmedAt: null } : current.confirmation,
       }));
       await refresh();
-      setFeedback({ tone: "success", message: `${material.title} is now ${visibilityOptions.find((option) => option.value === visibility)?.label.toLowerCase()}.` });
+      const option = visibilityOptions.find((item) => item.value === visibility);
+      setFeedback({ tone: "success", message: t("privacy.changed", { title: material.title, visibility: option ? t(option.labelKey) : visibility }) });
     } catch (error) {
-      setFeedback({ tone: "error", message: feedbackFor(error, "privacy update") });
+      setFeedback({ tone: "error", message: feedbackFor(error, t("privacy.action.update"), locale) });
     } finally {
       setSavingId(null);
     }
@@ -98,15 +104,15 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
     setConfirming(true);
     setFeedback(null);
     try {
-      const { response, payload } = await requestApi<ApiEnvelope<{ confirmed: boolean }>>("/api/privacy/confirm", { method: "POST" });
+      const { response } = await requestApi<ApiEnvelope<{ confirmed: boolean }>>("/api/privacy/confirm", { method: "POST" });
       if (!response.ok) {
-        setFeedback({ tone: "error", message: payload.error?.message ?? "Privacy policy could not be confirmed." });
+        setFeedback({ tone: "error", message: t("privacy.confirmFailed") });
         return;
       }
       await refresh();
-      setFeedback({ tone: "success", message: "Privacy policy confirmed for the current source settings." });
+      setFeedback({ tone: "success", message: t("privacy.confirmedFeedback") });
     } catch (error) {
-      setFeedback({ tone: "error", message: feedbackFor(error, "privacy confirmation") });
+      setFeedback({ tone: "error", message: feedbackFor(error, t("privacy.action.confirm"), locale) });
     } finally {
       setConfirming(false);
     }
@@ -115,30 +121,30 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
   return (
     <div className="candidate-page privacy-page">
       <section className="page-hero compact-hero privacy-hero">
-        <p className="page-kicker">Evidence Boundaries</p>
-        <h1>Privacy Control <span className="title-seal" aria-hidden="true">问候</span></h1>
-        <p>Control what interviewers can ask, see, and cite.</p>
+        <p className="page-kicker">{t("privacy.kicker")}</p>
+        <h1>{t("privacy.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <p>{t("privacy.copy")}</p>
       </section>
 
-      {feedback ? <div className={`inline-feedback ${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>{feedback.tone === "error" ? <AlertCircle size={18} /> : feedback.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{feedback.message}<button type="button" onClick={() => setFeedback(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
+      {feedback ? <div className={`inline-feedback ${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>{feedback.tone === "error" ? <AlertCircle size={18} /> : feedback.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{feedback.message}<button type="button" onClick={() => setFeedback(null)} aria-label={t("shared.dismiss")}><X size={16} /></button></div> : null}
 
       <div className="privacy-grid">
         <section className="paper-card visibility-card">
-          <div className="section-heading"><span><h2>Manage Source Visibility</h2><small>Set how each source can be used by the Agent and interviewers.</small></span><button className="icon-button" type="button" onClick={() => void refresh().catch((error) => setFeedback({ tone: "error", message: feedbackFor(error, "privacy refresh") }))} aria-label="Refresh privacy settings"><RefreshCw size={17} /></button></div>
-          {overview.materials.items.length === 0 ? <div className="empty-state"><FileText size={28} /><p>No source materials yet.</p><Link className="text-link" href="/workspace/materials">Add your first source</Link></div> : (
-            <div className="visibility-table" role="table" aria-label="Source visibility">
-              <div className="visibility-header" role="row"><span>Source</span><span>Visibility</span></div>
+          <div className="section-heading"><span><h2>{t("privacy.manage.title")}</h2><small>{t("privacy.manage.copy")}</small></span><button className="icon-button" type="button" onClick={() => void refresh().catch((error) => setFeedback({ tone: "error", message: feedbackFor(error, t("privacy.action.refresh"), locale) }))} aria-label={t("privacy.manage.refresh")}><RefreshCw size={17} /></button></div>
+          {overview.materials.items.length === 0 ? <div className="empty-state"><FileText size={28} /><p>{t("privacy.manage.empty")}</p><Link className="text-link" href="/workspace/materials">{t("privacy.manage.first")}</Link></div> : (
+            <div className="visibility-table" role="table" aria-label={t("privacy.manage.table")}>
+              <div className="visibility-header" role="row"><span>{t("privacy.manage.source")}</span><span>{t("privacy.manage.visibility")}</span></div>
               {overview.materials.items.map((material) => {
                 const Icon = sourceIcon(material.kind);
                 return (
                   <div className="visibility-row" role="row" key={material.id}>
                     <span className={`source-kind ${material.kind}`}><Icon size={18} /></span>
-                    <span className="visibility-source"><strong>{material.title}</strong><small>{material.kind.toUpperCase()} · {material.status}</small></span>
+                    <span className="visibility-source"><strong>{material.title}</strong><small>{material.kind.toUpperCase()} · {t(`status.${material.status}` as TranslationKey)}</small></span>
                     <label className={`visibility-select ${material.visibility}`}>
-                      <span className="sr-only">Visibility for {material.title}</span>
+                      <span className="sr-only">{t("privacy.manage.visibilityFor", { title: material.title })}</span>
                       {savingId === material.id ? <LoaderCircle className="spin" size={15} /> : material.visibility === "private" ? <LockKeyhole size={15} /> : material.visibility === "public_preview" ? <Globe2 size={15} /> : material.visibility === "citation_allowed" ? <Quote size={15} /> : <Eye size={15} />}
                       <select value={material.visibility} disabled={savingId === material.id} onChange={(event) => void changeVisibility(material, event.target.value as Visibility)}>
-                        {visibilityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+                        {visibilityOptions.map((option) => <option value={option.value} key={option.value}>{t(option.labelKey)}</option>)}
                       </select><ChevronDown size={14} aria-hidden="true" />
                     </label>
                   </div>
@@ -146,40 +152,41 @@ export function PrivacyClient({ initialOverview }: { initialOverview: PrivacyOve
               })}
             </div>
           )}
-          <Link className="add-source-link" href="/workspace/materials"><Plus size={16} /> Add Source</Link>
+          <Link className="add-source-link" href="/workspace/materials"><Plus size={16} /> {t("privacy.manage.add")}</Link>
         </section>
 
         <section className="paper-card policy-card">
-          <div className="section-heading"><span><h2>My Privacy Policy Rules</h2><small>These rules define how your content can be used.</small></span></div>
-          <div className="policy-table" role="table" aria-label="Privacy policy capabilities">
-            <div className="policy-row policy-header" role="row"><strong>Usage / Permission</strong>{visibilityOptions.map((option, index) => <span key={option.value}>{index === 0 ? <LockKeyhole size={16} /> : index === 1 ? <Eye size={16} /> : index === 2 ? <Quote size={16} /> : <Globe2 size={16} />}<small>{option.short}</small></span>)}</div>
-            {permissionRows.map((row) => <div className="policy-row" role="row" key={row.label}><strong>{row.label}</strong>{row.values.map((allowed, index) => <span key={`${row.label}-${visibilityOptions[index]!.value}`} aria-label={allowed ? "Allowed" : "Not allowed"}>{allowed ? <Check size={16} /> : "—"}</span>)}</div>)}
+          <div className="section-heading"><span><h2>{t("privacy.policy.title")}</h2><small>{t("privacy.policy.copy")}</small></span></div>
+          <div className="policy-table" role="table" aria-label={t("privacy.policy.table")}>
+            <div className="policy-row policy-header" role="row"><strong>{t("privacy.policy.usage")}</strong>{visibilityOptions.map((option, index) => <span key={option.value}>{index === 0 ? <LockKeyhole size={16} /> : index === 1 ? <Eye size={16} /> : index === 2 ? <Quote size={16} /> : <Globe2 size={16} />}<small>{t(option.shortKey)}</small></span>)}</div>
+            {permissionRows.map((row) => <div className="policy-row" role="row" key={row.labelKey}><strong>{t(row.labelKey)}</strong>{row.values.map((allowed, index) => <span key={`${row.labelKey}-${visibilityOptions[index]!.value}`} aria-label={allowed ? t("privacy.allowed") : t("privacy.notAllowed")}>{allowed ? <Check size={16} /> : "—"}</span>)}</div>)}
           </div>
-          <p className="policy-note"><ShieldCheck size={15} /> Uploaded files are never downloadable by interviewers.</p>
+          <p className="policy-note"><ShieldCheck size={15} /> {t("privacy.policy.note")}</p>
         </section>
 
         <section className="paper-card interviewer-preview-card">
-          <div className="section-heading"><span><h2>Interviewer View Preview</h2><small>This is what interviewers can access and what stays hidden.</small></span></div>
+          <div className="section-heading"><span><h2>{t("privacy.preview.title")}</h2><small>{t("privacy.preview.copy")}</small></span></div>
           <div className="preview-columns">
-            <PreviewList title="Accessible to Interviewers" tone="accessible" icon={Eye} items={overview.preview.accessible} empty="No sources can support public answers yet." />
-            <PreviewList title="Hidden from Interviewers" tone="hidden" icon={LockKeyhole} items={overview.preview.hidden} empty="No private or Agent-only sources." />
+            <PreviewList title={t("privacy.preview.accessible")} tone="accessible" icon={Eye} items={overview.preview.accessible} empty={t("privacy.preview.accessibleEmpty")} locale={locale} />
+            <PreviewList title={t("privacy.preview.hidden")} tone="hidden" icon={LockKeyhole} items={overview.preview.hidden} empty={t("privacy.preview.hiddenEmpty")} locale={locale} />
           </div>
         </section>
 
         <section className={`paper-card confirm-privacy-card ${overview.confirmation.confirmed ? "confirmed" : ""}`}>
           <span className="confirm-policy-icon">{overview.confirmation.confirmed ? <ShieldCheck size={23} /> : <AlertCircle size={23} />}</span>
-          <span><h2>{overview.confirmation.confirmed ? "Privacy Confirmed" : "Review Before Publishing"}</h2><p>{overview.confirmation.confirmed ? `Revision ${overview.confirmation.policyRevision} is ready for publishing checks.` : "Please review your citation boundaries carefully."}</p></span>
-          <ul><li>Only Citation Allowed and Public Preview sources may support public answers.</li><li>Changing a source visibility invalidates this confirmation.</li><li>Private and Agent-only content is never shared or cited publicly.</li></ul>
-          <button className="primary-button" type="button" disabled={confirming} onClick={() => void confirmPolicy()}>{confirming ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {confirming ? "Confirming…" : overview.confirmation.confirmed ? "Confirm Again" : "Review & Confirm Privacy"}</button>
+          <span><h2>{overview.confirmation.confirmed ? t("privacy.confirm.confirmedTitle") : t("privacy.confirm.reviewTitle")}</h2><p>{overview.confirmation.confirmed ? t("privacy.confirm.revision", { revision: overview.confirmation.policyRevision }) : t("privacy.confirm.reviewCopy")}</p></span>
+          <ul><li>{t("privacy.confirm.rule1")}</li><li>{t("privacy.confirm.rule2")}</li><li>{t("privacy.confirm.rule3")}</li></ul>
+          <button className="primary-button" type="button" disabled={confirming} onClick={() => void confirmPolicy()}>{confirming ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {confirming ? t("privacy.confirm.confirming") : overview.confirmation.confirmed ? t("privacy.confirm.again") : t("privacy.confirm.submit")}</button>
         </section>
       </div>
-      <footer className="candidate-footer"><span>© 2026 Askme. All rights reserved.</span><span>Privacy · Terms · Support</span><span>English</span></footer>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
     </div>
   );
 }
 
-function PreviewList({ title, tone, icon: Icon, items, empty }: { title: string; tone: string; icon: typeof Eye; items: PreviewMaterial[]; empty: string }) {
+function PreviewList({ title, tone, icon: Icon, items, empty, locale }: { title: string; tone: string; icon: typeof Eye; items: PreviewMaterial[]; empty: string; locale: Locale }) {
+  const t = createTranslator(locale);
   return (
-    <section className={`privacy-preview-list ${tone}`}><h3><Icon size={16} /> {title}<span>{items.length}</span></h3>{items.length === 0 ? <p>{empty}</p> : <ul>{items.map((item) => { const SourceIcon = sourceIcon(item.kind); return <li key={item.id}><SourceIcon size={15} /><span><strong>{item.title}</strong><small>{visibilityOptions.find((option) => option.value === item.visibility)?.label}</small></span></li>; })}</ul>}</section>
+    <section className={`privacy-preview-list ${tone}`}><h3><Icon size={16} /> {title}<span>{items.length}</span></h3>{items.length === 0 ? <p>{empty}</p> : <ul>{items.map((item) => { const SourceIcon = sourceIcon(item.kind); const option = visibilityOptions.find((entry) => entry.value === item.visibility); return <li key={item.id}><SourceIcon size={15} /><span><strong>{item.title}</strong><small>{option ? t(option.labelKey) : item.visibility}</small></span></li>; })}</ul>}</section>
   );
 }

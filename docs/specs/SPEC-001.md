@@ -157,10 +157,10 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
 - [x] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
 - [x] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。
-- [ ] `AC-UI-001` 七个参考主界面在 1448 × 1086 的结构、视觉语言与关键几何经 Chrome 截图对照验收。
-- [ ] `AC-UI-002` Chrome DevTools `iPhone 14 Pro Max`（430 × 932）下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
-- [ ] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
-- [ ] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
+- [x] `AC-UI-001` 七个参考主界面在 1448 × 1086 的结构、视觉语言与关键几何经 Chrome 截图对照验收。
+- [x] `AC-UI-002` Chrome DevTools `iPhone 14 Pro Max`（430 × 932）下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
+- [x] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
+- [x] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
 - [x] `AC-AI-001` 运行时按优先级读取 DeepSeek 配置，真实 API health/chat 验证使用 `deepseek-v4-flash` 且不泄露 key。
 - [ ] `AC-OPS-001` Docker Compose 可从空数据库启动 Web、worker、PostgreSQL 并通过健康检查。
 - [ ] `AC-OPS-002` Docker restart 保留账号、资料、知识、会话和文件；reset 只能由显式命令触发。

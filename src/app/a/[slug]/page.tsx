@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { PublicAgentClient } from "@/components/public/public-agent-client";
+import { getRequestLocale } from "@/i18n/server";
 import { AppError } from "@/server/errors";
 import { loadPublicAgentBySlug } from "@/server/publication/public-agent-service";
 
@@ -15,6 +16,6 @@ async function loadAgentOrNotFound(slug: string) {
 
 export default async function PublicAgentPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const projection = await loadAgentOrNotFound(slug);
-  return <PublicAgentClient slug={slug} initialProjection={JSON.parse(JSON.stringify(projection))} />;
+  const [projection, locale] = await Promise.all([loadAgentOrNotFound(slug), getRequestLocale()]);
+  return <PublicAgentClient slug={slug} initialProjection={JSON.parse(JSON.stringify(projection))} locale={locale} />;
 }

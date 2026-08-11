@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getRequestLocale } from "@/i18n/server";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,9 +9,10 @@ export const metadata: Metadata = {
   description: "Don't browse my resume. Ask my Agent.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getRequestLocale();
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body>{children}</body>
     </html>
   );

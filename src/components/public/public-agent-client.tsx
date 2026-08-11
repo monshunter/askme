@@ -2,9 +2,11 @@
 
 import { AlertCircle, Bot, BookOpen, Check, Clock3, Download, ExternalLink, FileText, Globe2, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiClientError, requestApi } from "@/components/candidate/api-client";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { createTranslator, type Locale } from "@/i18n/core";
 
 type Citation = { chunkId: string; rank: number; excerpt: string; materialId: string; materialTitle: string; materialKind: string; externalUrl: string | null };
 type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[] };
@@ -18,19 +20,22 @@ type PublicProjection = {
 };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; details?: { retryAfterSeconds?: number } } | null };
 
-function connectionFeedback(error: unknown, action: string) {
-  return error instanceof ApiClientError && error.kind === "invalid_response" ? `The ${action} returned an invalid response.` : `The ${action} connection failed. Try again.`;
+function connectionFeedback(error: unknown, action: string, locale: Locale) {
+  const t = createTranslator(locale);
+  return error instanceof ApiClientError && error.kind === "invalid_response" ? t("public.connectionInvalid", { action }) : t("public.connectionFailed", { action });
 }
 
-function answerLabel(code: string) {
-  if (code === "INSUFFICIENT_EVIDENCE") return "More evidence needed";
-  if (code === "QUESTION_INJECTION" || code === "QUESTION_DATA_EXFILTRATION") return "Safely refused";
-  if (code === "QUESTION_OUT_OF_SCOPE") return "Career questions only";
-  if (code === "SOURCE_PERMISSION_CHANGED") return "Source permission changed";
-  return "Answer failed";
+function answerLabel(code: string, locale: Locale) {
+  const t = createTranslator(locale);
+  if (code === "INSUFFICIENT_EVIDENCE") return t("public.outcome.moreEvidence");
+  if (code === "QUESTION_INJECTION" || code === "QUESTION_DATA_EXFILTRATION") return t("public.outcome.refused");
+  if (code === "QUESTION_OUT_OF_SCOPE") return t("public.outcome.scope");
+  if (code === "SOURCE_PERMISSION_CHANGED") return t("public.outcome.permission");
+  return t("public.outcome.failed");
 }
 
-export function PublicAgentClient({ slug, initialProjection }: { slug: string; initialProjection: PublicProjection }) {
+export function PublicAgentClient({ slug, initialProjection, locale }: { slug: string; initialProjection: PublicProjection; locale: Locale }) {
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const [thread, setThread] = useState<Thread | null>(null);
   const [suggestions, setSuggestions] = useState(initialProjection.suggestedQuestions);
   const [question, setQuestion] = useState("");
@@ -50,7 +55,7 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
       setAgentUnavailable(true);
       return null;
     }
-    if (!response.ok) throw new Error(payload.error?.message ?? "The conversation could not be loaded.");
+    if (!response.ok) throw new Error(t("public.threadLoadFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setThread(payload.data);
     return payload.data;
@@ -62,7 +67,7 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
     if (!response.ok) {
       if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
       setSessionState("failed");
-      setNotice({ tone: "error", message: payload.error?.message ?? "A secure interviewer session could not be started." });
+      setNotice({ tone: "error", message: t("public.sessionFailed") });
       return false;
     }
     await loadThread();
@@ -75,7 +80,7 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
     initialized.current = true;
     void initializeSession().catch((error) => {
       setSessionState("failed");
-      setNotice({ tone: "error", message: connectionFeedback(error, "session") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("public.action.session"), locale) });
     });
     // The session initializer is intentionally bound to this immutable public slug.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,7 +110,7 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
         await loadThread().catch(() => undefined);
         setRetryQuestion(normalized);
         const wait = result.payload.error?.details?.retryAfterSeconds;
-        setNotice({ tone: "error", message: wait ? `Too many questions. Try again in about ${wait} seconds.` : result.payload.error?.message ?? "The Agent could not answer." });
+        setNotice({ tone: "error", message: wait ? t("public.rateLimited", { seconds: wait }) : t("public.answerFailed") });
         return;
       }
       if (!result.payload.data) throw new ApiClientError("invalid_response");
@@ -113,7 +118,7 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
       setQuestion("");
     } catch (error) {
       setRetryQuestion(normalized);
-      setNotice({ tone: "error", message: connectionFeedback(error, "Agent answer") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("public.action.answer"), locale) });
     } finally {
       setSending(false);
     }
@@ -131,13 +136,13 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
       const { response, payload } = await requestApi<Envelope<{ suggestedQuestions: string[] }>>(`/api/public/agents/${slug}/suggestions/refresh`, { method: "POST" });
       if (!response.ok) {
         if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
-        setNotice({ tone: "error", message: payload.error?.message ?? "Suggested questions could not be refreshed." });
+        setNotice({ tone: "error", message: t("public.suggestionsFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
       setSuggestions(payload.data.suggestedQuestions);
     } catch (error) {
-      setNotice({ tone: "error", message: connectionFeedback(error, "question refresh") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("public.action.suggestions"), locale) });
     } finally {
       setRefreshing(false);
     }
@@ -153,12 +158,12 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
       });
       if (!response.ok) {
         if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
-        setNotice({ tone: "error", message: payload.error?.message ?? "Feedback could not be saved." });
+        setNotice({ tone: "error", message: t("public.feedbackFailed") });
         return;
       }
       setThread((current) => current ? { ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, feedback: value } : item) } : current);
     } catch (error) {
-      setNotice({ tone: "error", message: connectionFeedback(error, "feedback") });
+      setNotice({ tone: "error", message: connectionFeedback(error, t("public.action.feedback"), locale) });
     } finally {
       setFeedbackSaving(null);
     }
@@ -175,11 +180,12 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
 
   const initials = initialProjection.profile.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   if (agentUnavailable) {
-    return <main className="public-unavailable"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><section><span><AlertCircle size={34} /></span><h1>This Agent is unavailable</h1><p>Public access changed after this page was opened. No additional Candidate information is available.</p><Link href="/">Return to Askme</Link></section></main>;
+    return <main className="public-unavailable"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><section><span><AlertCircle size={34} /></span><h1>{t("public.unavailable.title")}</h1><p>{t("public.unavailable.changed")}</p><Link href="/">{t("public.return")}</Link></section></main>;
   }
   return (
     <div className="public-agent-page">
-      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>Trusted &amp; Public</strong><small>Answers use authorized Candidate evidence.</small></span></div></header>
+      <a className="skip-link" href="#public-main">{t("shared.skip")}</a>
+      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>{t("public.trust.title")}</strong><small>{t("public.trust.copy")}</small></span></div></header>
       <div className="public-agent-layout">
         <aside className="public-candidate-sidebar">
           <section className="public-candidate-card">
@@ -188,31 +194,31 @@ export function PublicAgentClient({ slug, initialProjection }: { slug: string; i
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {initialProjection.profile.avatarUrl ? <img src={initialProjection.profile.avatarUrl} alt="" /> : initials}
             </span>
-            <h1>{initialProjection.profile.displayName}</h1><span className="public-agent-label"><Globe2 size={13} /> Public Agent</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? "Ask this Candidate Agent about authorized experience, projects, and skills."}</p>
-            <div className="public-candidate-facts"><span><i className="ready" /> Agent Status <strong>Ready</strong></span><span><Clock3 size={15} /> Last Updated <strong>{new Date(initialProjection.agent.updatedAt).toLocaleDateString()}</strong></span><span><BookOpen size={15} /> Knowledge Items <strong>{initialProjection.stats.publicKnowledgeItems}</strong></span><span><FileText size={15} /> Public Sources <strong>{initialProjection.stats.publicSources}</strong></span></div>
+            <h1>{initialProjection.profile.displayName}</h1><span className="public-agent-label"><Globe2 size={13} /> {t("public.badge")}</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? t("public.bioFallback")}</p>
+            <div className="public-candidate-facts"><span><i className="ready" /> {t("public.facts.status")} <strong>{t("status.ready")}</strong></span><span><Clock3 size={15} /> {t("public.facts.updated")} <strong>{new Date(initialProjection.agent.updatedAt).toLocaleDateString(locale === "zh-CN" ? "zh-CN" : "en-US", { timeZone: "UTC" })}</strong></span><span><BookOpen size={15} /> {t("public.facts.knowledge")} <strong>{initialProjection.stats.publicKnowledgeItems}</strong></span><span><FileText size={15} /> {t("public.facts.sources")} <strong>{initialProjection.stats.publicSources}</strong></span></div>
           </section>
-          <button className="download-agent-link" type="button" onClick={downloadLink}><Download size={19} /><span><strong>Download Candidate Agent Link</strong><small>Share this public link with others.</small></span></button>
+          <button className="download-agent-link" type="button" onClick={downloadLink}><Download size={19} /><span><strong>{t("public.download.title")}</strong><small>{t("public.download.copy")}</small></span></button>
         </aside>
 
-        <main className="public-agent-main">
-          <section className="public-agent-hero"><p className="page-kicker">Ask this Candidate&apos;s Agent.</p><h1>Don&apos;t browse my resume. <em>Ask my Agent.</em> <span className="title-seal" aria-hidden="true">问候</span></h1><p>Get grounded answers about {initialProjection.profile.displayName}&apos;s experience, projects, and skills. Every factual answer links to its authorized sources.</p></section>
-          {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> Retry</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
+        <main className="public-agent-main" id="public-main" tabIndex={-1}>
+          <section className="public-agent-hero"><p className="page-kicker">{t("public.hero.kicker")}</p><h1>{t("public.hero.title")} <span className="title-seal" aria-hidden="true">问候</span></h1><p>{t("public.hero.copy", { name: initialProjection.profile.displayName })}</p></section>
+          {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> {t("public.retry")}</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label={t("shared.dismiss")}><X size={16} /></button></div> : null}
 
           <div className="public-chat-shell">
-            <section className="public-chat-column" aria-label="Public Candidate Agent conversation">
+            <section className="public-chat-column" aria-label={t("public.conversation")}>
               <div className="public-chat-thread" aria-live="polite">
-                {sessionState === "starting" && !thread ? <div className="empty-state public-chat-empty"><LoaderCircle className="spin" size={26} /><h2>Starting a secure session…</h2></div> : sessionState === "failed" && !thread ? <div className="empty-state public-chat-empty"><AlertCircle size={28} /><h2>Chat is temporarily unavailable</h2><button className="secondary-button" type="button" onClick={() => void initializeSession()}>Try Again</button></div> : thread?.messages.length ? thread.messages.map((message) => message.role === "user" ? <article className="public-message public-user-message" key={message.id}><span><UserRound size={20} /></span><div><p>{message.content}</p></div></article> : <article className={`public-message public-assistant-message ${message.status}`} key={message.id}><span><Bot size={20} /></span><div><p>{message.status === "pending" ? "Grounding the answer in authorized evidence…" : message.content}</p>{message.errorCode ? <small className={`answer-outcome ${message.status}`}>{answerLabel(message.errorCode)}</small> : null}{message.citations.length > 0 ? <section className="public-answer-sources"><h3>Sources</h3>{message.citations.map((citation) => <article key={citation.chunkId}><FileText size={16} /><span><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()}</small><p>{citation.excerpt}</p></span>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer" aria-label={`Open ${citation.materialTitle}`}><ExternalLink size={15} /></a> : null}</article>)}</section> : null}<footer><span>{message.citations.length > 0 ? `${message.citations.length} public citation${message.citations.length === 1 ? "" : "s"}` : ""}</span>{message.status === "completed" ? <span><button className={message.feedback === "up" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "up")} aria-label="Helpful answer"><ThumbsUp size={15} /></button><button className={message.feedback === "down" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "down")} aria-label="Unhelpful answer"><ThumbsDown size={15} /></button></span> : null}</footer></div></article>) : <div className="empty-state public-chat-empty"><Bot size={30} /><h2>Ask a grounded career question</h2><p>Choose a suggestion below or ask about projects, experience, skills, and measurable impact.</p></div>}
+                {sessionState === "starting" && !thread ? <div className="empty-state public-chat-empty"><LoaderCircle className="spin" size={26} /><h2>{t("public.session.starting")}</h2></div> : sessionState === "failed" && !thread ? <div className="empty-state public-chat-empty"><AlertCircle size={28} /><h2>{t("public.session.unavailable")}</h2><button className="secondary-button" type="button" onClick={() => void initializeSession()}>{t("public.session.tryAgain")}</button></div> : thread?.messages.length ? thread.messages.map((message) => message.role === "user" ? <article className="public-message public-user-message" key={message.id}><span><UserRound size={20} /></span><div><p>{message.content}</p></div></article> : <article className={`public-message public-assistant-message ${message.status}`} key={message.id}><span><Bot size={20} /></span><div><p>{message.status === "pending" ? t("public.answer.grounding") : message.content}</p>{message.errorCode ? <small className={`answer-outcome ${message.status}`}>{answerLabel(message.errorCode, locale)}</small> : null}{message.citations.length > 0 ? <section className="public-answer-sources"><h3>{t("public.answer.sources")}</h3>{message.citations.map((citation) => <article key={citation.chunkId}><FileText size={16} /><span><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()}</small><p>{citation.excerpt}</p></span>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer" aria-label={t("public.answer.open", { title: citation.materialTitle })}><ExternalLink size={15} /></a> : null}</article>)}</section> : null}<footer><span>{message.citations.length > 0 ? t("public.answer.citations", { count: message.citations.length }) : ""}</span>{message.status === "completed" ? <span><button className={message.feedback === "up" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "up")} aria-label={t("agent.helpful")}><ThumbsUp size={15} /></button><button className={message.feedback === "down" ? "active" : ""} type="button" disabled={feedbackSaving === message.id} onClick={() => void saveFeedback(message, "down")} aria-label={t("agent.unhelpful")}><ThumbsDown size={15} /></button></span> : null}</footer></div></article>) : <div className="empty-state public-chat-empty"><Bot size={30} /><h2>{t("public.empty.title")}</h2><p>{t("public.empty.copy")}</p></div>}
                 <div ref={threadEnd} />
               </div>
-              <form className="public-chat-composer" onSubmit={submit}><label className="sr-only" htmlFor="public-agent-question">Ask a question about the Candidate</label><textarea id="public-agent-question" value={question} maxLength={500} rows={2} disabled={sending || sessionState !== "ready"} onChange={(event) => setQuestion(event.target.value)} placeholder={`Ask about ${initialProjection.profile.displayName}'s experience, projects, or skills…`} /><button type="submit" disabled={sending || sessionState !== "ready" || !question.trim()} aria-label="Send question">{sending ? <LoaderCircle className="spin" size={20} /> : <Send size={20} />}</button></form>
-              <div className="public-suggestions"><div>{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending || sessionState !== "ready"} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={14} /> {suggestion}</button>)}<button className="refresh-public-suggestions" type="button" disabled={refreshing || sessionState !== "ready"} onClick={() => void refreshSuggestions()} aria-label="Refresh suggested questions">{refreshing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}</button></div></div>
+              <form className="public-chat-composer" onSubmit={submit}><label className="sr-only" htmlFor="public-agent-question">{t("public.question.label")}</label><textarea id="public-agent-question" value={question} maxLength={500} rows={2} disabled={sending || sessionState !== "ready"} onChange={(event) => setQuestion(event.target.value)} placeholder={t("public.question.placeholder", { name: initialProjection.profile.displayName })} /><button type="submit" disabled={sending || sessionState !== "ready" || !question.trim()} aria-label={t("public.question.send")}>{sending ? <LoaderCircle className="spin" size={20} /> : <Send size={20} />}</button></form>
+              <div className="public-suggestions"><div>{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending || sessionState !== "ready"} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={14} /> {suggestion}</button>)}<button className="refresh-public-suggestions" type="button" disabled={refreshing || sessionState !== "ready"} onClick={() => void refreshSuggestions()} aria-label={t("public.question.refresh")}>{refreshing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}</button></div></div>
             </section>
 
-            <aside className="public-highlights-column"><section><h2>Candidate Highlights</h2>{initialProjection.highlights.length === 0 ? <p>No public highlights are enabled.</p> : initialProjection.highlights.map((highlight) => <article key={highlight.id}><span><Sparkles size={17} /></span><div><strong>{highlight.title}</strong><p>{highlight.summary}</p></div></article>)}</section><section className="public-learn-more"><h2>Want to learn more?</h2><p>Try a recommended question to get the best evidence-backed answers.</p></section></aside>
+            <aside className="public-highlights-column"><section><h2>{t("public.highlights.title")}</h2>{initialProjection.highlights.length === 0 ? <p>{t("public.highlights.empty")}</p> : initialProjection.highlights.map((highlight) => <article key={highlight.id}><span><Sparkles size={17} /></span><div><strong>{highlight.title}</strong><p>{highlight.summary}</p></div></article>)}</section><section className="public-learn-more"><h2>{t("public.learn.title")}</h2><p>{t("public.learn.copy")}</p></section></aside>
           </div>
         </main>
       </div>
-      <footer className="public-footer"><span>© 2026 Askme. All rights reserved.</span><span>Privacy · Terms · Support</span><span><Globe2 size={13} /> English</span></footer>
+      <footer className="public-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
     </div>
   );
 }
