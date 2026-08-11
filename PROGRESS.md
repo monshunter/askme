@@ -19,7 +19,7 @@
 ---
 ID: OBJ-001
 Objective: 完成示例功能
-Status: 已完成
+Status: 正在处理
 Plans:
 - [x] [PLAN-001：完成基础实现](docs/plans/PLAN-001.md)
 - [ ] [PLAN-002：完成验证与收口](docs/plans/PLAN-002.md)
@@ -30,7 +30,7 @@ Plans:
 ---
 ID: OBJ-001
 Objective: 完整交付由 SPEC.md 与 UI 设计稿定义的 Askme 真实全栈应用
-Status: 正在处理
+Status: 已完成
 Plans:
 - [x] [PLAN-001：建立可验收产品合同与全栈基础](docs/plans/PLAN-001.md)
 - [x] [PLAN-002：闭环资料导入与职业知识库](docs/plans/PLAN-002.md)
