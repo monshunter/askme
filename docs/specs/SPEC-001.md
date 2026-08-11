@@ -116,7 +116,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 1. 桌面端在 1448 × 1086 参考视口复现设计稿的固定侧栏、顶部栏、卡片层次、深墨绿主色、暖白纸张质感、水墨山水背景、衬线标题和红色印章点缀；直接复用已提供背景资产。
 2. Candidate Workspace、公共 Agent 与 Platform Admin 使用各自正确的导航和身份标签；所有设计稿中的主要按钮、筛选、分页、搜索、下拉和导航均连接真实行为或明确的不可用状态。
-3. 视口缩小至 390 × 844 时不产生横向溢出，导航可访问，主要操作与对话输入保持可用；桌面表格在移动端转为可读布局。
+3. Chrome DevTools 使用 `iPhone 14 Pro Max` 设备配置（430 × 932）时不产生横向溢出，导航可访问，主要操作与对话输入保持可用；桌面表格在移动端转为可读布局。
 4. 键盘可完成登录、导航、上传选择、筛选、隐私设置和对话；焦点可见，表单控件具有关联 label，状态不只依赖颜色表达。
 5. 默认语言为 English，并提供 English / 简体中文切换；语言选择持久化，核心页面和错误反馈不得混用未翻译的界面字符串。
 
@@ -154,11 +154,11 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
 - [x] `AC-CHAT-002` 私有数据、跨 owner 数据、原文件下载、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
-- [ ] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
-- [ ] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
-- [ ] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。
+- [x] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
+- [x] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
+- [x] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。
 - [ ] `AC-UI-001` 七个参考主界面在 1448 × 1086 的结构、视觉语言与关键几何经 Chrome 截图对照验收。
-- [ ] `AC-UI-002` 390 × 844 下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
+- [ ] `AC-UI-002` Chrome DevTools `iPhone 14 Pro Max`（430 × 932）下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
 - [ ] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
 - [ ] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
 - [x] `AC-AI-001` 运行时按优先级读取 DeepSeek 配置，真实 API health/chat 验证使用 `deepseek-v4-flash` 且不泄露 key。

@@ -38,6 +38,7 @@ export const messageStatus = pgEnum("message_status", ["pending", "completed", "
 export const feedbackValue = pgEnum("feedback_value", ["up", "down"]);
 export const flagSeverity = pgEnum("flag_severity", ["low", "medium", "high"]);
 export const flagStatus = pgEnum("flag_status", ["open", "reviewing", "resolved", "dismissed"]);
+export const adminInvitationStatus = pgEnum("admin_invitation_status", ["pending", "sent", "accepted", "failed", "revoked"]);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -328,7 +329,11 @@ export const contentFlags = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     ...timestamps,
   },
-  (table) => [index("content_flags_status_idx").on(table.status, table.severity)],
+  (table) => [
+    index("content_flags_status_idx").on(table.status, table.severity),
+    uniqueIndex("content_flags_message_category_unique").on(table.messageId, table.category).where(sql`${table.messageId} is not null`),
+    index("content_flags_created_idx").on(table.createdAt),
+  ],
 );
 
 export const auditEvents = pgTable(
@@ -371,3 +376,26 @@ export const platformSettings = pgTable("platform_settings", {
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const adminInvitations = pgTable(
+  "admin_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    status: adminInvitationStatus("status").default("pending").notNull(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("admin_invitations_token_hash_unique").on(table.tokenHash),
+    index("admin_invitations_status_created_idx").on(table.status, table.createdAt),
+  ],
+);

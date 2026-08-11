@@ -3,6 +3,7 @@ import "server-only";
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
 import { loadPublicSuggestedQuestions, requirePublicAgentContext } from "@/server/publication/public-agent-service";
+import { loadPlatformPolicies } from "@/server/admin/settings-service";
 
 import { consumePublicRateLimit } from "./rate-limit";
 import { createVisitorCredential, hashVisitorToken, validVisitorToken } from "./visitor-credential";
@@ -29,6 +30,7 @@ async function findConversation(publicationId: string, token: string) {
 
 export async function openPublicSession(slug: string, visitorToken: string | undefined, clientAddress: string, requestId?: string) {
   const publication = await requirePublicAgentContext(slug);
+  const policies = await loadPlatformPolicies();
   const validToken = validVisitorToken(visitorToken);
   if (validToken) {
     const existing = await findConversation(publication.publicationId, validToken);
@@ -38,7 +40,7 @@ export async function openPublicSession(slug: string, visitorToken: string | und
     }
   }
 
-  await consumePublicRateLimit(`session:${publication.publicationId}:${clientAddress}`, 20, 3_600);
+  await consumePublicRateLimit(`session:${publication.publicationId}:${clientAddress}`, policies.publicSessionHourlyLimit, 3_600);
   const credential = createVisitorCredential();
   const expiresAt = new Date(Date.now() + PUBLIC_SESSION_MS);
   const client = await getPool().connect();

@@ -37,5 +37,37 @@ describe("runtime config", () => {
       baseUrl: "https://api.deepseek.com",
       model: "deepseek-v4-flash",
     });
+    expect(config.mail).toEqual({
+      status: "not_configured",
+      host: null,
+      port: 587,
+      secure: false,
+      user: null,
+      password: null,
+      from: null,
+    });
+  });
+
+  it("requires complete SMTP fields while keeping credentials server-only", () => {
+    const configured = loadConfigFromSources({
+      ASKME_SMTP_HOST: "smtp.example.test",
+      ASKME_SMTP_PORT: "465",
+      ASKME_SMTP_SECURE: "true",
+      ASKME_SMTP_USER: "mailer",
+      ASKME_SMTP_PASSWORD: "smtp-secret",
+      ASKME_SMTP_FROM: "Askme <noreply@example.test>",
+    }, "");
+    expect(configured.mail).toEqual({
+      status: "configured",
+      host: "smtp.example.test",
+      port: 465,
+      secure: true,
+      user: "mailer",
+      password: "smtp-secret",
+      from: "Askme <noreply@example.test>",
+    });
+
+    const invalid = loadConfigFromSources({ ASKME_SMTP_HOST: "smtp.example.test" }, "");
+    expect(invalid.mail.status).toBe("invalid_configuration");
   });
 });

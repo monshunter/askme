@@ -1,15 +1,13 @@
+import { AdminOverviewClient } from "@/components/admin/overview-client";
+import { parseAdminRange } from "@/server/admin/admin-input";
+import { loadAdminOverview } from "@/server/admin/overview-service";
 import { requirePageUser } from "@/server/auth/current";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const user = await requirePageUser("admin");
-  return (
-    <main className="foundation-page">
-      <p className="eyebrow">Platform Admin</p>
-      <h1>Welcome, {user.displayName}</h1>
-      <p>Your authenticated administration workspace is ready.</p>
-      <form action="/api/auth/logout" method="post"><button type="submit">Sign out</button></form>
-    </main>
-  );
+  const range = parseAdminRange((await searchParams).range);
+  const overview = await loadAdminOverview(range);
+  return <AdminOverviewClient initialOverview={JSON.parse(JSON.stringify(overview))} adminName={user.displayName} />;
 }

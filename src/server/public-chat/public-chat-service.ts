@@ -8,9 +8,11 @@ import { DeepSeekClient } from "@/server/ai/deepseek";
 import { getRuntimeConfig } from "@/server/config";
 import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
+import { loadPlatformPolicies } from "@/server/admin/settings-service";
 
 import type { PublicChatInput, PublicFeedbackInput } from "./public-chat-input";
 import { assessPublicQuestion, isContextDependentPublicQuestion } from "./public-question-policy";
+import { publicAnswerRisk } from "./public-risk";
 import { retrievePublicQuestionEvidence } from "./public-retrieval";
 import { consumePublicRateLimit } from "./rate-limit";
 import { requirePublicConversation, type PublicConversation } from "./session-service";
@@ -37,11 +39,11 @@ async function existingExchange(conversationId: string, clientMessageId: string)
   return result.rows[0] ?? null;
 }
 
-async function beginPublicExchange(conversation: PublicConversation, input: PublicChatInput) {
+async function beginPublicExchange(conversation: PublicConversation, input: PublicChatInput, limits: { publicChatMinuteLimit: number; publicChatDailyLimit: number }) {
   const already = await existingExchange(conversation.id, input.clientMessageId);
   if (already) return { ...already, created: false as const };
-  await consumePublicRateLimit(`chat:minute:${conversation.id}`, 10, 60);
-  await consumePublicRateLimit(`chat:day:${conversation.id}`, 100, 86_400);
+  await consumePublicRateLimit(`chat:minute:${conversation.id}`, limits.publicChatMinuteLimit, 60);
+  await consumePublicRateLimit(`chat:day:${conversation.id}`, limits.publicChatDailyLimit, 86_400);
 
   const client = await getPool().connect();
   try {
@@ -177,6 +179,14 @@ async function persistPublicAnswer(
        VALUES ('interviewer','public.chat.answer','message',$1,$2,$3,$4::jsonb)`,
       [exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ publicationId, conversationId: exchange.conversationId, citationCount: result.citations.length })],
     );
+    const risk = publicAnswerRisk(result.outcome, errorCode, result.citations.length);
+    if (risk) {
+      await client.query(
+        `INSERT INTO content_flags(publication_id,message_id,category,severity,safe_summary)
+         VALUES ($1,$2,$3,$4::flag_severity,$5) ON CONFLICT DO NOTHING`,
+        [publicationId, exchange.assistantMessageId, risk.category, risk.severity, risk.safeSummary],
+      );
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -228,7 +238,8 @@ async function persistPublicFailure(
 
 export async function chatPublicAgent(slug: string, visitorToken: string | undefined, input: PublicChatInput, requestId?: string) {
   const { publication, conversation } = await requirePublicConversation(slug, visitorToken);
-  const exchange = await beginPublicExchange(conversation, input);
+  const policies = await loadPlatformPolicies();
+  const exchange = await beginPublicExchange(conversation, input, policies);
   if (!exchange.created || !exchange.assistantMessageId) {
     return { ...(await loadPublicThread(slug, visitorToken)), idempotent: true, pending: exchange.assistantStatus === "pending" };
   }
@@ -269,6 +280,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
 
 export async function savePublicFeedback(slug: string, visitorToken: string | undefined, messageId: string, input: PublicFeedbackInput, requestId?: string) {
   const { publication, conversation, token } = await requirePublicConversation(slug, visitorToken);
+  const policies = await loadPlatformPolicies();
   await consumePublicRateLimit(`feedback:${conversation.id}`, 30, 60);
   const actorKey = `visitor:${hashVisitorToken(token)}`;
   const client = await getPool().connect();
@@ -285,10 +297,11 @@ export async function savePublicFeedback(slug: string, visitorToken: string | un
        ON CONFLICT (message_id,actor_key) DO UPDATE SET value=excluded.value RETURNING value`,
       [messageId, actorKey, input.value],
     );
-    if (input.value === "down" && previous.rows[0]?.value !== "down") {
+    if (policies.negativeFeedbackAutoFlag && input.value === "down" && previous.rows[0]?.value !== "down") {
       await client.query(
         `INSERT INTO content_flags(publication_id,message_id,category,severity,safe_summary)
-         VALUES ($1,$2,'visitor_negative_feedback','low','An anonymous visitor marked a public Agent answer as unhelpful.')`,
+         VALUES ($1,$2,'visitor_negative_feedback','low','An anonymous visitor marked a public Agent answer as unhelpful.')
+         ON CONFLICT DO NOTHING`,
         [publication.publicationId, messageId],
       );
     }

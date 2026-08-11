@@ -17,4 +17,10 @@
 | REVIEW-012 | REVIEW-012：PLAN-003 Change Review（复审） | [REVIEW-012.md](REVIEW-012.md) |
 | REVIEW-013 | REVIEW-013：PLAN-003 Change Review（浏览器 Reconcile 后终审） | [REVIEW-013.md](REVIEW-013.md) |
 | REVIEW-014 | REVIEW-014：PLAN-004 Plan Review | [REVIEW-014.md](REVIEW-014.md) |
+| REVIEW-015 | REVIEW-015：DESIGN-002 Design Review | [REVIEW-015.md](REVIEW-015.md) |
+| REVIEW-016 | REVIEW-016：PLAN-004 Change Review（精确视口验收前） | [REVIEW-016.md](REVIEW-016.md) |
+| REVIEW-017 | REVIEW-017：SPEC-001 移动验收基线变更 Review | [REVIEW-017.md](REVIEW-017.md) |
+| REVIEW-018 | REVIEW-018：PLAN-004 响应式验收调整 Plan Review | [REVIEW-018.md](REVIEW-018.md) |
+| REVIEW-019 | REVIEW-019：PLAN-004 Change Review（精确视口 Reconcile 后终审） | [REVIEW-019.md](REVIEW-019.md) |
+| REVIEW-020 | REVIEW-020：PLAN-005 Plan Review | [REVIEW-020.md](REVIEW-020.md) |
 <!-- AGENT-HARNESS:END INDEX -->

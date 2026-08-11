@@ -12,6 +12,12 @@ const ALLOWED_KEYS = new Set([
   "ASKME_CANDIDATE_PASSWORD",
   "ASKME_ADMIN_EMAIL",
   "ASKME_ADMIN_PASSWORD",
+  "ASKME_SMTP_HOST",
+  "ASKME_SMTP_PORT",
+  "ASKME_SMTP_SECURE",
+  "ASKME_SMTP_USER",
+  "ASKME_SMTP_PASSWORD",
+  "ASKME_SMTP_FROM",
 ]);
 
 type EnvSource = Record<string, string | undefined>;
@@ -29,6 +35,15 @@ export type RuntimeConfig = {
     candidatePassword: string | null;
     adminEmail: string | null;
     adminPassword: string | null;
+  };
+  mail: {
+    status: "not_configured" | "invalid_configuration" | "configured";
+    host: string | null;
+    port: number;
+    secure: boolean;
+    user: string | null;
+    password: string | null;
+    from: string | null;
   };
 };
 
@@ -60,6 +75,19 @@ export function parseAllowedEnv(source: string): Record<string, string> {
 export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string): RuntimeConfig {
   const fileEnv = parseAllowedEnv(userEnvFile);
   const read = (key: string) => processEnv[key]?.trim() || fileEnv[key]?.trim() || null;
+  const mailHost = read("ASKME_SMTP_HOST");
+  const mailPortSource = read("ASKME_SMTP_PORT");
+  const mailSecureSource = read("ASKME_SMTP_SECURE");
+  const mailUser = read("ASKME_SMTP_USER");
+  const mailPassword = read("ASKME_SMTP_PASSWORD");
+  const mailFrom = read("ASKME_SMTP_FROM");
+  const mailPort = mailPortSource === null ? 587 : Number(mailPortSource);
+  const secureValid = mailSecureSource === null || mailSecureSource === "true" || mailSecureSource === "false";
+  const mailSecure = mailSecureSource === "true";
+  const mailProvided = [mailHost, mailUser, mailPassword, mailFrom].some((value) => value !== null);
+  const mailValid = Boolean(mailHost && mailFrom)
+    && Number.isInteger(mailPort) && mailPort >= 1 && mailPort <= 65_535
+    && secureValid && Boolean(mailUser) === Boolean(mailPassword);
 
   return {
     databaseUrl: read("DATABASE_URL"),
@@ -74,6 +102,15 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       candidatePassword: read("ASKME_CANDIDATE_PASSWORD"),
       adminEmail: read("ASKME_ADMIN_EMAIL"),
       adminPassword: read("ASKME_ADMIN_PASSWORD"),
+    },
+    mail: {
+      status: !mailProvided ? "not_configured" : mailValid ? "configured" : "invalid_configuration",
+      host: mailHost,
+      port: Number.isInteger(mailPort) && mailPort >= 1 && mailPort <= 65_535 ? mailPort : 587,
+      secure: mailSecure,
+      user: mailUser,
+      password: mailPassword,
+      from: mailFrom,
     },
   };
 }

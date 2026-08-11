@@ -35,5 +35,6 @@ Plans:
 - [x] [PLAN-001：建立可验收产品合同与全栈基础](docs/plans/PLAN-001.md)
 - [x] [PLAN-002：闭环资料导入与职业知识库](docs/plans/PLAN-002.md)
 - [x] [PLAN-003：闭环隐私、Agent 与公共问答](docs/plans/PLAN-003.md)
-- [ ] [PLAN-004：闭环 Platform Admin 与真实数据审计](docs/plans/PLAN-004.md)
+- [x] [PLAN-004：闭环 Platform Admin 与真实数据审计](docs/plans/PLAN-004.md)
+- [ ] [PLAN-005：闭环全界面视觉、双语与可访问性](docs/plans/PLAN-005.md)
 ---
