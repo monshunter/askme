@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { apiData, requestId } from "@/server/http";
 
-export function GET() {
-  return NextResponse.json({ data: { status: "live", service: "askme-web" }, error: null });
+export function GET(request: Request) {
+  const id = requestId(request);
+  return apiData({ status: "live", service: "askme-web" }, id);
 }

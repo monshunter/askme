@@ -35,6 +35,10 @@ async function heartbeat(pool: Pool) {
 async function main() {
   const config = getRuntimeConfig();
   const pool = new Pool({ connectionString: requireDatabaseUrl(), max: 5 });
+  pool.on("error", (error) => {
+    const safeError = toAppError(error);
+    console.error(JSON.stringify({ event: "worker.pool.error", workerId, errorCode: safeError.code }));
+  });
   console.info(JSON.stringify({ event: "worker.started", workerId, model: config.deepseek.model }));
   const stopHeartbeat = await startWorkerHeartbeat(() => heartbeat(pool), {
     intervalMs: HEARTBEAT_INTERVAL_MS,

@@ -25,7 +25,7 @@ services:
       POSTGRES_USER: ${ASKME_POSTGRES_USER:-askme}
       POSTGRES_PASSWORD: ${ASKME_POSTGRES_PASSWORD:-askme-local-only}
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${ASKME_POSTGRES_PORT:-55432}:5432"
     volumes:
       - askme_pgdata:/var/lib/postgresql
     healthcheck:
@@ -56,7 +56,7 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: "3000"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${ASKME_WEB_PORT:-3000}:3000"
     volumes:
       - askme_uploads:/data/uploads
     depends_on:
@@ -85,6 +85,6 @@ services:
 
 volumes:
   askme_pgdata:
-    name: askme_local_pgdata
+    name: ${ASKME_POSTGRES_VOLUME:-askme_local_pgdata}
   askme_uploads:
-    name: askme_local_uploads
+    name: ${ASKME_UPLOAD_VOLUME:-askme_local_uploads}

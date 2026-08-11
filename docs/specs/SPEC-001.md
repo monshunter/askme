@@ -162,10 +162,10 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
 - [x] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
 - [x] `AC-AI-001` 运行时按优先级读取 DeepSeek 配置，真实 API health/chat 验证使用 `deepseek-v4-flash` 且不泄露 key。
-- [ ] `AC-OPS-001` Docker Compose 可从空数据库启动 Web、worker、PostgreSQL 并通过健康检查。
-- [ ] `AC-OPS-002` Docker restart 保留账号、资料、知识、会话和文件；reset 只能由显式命令触发。
-- [ ] `AC-OBS-001` 关键错误码、job/请求追踪和审计记录可复核且无 Secret 或完整私有原文泄露。
-- [ ] `AC-TEST-001` 单元、集成、构建、migration、Docker smoke 与 Chrome E2E 在当前 revision 全部通过。
+- [x] `AC-OPS-001` Docker Compose 可从空数据库启动 Web、worker、PostgreSQL 并通过健康检查。
+- [x] `AC-OPS-002` Docker restart 保留账号、资料、知识、会话和文件；reset 只能由显式命令触发。
+- [x] `AC-OBS-001` 关键错误码、job/请求追踪和审计记录可复核且无 Secret 或完整私有原文泄露。
+- [x] `AC-TEST-001` 单元、集成、构建、migration、Docker smoke 与 Chrome E2E 在当前 revision 全部通过。
 
 ## 5. 假设与开放决策
 

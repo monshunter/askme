@@ -6,4 +6,6 @@ if [[ "${1:-}" != "--confirm" || "${2:-}" != "askme-local" ]]; then
   exit 2
 fi
 
-docker compose down --volumes --remove-orphans
+ASKME_POSTGRES_VOLUME=askme_local_pgdata \
+ASKME_UPLOAD_VOLUME=askme_local_uploads \
+docker compose -p askme-local down --volumes --remove-orphans

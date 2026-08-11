@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { authenticate, createSession, SESSION_COOKIE, sessionCookieOptions } from "@/server/auth/service";
-import { apiFailure, requestId, requestOrigin } from "@/server/http";
+import { apiFailure, requestId, requestOrigin, withRequestId } from "@/server/http";
 
 const credentialsSchema = z.object({
   email: z.email().max(320),
@@ -20,13 +20,13 @@ export async function POST(request: NextRequest) {
     const user = await authenticate(credentials.email, credentials.password);
     const session = await createSession(user, id);
     const destination = user.role === "admin" ? "/admin" : "/workspace";
-    const response = isJson
+    const response = withRequestId(isJson
       ? NextResponse.json({ data: { user, destination }, error: null, requestId: id })
-      : NextResponse.redirect(new URL(destination, requestOrigin(request)), 303);
+      : NextResponse.redirect(new URL(destination, requestOrigin(request)), 303), id);
     response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
     return response;
   } catch (error) {
     if (isJson) return apiFailure(error, id);
-    return NextResponse.redirect(new URL("/login?error=The+email+or+password+is+incorrect.", requestOrigin(request)), 303);
+    return withRequestId(NextResponse.redirect(new URL("/login?error=The+email+or+password+is+incorrect.", requestOrigin(request)), 303), id);
   }
 }

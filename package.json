@@ -29,7 +29,9 @@
     "smoke:privacy-api": "tsx scripts/smoke-privacy-api.ts",
     "smoke:public-chat": "tsx scripts/smoke-public-chat.ts",
     "smoke:publication": "tsx scripts/smoke-publication.ts",
+    "smoke:runtime-state": "tsx scripts/smoke-runtime-state.ts",
     "smoke:upload": "tsx scripts/smoke-upload.ts",
+    "verify:docker-lifecycle": "scripts/verify-docker-lifecycle.sh",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {

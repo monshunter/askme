@@ -19,7 +19,7 @@
 ---
 ID: OBJ-001
 Objective: 完成示例功能
-Status: 正在处理
+Status: 已完成
 Plans:
 - [x] [PLAN-001：完成基础实现](docs/plans/PLAN-001.md)
 - [ ] [PLAN-002：完成验证与收口](docs/plans/PLAN-002.md)
@@ -37,4 +37,5 @@ Plans:
 - [x] [PLAN-003：闭环隐私、Agent 与公共问答](docs/plans/PLAN-003.md)
 - [x] [PLAN-004：闭环 Platform Admin 与真实数据审计](docs/plans/PLAN-004.md)
 - [x] [PLAN-005：闭环全界面视觉、双语与可访问性](docs/plans/PLAN-005.md)
+- [x] [PLAN-006：闭环本地运行、可观测性与总验收](docs/plans/PLAN-006.md)
 ---

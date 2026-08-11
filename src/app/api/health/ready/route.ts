@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
-import { NextResponse } from "next/server";
 
 import { getRuntimeConfig } from "@/server/config";
 import { getDb } from "@/server/db/client";
+import { apiData, requestId } from "@/server/http";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const id = requestId(request);
   const checks = {
     database: "unavailable",
     migration: "missing",
@@ -29,5 +30,5 @@ export async function GET() {
   }
 
   const ready = checks.database === "ready" && checks.migration === "ready" && checks.worker === "ready";
-  return NextResponse.json({ data: { status: ready ? "ready" : "not_ready", checks }, error: null }, { status: ready ? 200 : 503 });
+  return apiData({ status: ready ? "ready" : "not_ready", checks }, id, { status: ready ? 200 : 503 });
 }

@@ -4,8 +4,11 @@ import { NextResponse } from "next/server";
 
 import { toAppError } from "@/server/errors";
 
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,100}$/;
+
 export function requestId(request: Request) {
-  return request.headers.get("x-request-id")?.slice(0, 100) || randomUUID();
+  const supplied = request.headers.get("x-request-id");
+  return supplied && REQUEST_ID_PATTERN.test(supplied) ? supplied : randomUUID();
 }
 
 export function requestOrigin(request: Request) {
@@ -18,7 +21,12 @@ export function requestOrigin(request: Request) {
 }
 
 export function apiData<T>(data: T, id: string, init?: ResponseInit) {
-  return NextResponse.json({ data, error: null, requestId: id }, init);
+  return withRequestId(NextResponse.json({ data, error: null, requestId: id }, init), id);
+}
+
+export function withRequestId<T extends Response>(response: T, id: string) {
+  response.headers.set("x-request-id", id);
+  return response;
 }
 
 export function apiFailure(error: unknown, id: string) {
@@ -44,5 +52,5 @@ export function apiFailure(error: unknown, id: string) {
   );
   const retryAfterSeconds = appError.details?.retryAfterSeconds;
   if (appError.status === 429 && typeof retryAfterSeconds === "number") response.headers.set("Retry-After", String(retryAfterSeconds));
-  return response;
+  return withRequestId(response, id);
 }

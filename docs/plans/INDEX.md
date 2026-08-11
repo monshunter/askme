@@ -8,4 +8,5 @@
 | PLAN-003 | PLAN-003：闭环隐私、Agent 与公共问答 | [PLAN-003.md](PLAN-003.md) |
 | PLAN-004 | PLAN-004：闭环 Platform Admin 与真实数据审计 | [PLAN-004.md](PLAN-004.md) |
 | PLAN-005 | PLAN-005：闭环全界面视觉、双语与可访问性 | [PLAN-005.md](PLAN-005.md) |
+| PLAN-006 | PLAN-006：闭环本地运行、可观测性与总验收 | [PLAN-006.md](PLAN-006.md) |
 <!-- AGENT-HARNESS:END INDEX -->
