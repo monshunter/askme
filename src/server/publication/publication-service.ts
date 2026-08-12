@@ -92,25 +92,6 @@ async function auditPublication(client: PoolClient, ownerId: string, publication
   );
 }
 
-export async function generatePublicationLink(ownerId: string, requestId?: string) {
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN");
-    await lockOwner(client, ownerId);
-    let publication = await activePublication(ownerId, client);
-    const outcome = publication ? "existing" : "generated";
-    publication ??= await insertPublication(client, ownerId, "draft");
-    await auditPublication(client, ownerId, publication, "publication.link.generate", outcome, requestId);
-    await client.query("COMMIT");
-    return { publication, changed: outcome === "generated" };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 export async function publishAgent(ownerId: string, requestId?: string) {
   const client = await getPool().connect();
   try {

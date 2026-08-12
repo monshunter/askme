@@ -47,37 +47,46 @@ try {
     throw new Error("Privacy workspace did not render the authenticated database fixture");
   }
 
-  const initial = await request("/api/privacy?pageSize=20") as { confirmation?: { confirmed?: boolean; policyRevision?: number }; materials?: { total?: number } };
-  if (initial.confirmation?.confirmed !== false || initial.confirmation.policyRevision !== 1 || initial.materials?.total !== 1) throw new Error("Initial privacy overview is invalid");
+  const initial = await request("/api/privacy?pageSize=20") as { confirmation?: { confirmed?: boolean; requiresReconfirmation?: boolean; policyRevision?: number }; materials?: { total?: number } };
+  if (initial.confirmation?.confirmed !== false || initial.confirmation.requiresReconfirmation !== false || initial.confirmation.policyRevision !== 1 || initial.materials?.total !== 1) throw new Error("Initial privacy overview is invalid");
   const confirmed = await request("/api/privacy/confirm", { method: "POST" }) as { confirmed?: boolean; policyRevision?: number };
   if (!confirmed.confirmed || confirmed.policyRevision !== 1) throw new Error("Initial policy confirmation failed");
+  const confirmedPage = await fetch(`${baseUrl}/workspace/privacy`, { headers: { cookie } });
+  const confirmedHtml = await confirmedPage.text();
+  if (!confirmedPage.ok || !confirmedHtml.includes("Privacy Confirmed") || confirmedHtml.includes("Confirm Again")) throw new Error("Confirmed privacy page exposed a redundant confirmation action");
 
   const unchanged = await request(`/api/privacy/materials/${materialId}`, { method: "PATCH", body: JSON.stringify({ visibility: "private" }) }) as {
     changed?: boolean;
-    confirmation?: { confirmed?: boolean; policyRevision?: number };
+    confirmation?: { confirmed?: boolean; requiresReconfirmation?: boolean; policyRevision?: number };
   };
-  if (unchanged.changed !== false || unchanged.confirmation?.confirmed !== true || unchanged.confirmation.policyRevision !== 1) {
+  if (unchanged.changed !== false || unchanged.confirmation?.confirmed !== true || unchanged.confirmation.requiresReconfirmation !== false || unchanged.confirmation.policyRevision !== 1) {
     throw new Error("Idempotent visibility update invalidated confirmation");
   }
 
   const changed = await request(`/api/privacy/materials/${materialId}`, { method: "PATCH", body: JSON.stringify({ visibility: "citation_allowed" }) }) as {
     changed?: boolean;
-    confirmation?: { confirmed?: boolean; policyRevision?: number };
+    confirmation?: { confirmed?: boolean; requiresReconfirmation?: boolean; policyRevision?: number };
   };
-  if (changed.changed !== true || changed.confirmation?.confirmed !== false || changed.confirmation.policyRevision !== 2) {
+  if (changed.changed !== true || changed.confirmation?.confirmed !== false || changed.confirmation.requiresReconfirmation !== true || changed.confirmation.policyRevision !== 2) {
     throw new Error("Visibility change did not invalidate and increment the policy");
   }
   const overview = await request("/api/privacy?pageSize=20") as {
-    confirmation?: { confirmed?: boolean; policyRevision?: number };
+    confirmation?: { confirmed?: boolean; requiresReconfirmation?: boolean; policyRevision?: number };
     counts?: { interviewerAccessible?: number; interviewerHidden?: number };
   };
-  if (overview.confirmation?.confirmed !== false || overview.confirmation.policyRevision !== 2 || overview.counts?.interviewerAccessible !== 1 || overview.counts.interviewerHidden !== 0) {
+  if (overview.confirmation?.confirmed !== false || overview.confirmation.requiresReconfirmation !== true || overview.confirmation.policyRevision !== 2 || overview.counts?.interviewerAccessible !== 1 || overview.counts.interviewerHidden !== 0) {
     throw new Error("Updated privacy overview is inconsistent");
   }
+  const changedPage = await fetch(`${baseUrl}/workspace/privacy`, { headers: { cookie } });
+  const changedHtml = await changedPage.text();
+  if (!changedPage.ok || !changedHtml.includes("Confirm Again")) throw new Error("Changed privacy revision did not expose reconfirmation");
   const reconfirmed = await request("/api/privacy/confirm", { method: "POST" }) as { confirmed?: boolean; policyRevision?: number };
   if (!reconfirmed.confirmed || reconfirmed.policyRevision !== 2) throw new Error("Updated policy could not be confirmed");
+  const reconfirmedPage = await fetch(`${baseUrl}/workspace/privacy`, { headers: { cookie } });
+  const reconfirmedHtml = await reconfirmedPage.text();
+  if (!reconfirmedPage.ok || reconfirmedHtml.includes("Confirm Again")) throw new Error("Reconfirmed privacy page retained the reconfirmation action");
 
-  console.log(JSON.stringify({ event: "smoke.privacy-api.completed", pageRendered: true, initialRevision: 1, changedRevision: 2, idempotent: true, confirmationInvalidated: true, interviewerAccessible: 1 }));
+  console.log(JSON.stringify({ event: "smoke.privacy-api.completed", pageRendered: true, initialRevision: 1, changedRevision: 2, idempotent: true, confirmationInvalidated: true, reconfirmationVisibleOnlyAfterChange: true, interviewerAccessible: 1 }));
 } finally {
   await client.query("DELETE FROM users WHERE id=$1", [ownerId]).catch(() => undefined);
   await client.end();

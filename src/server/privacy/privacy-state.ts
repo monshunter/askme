@@ -2,7 +2,7 @@ export type StoredPrivacyConfirmation = { policyRevision: number; confirmedAt: D
 
 export function derivePrivacyConfirmation(currentRevision: number, confirmation: StoredPrivacyConfirmation | null) {
   if (confirmation?.policyRevision === currentRevision) {
-    return { confirmed: true, policyRevision: currentRevision, confirmedAt: confirmation.confirmedAt };
+    return { confirmed: true, requiresReconfirmation: false, policyRevision: currentRevision, confirmedAt: confirmation.confirmedAt };
   }
-  return { confirmed: false, policyRevision: currentRevision, confirmedAt: null };
+  return { confirmed: false, requiresReconfirmation: confirmation !== null, policyRevision: currentRevision, confirmedAt: null };
 }

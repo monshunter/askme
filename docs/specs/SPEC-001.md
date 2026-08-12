@@ -86,7 +86,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 - `citation_allowed`：Candidate 与已发布 Agent 可读取，Interviewer 回答可展示引用元数据和必要证据摘要。
 - `public_preview`：具备 `citation_allowed` 能力，并允许在公共 Agent 的候选人亮点或公开来源摘要中展示。
 
-Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即时预览，并在发布前确认当前策略。已经打开的公共页面也必须在下一次请求时遵守最新策略。
+Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即时预览，并在发布前确认当前策略。首次未确认时提供确认操作；当前策略修订已经确认时隐藏确认按钮，只有后续来源可见性变更使修订失效后才显示“再次确认”。已经打开的公共页面也必须在下一次请求时遵守最新策略。
 
 ### 3.6 Candidate Agent 预览
 
@@ -99,9 +99,10 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 ### 3.7 发布与撤销
 
 1. 发布前必须至少存在一份 `indexed` 资料、已确认隐私策略和可用公开身份信息；不满足条件时逐项提示。
-2. Candidate 可在 Agent / 智能体页面生成可分享链接、发布、复制/下载链接信息、打开已发布公共页和撤销访问。链接标识不可由邮箱或自增 id 推断。
-3. 发布状态、公开 slug、发布时间和撤销状态持久化；撤销后旧链接立即不可对话，再发布可生成新链接。
+2. Candidate 可在 Agent / 智能体页面直接发布，不需要预先生成或管理分享链接；发布操作原子生成不可由邮箱或自增 id 推断的公开 slug。发布成功后，“访问 Agent”与“撤销访问”并列显示，且访问操作位于撤销操作左侧。
+3. 发布状态、公开 slug、发布时间和撤销状态持久化；已有历史 draft 时发布操作继续使用其 slug，撤销后旧链接立即不可对话，再发布生成新链接。
 4. Candidate 从 Agent / 智能体页面打开已发布公共页时使用与 Interviewer 相同的公开权限，不得因 owner 已登录而泄露额外内容；`/workspace/publish`、`/workspace/publish/preview` 与专用 `GET /api/publications/preview` 不再提供独立产品页面或预览后端。
+5. Candidate 页面不再提供“候选人 Agent 链接”模块，专用 `POST /api/publications/link` 不再存在；发布概览、发布、访问和撤销保留各自仍被主流程使用的边界。
 
 ### 3.8 Interviewer 公共 Agent
 
@@ -110,6 +111,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 3. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答展示来源标题、类型、公开外链（仅当来源本身是公开 URL）和必要证据摘要，不提供上传文件下载地址或内部存储路径。
 4. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
 5. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
+6. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
 
 ### 3.9 Platform Admin
 
@@ -155,13 +157,14 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-KB-001` Knowledge Base 的分类、搜索、筛选、分页和详情对真实索引结果生效。
 - [x] `AC-KB-002` Candidate 编辑知识摘要后持久化且保留来源与 Citation 追溯。
 - [x] `AC-PRIV-001` 四级可见性矩阵由服务端统一执行，Candidate 预览与公共回答的证据集合符合合同。
-- [x] `AC-PRIV-002` 隐私修改即时影响后续公共请求，发布前确认状态被持久化。
+- [x] `AC-PRIV-002` 隐私修改即时影响后续公共请求，确认状态被持久化；当前修订已确认时确认按钮隐藏，来源可见性变更后显示“再次确认”。
 - [x] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。
 - [x] `AC-AGENT-002` 无证据、AI 未配置、超时和上游失败具有不同反馈且不产生伪造答案。
 - [x] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
-- [x] `AC-AGENT-004` Candidate Workspace 只保留 Agent / 智能体一级入口，预览问答、设置、生成链接、发布、公开访问和撤销在该页面形成闭环，独立发布页面与专用 Candidate 公共预览 API 不再存在。
-- [x] `AC-PUB-001` 发布前置条件、不可推断链接、持久发布状态、撤销与再发布行为通过集成测试。
+- [x] `AC-AGENT-004` Candidate Workspace 只保留 Agent / 智能体一级入口，预览问答、设置、直接发布、发布后访问和撤销在该页面形成闭环，独立链接模块、链接生成 API、发布页面与专用 Candidate 公共预览 API 不再存在。
+- [x] `AC-PUB-001` 发布前置条件、发布时生成的不可推断链接、历史 draft 兼容、持久发布状态、撤销与再发布行为通过集成测试。
 - [x] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
+- [x] `AC-PUB-003` 公共 Agent 页的“分享 Agent 链接”复制当前页面 URL、反馈成功或失败且不下载文件。
 - [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
 - [x] `AC-CHAT-002` 私有数据、跨 owner 数据、原文件下载、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。

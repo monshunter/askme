@@ -64,14 +64,8 @@ try {
     throw new Error(`Initial publishing readiness is invalid: ${JSON.stringify(initialOverview)}`);
   }
 
-  const generated = await request("/api/publications/link", "POST");
-  const draft = generated.data as PublicationResult;
-  const firstSlug = draft.publication?.slug;
-  if (!generated.response.ok || draft.publication?.status !== "draft" || !draft.changed || !firstSlug?.match(/^[A-Za-z0-9_-]{32}$/) || draft.shareUrl !== `${baseUrl}/a/${firstSlug}`) {
-    throw new Error("Opaque draft share link was not generated");
-  }
-  const repeatedLink = (await request("/api/publications/link", "POST")).data as PublicationResult;
-  if (repeatedLink.changed !== false || repeatedLink.publication?.slug !== firstSlug) throw new Error("Link generation was not idempotent");
+  const retiredLinkApi = await fetch(`${baseUrl}/api/publications/link`, { method: "POST", headers: { cookie } });
+  if (retiredLinkApi.status !== 404) throw new Error("The retired publication link API remained routable");
 
   const blockedPublish = await request("/api/publications/publish", "POST");
   if (blockedPublish.response.status !== 409 || blockedPublish.errorCode !== "PUBLISH_NOT_READY") throw new Error("Publishing bypassed readiness checks");
@@ -115,7 +109,8 @@ try {
   const ready = (await request("/api/publications/current")).data as Overview;
   if (!ready.readiness?.ready) throw new Error(`Ready Candidate remained blocked: ${JSON.stringify(ready.readiness)}`);
   const published = (await request("/api/publications/publish", "POST")).data as PublicationResult;
-  if (!published.changed || published.publication?.status !== "published" || published.publication.slug !== firstSlug) throw new Error("Draft link did not publish in place");
+  const firstSlug = published.publication?.slug;
+  if (!published.changed || published.publication?.status !== "published" || !firstSlug?.match(/^[A-Za-z0-9_-]{32}$/) || published.shareUrl !== `${baseUrl}/a/${firstSlug}`) throw new Error("Direct publishing did not create an opaque public link");
   const unchangedPublish = (await request("/api/publications/publish", "POST")).data as PublicationResult;
   if (unchangedPublish.changed !== false || unchangedPublish.publication?.slug !== firstSlug) throw new Error("Repeated publish was not idempotent");
   const publicModeOff = await request("/api/agent/settings", "PATCH", { publicMode: false });
@@ -195,7 +190,9 @@ try {
     !agentPage.ok ||
     !agentHtml.includes("Ready to publish") ||
     !agentHtml.includes(firstSlug) ||
+    !agentHtml.includes("Visit Agent") ||
     !agentHtml.includes("Revoke Access") ||
+    agentHtml.includes("Candidate Agent Link") ||
     agentHtml.includes('href="/workspace/publish"') ||
     agentHtml.includes("Quick Action") ||
     agentHtml.includes("Invite Interviewers") ||
@@ -220,8 +217,8 @@ try {
   const retiredPublishPage = await fetch(`${baseUrl}/workspace/publish`, { headers: { cookie } });
   const retiredPreviewPage = await fetch(`${baseUrl}/workspace/publish/preview`, { headers: { cookie } });
   const retiredPreviewApi = await fetch(`${baseUrl}/api/publications/preview`, { headers: { cookie } });
-  if (retiredPublishPage.status !== 404 || retiredPreviewPage.status !== 404 || retiredPreviewApi.status !== 404) {
-    throw new Error("A retired Candidate publishing page or preview API remained routable");
+  if (retiredPublishPage.status !== 404 || retiredPreviewPage.status !== 404 || retiredPreviewApi.status !== 404 || retiredLinkApi.status !== 404) {
+    throw new Error("A retired Candidate publishing page or API remained routable");
   }
 
   const hiddenUpdate = await request(`/api/privacy/materials/${publicMaterialId}`, "PATCH", { visibility: "private" });
@@ -242,13 +239,19 @@ try {
   const afterRevoke = (await request("/api/publications/current")).data as Overview;
   if (afterRevoke.publication !== null || afterRevoke.publicMode !== false) throw new Error("Revocation did not remove active access and disable Public Mode");
 
-  const regenerated = (await request("/api/publications/link", "POST")).data as PublicationResult;
-  const secondSlug = regenerated.publication?.slug;
-  if (!secondSlug || secondSlug === firstSlug || regenerated.publication?.status !== "draft") throw new Error("Republishing reused a revoked link");
-  if ((await request(`/api/public/agents/${secondSlug}`)).response.status !== 404) throw new Error("A draft link was public before publishing");
+  const legacyDraftSlug = createHash("sha256").update(`${ownerId}:legacy-draft`).digest("base64url").slice(0, 32);
+  await db.query("INSERT INTO publications(owner_id,slug,status) VALUES ($1,$2,'draft')", [ownerId, legacyDraftSlug]);
+  if ((await request(`/api/public/agents/${legacyDraftSlug}`)).response.status !== 404) throw new Error("A legacy draft link was public before publishing");
+  const legacyPublished = (await request("/api/publications/publish", "POST")).data as PublicationResult;
+  if (legacyPublished.publication?.status !== "published" || legacyPublished.publication.slug !== legacyDraftSlug) throw new Error("A legacy draft link did not publish in place");
+  if (!(await request(`/api/public/agents/${legacyDraftSlug}`)).response.ok) throw new Error("The published legacy draft was not publicly available");
+  const legacyRevoked = (await request("/api/publications/revoke", "POST")).data as PublicationResult;
+  if (legacyRevoked.publication?.slug !== legacyDraftSlug || legacyRevoked.publication.status !== "revoked") throw new Error("The published legacy draft could not be revoked");
+
   const republished = (await request("/api/publications/publish", "POST")).data as PublicationResult;
-  if (republished.publication?.status !== "published" || republished.publication.slug !== secondSlug) throw new Error("New link could not be republished");
-  if (!(await request(`/api/public/agents/${secondSlug}`)).response.ok) throw new Error("The republished Agent was not publicly available");
+  const secondSlug = republished.publication?.slug;
+  if (!secondSlug || secondSlug === firstSlug || secondSlug === legacyDraftSlug || republished.publication?.status !== "published") throw new Error("Direct republishing reused a revoked link");
+  if (!(await request(`/api/public/agents/${secondSlug}`)).response.ok) throw new Error("The directly republished Agent was not publicly available");
 
   const facts = await db.query<{ active: number; revoked: number; publicMode: boolean; audits: number }>(
     `SELECT
@@ -259,11 +262,11 @@ try {
     [ownerId],
   );
   const row = facts.rows[0];
-  if (!row || row.active !== 1 || row.revoked !== 1 || row.publicMode !== true || row.audits !== 8) {
+  if (!row || row.active !== 1 || row.revoked !== 2 || row.publicMode !== true || row.audits !== 7) {
     throw new Error(`Publication persistence is inconsistent: ${JSON.stringify(row)}`);
   }
 
-  console.log(JSON.stringify({ event: "smoke.publication.completed", readinessBlocked: true, opaqueSlug: true, publishIdempotent: true, pausedUnavailable: true, nonexistentUnavailable: true, visitorSession: "persisted", visitorTokenStored: false, sessionRateLimited: true, publicProjectionSafe: true, agentPublicationRendered: true, retiredPublishPagesUnavailable: true, singleGlobalLanguageSwitcher: true, visibilityImmediate: true, hiddenKnowledgeLeak: false, revoked: true, oldSlugUnavailable: true, republishedWithNewSlug: true, auditEvents: row.audits }));
+  console.log(JSON.stringify({ event: "smoke.publication.completed", readinessBlocked: true, retiredLinkApiUnavailable: true, directPublish: true, opaqueSlug: true, publishIdempotent: true, pausedUnavailable: true, nonexistentUnavailable: true, visitorSession: "persisted", visitorTokenStored: false, sessionRateLimited: true, publicProjectionSafe: true, agentPublicationRendered: true, retiredPublishPagesUnavailable: true, singleGlobalLanguageSwitcher: true, visibilityImmediate: true, hiddenKnowledgeLeak: false, revoked: true, oldSlugUnavailable: true, legacyDraftCompatible: true, republishedWithNewSlug: true, auditEvents: row.audits }));
 } finally {
   if (rateScopeKeys.length > 0) await db.query("DELETE FROM public_rate_limits WHERE scope_key=ANY($1::text[])", [rateScopeKeys]).catch(() => undefined);
   await db.query("DELETE FROM users WHERE id=$1", [ownerId]).catch(() => undefined);

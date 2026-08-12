@@ -114,8 +114,9 @@ export async function updateMaterialVisibility(ownerId: string, materialId: stri
        VALUES ($1,'candidate','material.visibility','material',$2,'updated',$3,$4::jsonb)`,
       [ownerId, materialId, requestId ?? null, JSON.stringify({ from: material.visibility, to: visibility, policyRevision: revision })],
     );
+    const state = await policyRow(ownerId, client);
     await client.query("COMMIT");
-    return { material: updated.rows[0], confirmation: derivePrivacyConfirmation(revision, null), changed: true };
+    return { material: updated.rows[0], confirmation: confirmationFromRow(state), changed: true };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;

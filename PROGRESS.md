@@ -71,3 +71,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-010：对账简化 Harness 迁移并完成交付收口](docs/plans/PLAN-010.md)
 ---
+
+---
+ID: OBJ-006
+Objective: 收敛 Candidate Agent 发布、访问与分享交互
+Status: 已完成
+Plans:
+- [x] [PLAN-011：优化 Agent 发布、访问与分享体验](docs/plans/PLAN-011.md)
+---

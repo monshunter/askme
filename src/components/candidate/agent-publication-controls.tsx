@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Check, CheckCircle2, Clipboard, Download, ExternalLink, FileText, Globe2, Link2, LoaderCircle, LockKeyhole, RefreshCw, Send, ShieldCheck, X, XCircle } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, ExternalLink, FileText, Globe2, LoaderCircle, LockKeyhole, RefreshCw, Send, ShieldCheck, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -52,7 +52,7 @@ function requirementText(key: ReadinessKey, ready: boolean, field: "label" | "de
 export function AgentPublicationControls({ initialOverview, locale, publicMode, onPublicModeChange }: { initialOverview: PublicationOverview; locale: Locale; publicMode: boolean; onPublicModeChange: (publicMode: boolean) => void }) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [overview, setOverview] = useState(initialOverview);
-  const [action, setAction] = useState<"generate" | "publish" | "revoke" | null>(null);
+  const [action, setAction] = useState<"publish" | "revoke" | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const revokeDialogRef = useModalFocus(confirmRevoke, () => setConfirmRevoke(false), action === "revoke");
@@ -66,7 +66,7 @@ export function AgentPublicationControls({ initialOverview, locale, publicMode, 
     return payload.data;
   }
 
-  async function mutate(kind: "generate" | "publish" | "revoke", path: string) {
+  async function mutate(kind: "publish" | "revoke", path: string) {
     setAction(kind);
     setNotice(null);
     try {
@@ -77,7 +77,6 @@ export function AgentPublicationControls({ initialOverview, locale, publicMode, 
         return;
       }
       const current = await refresh();
-      if (kind === "generate") setNotice({ tone: "success", message: payload.data?.changed ? t("publish.generated") : t("publish.existing") });
       if (kind === "publish") setNotice({ tone: "success", message: payload.data?.changed ? t("publish.nowPublic") : t("publish.already") });
       if (kind === "revoke") setNotice({ tone: "success", message: t("publish.revoked") });
       if (kind === "revoke" || !current.publication) setConfirmRevoke(false);
@@ -86,28 +85,6 @@ export function AgentPublicationControls({ initialOverview, locale, publicMode, 
     } finally {
       setAction(null);
     }
-  }
-
-  async function copyLink() {
-    if (!overview.shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(overview.shareUrl);
-      setNotice({ tone: "success", message: t("publish.copied") });
-    } catch {
-      setNotice({ tone: "error", message: t("publish.copyBlocked") });
-    }
-  }
-
-  function downloadLink() {
-    if (!overview.shareUrl) return;
-    const contents = [`Askme Candidate Agent`, `Status: ${overview.publication?.status ?? "draft"}`, `Link: ${overview.shareUrl}`, `Generated: ${new Date().toISOString()}`].join("\n");
-    const href = URL.createObjectURL(new Blob([contents], { type: "text/plain;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = href;
-    anchor.download = "askme-agent-link.txt";
-    anchor.click();
-    URL.revokeObjectURL(href);
-    setNotice({ tone: "success", message: t("publish.downloaded") });
   }
 
   const published = overview.publication?.status === "published";
@@ -131,19 +108,9 @@ export function AgentPublicationControls({ initialOverview, locale, publicMode, 
           {overview.publication?.publishedAt ? <small>{t("publish.status.publishedAt", { date: new Date(overview.publication.publishedAt).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US", { timeZone: "UTC" }) })}</small> : null}
         </section>
 
-        <section className="paper-card share-link-card">
-          <div className="section-heading"><span><h2>{t("publish.link.title")}</h2><small>{t("publish.link.copy")}</small></span></div>
-          {overview.shareUrl ? <div className="share-link-box"><Link2 size={18} /><label><span className="sr-only">{t("publish.link.label")}</span><input readOnly value={overview.shareUrl} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => void copyLink()}><Clipboard size={17} /> {t("publish.link.copyButton")}</button></div> : <div className="empty-link"><Link2 size={24} /><p>{t("publish.link.empty")}</p></div>}
-          <div className="share-actions">
-            <button className="secondary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("generate", "/api/publications/link")}>{action === "generate" ? <LoaderCircle className="spin" size={17} /> : <Link2 size={17} />} {overview.shareUrl ? t("publish.link.keep") : t("publish.link.generate")}</button>
-            {overview.shareUrl ? <button className="secondary-button" type="button" onClick={downloadLink}><Download size={17} /> {t("publish.link.download")}</button> : null}
-            {published && overview.shareUrl ? <a className="secondary-button" href={overview.shareUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /> {t("publish.link.open")}</a> : null}
-          </div>
-        </section>
-
         <section className="paper-card publish-action-card">
           <span className="publish-action-icon"><Send size={23} /></span><span><h2>{published ? t("publish.manage.title") : t("publish.manage.publishTitle")}</h2><p>{published ? t("publish.manage.copy") : t("publish.manage.publishCopy")}</p></span>
-          {!published ? <button className="primary-button" type="button" disabled={Boolean(action) || !overview.readiness.ready} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />} {t("agent.publish.submit")}</button> : <div className="published-actions">{!publicMode ? <button className="primary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Globe2 size={17} />} {t("publish.manage.enable")}</button> : null}<button className="danger-button" type="button" disabled={Boolean(action)} onClick={() => setConfirmRevoke(true)}><LockKeyhole size={17} /> {t("publish.manage.revoke")}</button></div>}
+          {!published ? <button className="primary-button" type="button" disabled={Boolean(action) || !overview.readiness.ready} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />} {t("agent.publish.submit")}</button> : <div className="published-actions">{!publicMode ? <button className="primary-button" type="button" disabled={Boolean(action)} onClick={() => void mutate("publish", "/api/publications/publish")}>{action === "publish" ? <LoaderCircle className="spin" size={17} /> : <Globe2 size={17} />} {t("publish.manage.enable")}</button> : overview.shareUrl ? <a className="secondary-button" href={overview.shareUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /> {t("publish.manage.visit")}</a> : null}<button className="danger-button" type="button" disabled={Boolean(action)} onClick={() => setConfirmRevoke(true)}><LockKeyhole size={17} /> {t("publish.manage.revoke")}</button></div>}
         </section>
       </div>
 

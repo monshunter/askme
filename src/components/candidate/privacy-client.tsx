@@ -23,7 +23,7 @@ type PrivacyOverview = {
   materials: { items: Material[]; page: number; pageSize: number; total: number; totalPages: number };
   counts: { private: number; agentOnly: number; citationAllowed: number; publicPreview: number; interviewerAccessible: number; interviewerHidden: number };
   preview: { accessible: PreviewMaterial[]; hidden: PreviewMaterial[] };
-  confirmation: { confirmed: boolean; policyRevision: number; confirmedAt: string | null };
+  confirmation: { confirmed: boolean; requiresReconfirmation: boolean; policyRevision: number; confirmedAt: string | null };
 };
 type ApiEnvelope<T = unknown> = { data?: T; error?: { message?: string } | null };
 
@@ -87,7 +87,7 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
       setOverview((current) => ({
         ...current,
         materials: { ...current.materials, items: current.materials.items.map((item) => item.id === material.id ? { ...item, visibility } : item) },
-        confirmation: payload.data?.changed ? { ...current.confirmation, confirmed: false, confirmedAt: null } : current.confirmation,
+        confirmation: payload.data?.changed ? { ...current.confirmation, confirmed: false, requiresReconfirmation: true, confirmedAt: null } : current.confirmation,
       }));
       await refresh();
       const option = visibilityOptions.find((item) => item.value === visibility);
@@ -175,7 +175,7 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
           <span className="confirm-policy-icon">{overview.confirmation.confirmed ? <ShieldCheck size={23} /> : <AlertCircle size={23} />}</span>
           <span><h2>{overview.confirmation.confirmed ? t("privacy.confirm.confirmedTitle") : t("privacy.confirm.reviewTitle")}</h2><p>{overview.confirmation.confirmed ? t("privacy.confirm.revision", { revision: overview.confirmation.policyRevision }) : t("privacy.confirm.reviewCopy")}</p></span>
           <ul><li>{t("privacy.confirm.rule1")}</li><li>{t("privacy.confirm.rule2")}</li><li>{t("privacy.confirm.rule3")}</li></ul>
-          <button className="primary-button" type="button" disabled={confirming} onClick={() => void confirmPolicy()}>{confirming ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {confirming ? t("privacy.confirm.confirming") : overview.confirmation.confirmed ? t("privacy.confirm.again") : t("privacy.confirm.submit")}</button>
+          {!overview.confirmation.confirmed ? <button className="primary-button" type="button" disabled={confirming} onClick={() => void confirmPolicy()}>{confirming ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {confirming ? t("privacy.confirm.confirming") : overview.confirmation.requiresReconfirmation ? t("privacy.confirm.again") : t("privacy.confirm.submit")}</button> : null}
         </section>
       </div>
       <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>

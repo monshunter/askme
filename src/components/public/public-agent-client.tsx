@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bot, BookOpen, Check, Clock3, Download, ExternalLink, FileText, Globe2, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import { AlertCircle, Bot, BookOpen, Check, Clock3, ExternalLink, FileText, Globe2, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, Share2, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -168,13 +168,13 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
     }
   }
 
-  function downloadLink() {
-    const href = URL.createObjectURL(new Blob([`Ask ${initialProjection.profile.displayName}'s Askme Agent\n${window.location.href}\n`], { type: "text/plain;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = href;
-    anchor.download = `${initialProjection.profile.displayName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-askme-agent.txt`;
-    anchor.click();
-    URL.revokeObjectURL(href);
+  async function shareLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setNotice({ tone: "success", message: t("public.share.copied") });
+    } catch {
+      setNotice({ tone: "error", message: t("public.share.copyBlocked") });
+    }
   }
 
   const initials = initialProjection.profile.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
@@ -196,7 +196,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
             <h1>{initialProjection.profile.displayName}</h1><span className="public-agent-label"><Globe2 size={13} /> {t("public.badge")}</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? t("public.bioFallback")}</p>
             <div className="public-candidate-facts"><span><i className="ready" /> {t("public.facts.status")} <strong>{t("status.ready")}</strong></span><span><Clock3 size={15} /> {t("public.facts.updated")} <strong>{new Date(initialProjection.agent.updatedAt).toLocaleDateString(locale === "zh-CN" ? "zh-CN" : "en-US", { timeZone: "UTC" })}</strong></span><span><BookOpen size={15} /> {t("public.facts.knowledge")} <strong>{initialProjection.stats.publicKnowledgeItems}</strong></span><span><FileText size={15} /> {t("public.facts.sources")} <strong>{initialProjection.stats.publicSources}</strong></span></div>
           </section>
-          <button className="download-agent-link" type="button" onClick={downloadLink}><Download size={19} /><span><strong>{t("public.download.title")}</strong><small>{t("public.download.copy")}</small></span></button>
+          <button className="share-agent-link" type="button" onClick={() => void shareLink()}><Share2 size={19} /><span><strong>{t("public.share.title")}</strong><small>{t("public.share.copy")}</small></span></button>
         </aside>
 
         <main className="public-agent-main" id="public-main" tabIndex={-1}>
