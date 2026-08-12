@@ -47,3 +47,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-007：复盘全量交付 Harness 并形成演进提案](docs/plans/PLAN-007.md)
 ---
+
+---
+ID: OBJ-003
+Objective: 验收并收口已从 AutoGo 迁移的 EVO-001 Harness 实现
+Status: 已完成
+Plans:
+- [x] [PLAN-008：对账 EVO-001 迁移实现并完成交付收口](docs/plans/PLAN-008.md)
+---

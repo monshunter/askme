@@ -3,6 +3,7 @@
 - `autogo-change-intake`
 - `autogo-instruction-resolve`
 - `autogo-work-continue`
+- `autogo-work-journal`
 - `autogo-investigate`
 - `autogo-spec-write`
 - `autogo-spec-review`

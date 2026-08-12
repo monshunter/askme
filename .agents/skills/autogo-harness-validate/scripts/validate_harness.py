@@ -32,14 +32,15 @@ EXPECTED_SKILLS = {
     "autogo-change-intake", "autogo-work-continue", "autogo-investigate", "autogo-spec-write", "autogo-spec-review",
     "autogo-solution-design", "autogo-design-review", "autogo-plan-write", "autogo-plan-review", "autogo-change-implement",
     "autogo-tdd", "autogo-change-review", "autogo-e2e-run", "autogo-env-manage", "autogo-deploy", "autogo-change-close",
-    "autogo-bug-report", "autogo-rally", "autogo-doc-index", "autogo-instruction-resolve", "autogo-session-review",
+    "autogo-work-journal", "autogo-bug-report", "autogo-rally", "autogo-doc-index", "autogo-instruction-resolve", "autogo-session-review",
     "autogo-harness-init", "autogo-harness-validate", "autogo-harness-evolve",
 }
 LIFECYCLE_SKILLS = {
     "autogo-harness-init", "autogo-change-intake", "autogo-work-continue", "autogo-investigate",
     "autogo-spec-write", "autogo-spec-review", "autogo-solution-design", "autogo-design-review",
     "autogo-plan-write", "autogo-plan-review", "autogo-change-implement", "autogo-tdd",
-    "autogo-change-review", "autogo-env-manage", "autogo-e2e-run", "autogo-deploy", "autogo-change-close",
+    "autogo-change-review", "autogo-env-manage", "autogo-e2e-run", "autogo-deploy", "autogo-session-review",
+    "autogo-work-journal", "autogo-change-close",
 }
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REQUIRED_DOC_WORKSPACES = {
@@ -57,6 +58,10 @@ ROOT_WORKFLOW_MARKERS = (
     "autogo-change-review",
     "Reconcile 到对应 owner",
     "autogo-deploy<br/>预检 / Human Gate / 部署后验证",
+    "autogo-session-review<br/>NO_EVOLUTION 或 EVO",
+    "autogo-work-journal<br/>Fast delivery",
+    "autogo-work-journal<br/>Commit 前恢复上下文",
+    "trace 检查 / 状态 / Commit",
     "autogo-change-close",
     "从最近仍然必要的 Plan Review",
     "第一条 Phase Item",
@@ -70,6 +75,17 @@ ROOT_WORKFLOW_MARKERS = (
     "自动选择同一 Objective 的下一未完成 Plan",
     "一个单一工程意图的原子 Commit",
     "Fast 不创建 Objective",
+    "Type | Boundary ID | Decision | Target | Reason",
+    "CREATE | UPDATE | REFERENCE | NOT_NEEDED",
+    "同类型每个 Boundary 最多一个 active owner",
+)
+DOCS_WORKFLOW_MARKERS = (
+    "Boundary ID",
+    "Plan 只拥有本次决策和变更",
+    "CREATE | UPDATE | REFERENCE | NOT_NEEDED",
+    "Type | Boundary ID | Decision | Target | Reason",
+    "同类型每个 Boundary 最多一个 active owner",
+    "不批量迁移",
 )
 SKILL_WORKFLOW_MARKERS = {
     "autogo-change-intake": (
@@ -85,17 +101,37 @@ SKILL_WORKFLOW_MARKERS = {
     "autogo-plan-review": (
         "才允许执行第一条 Item",
         "实质调整后必须重新审查",
+        "CREATE | UPDATE | REFERENCE | NOT_NEEDED",
+        "Boundary ID",
+        "默认使用 `UPDATE`",
     ),
+    "autogo-spec-write": ("Boundary ID", "Created by Plan", "REFERENCE", "同一个 `Boundary ID` 最多一份 active Spec"),
+    "autogo-spec-review": ("CREATE | UPDATE | REFERENCE | NOT_NEEDED", "active/superseded", "同类型 active 唯一性"),
+    "autogo-solution-design": ("CREATE | UPDATE | REFERENCE | NOT_NEEDED", "Boundary ID", "Plan 不成为长期 Design owner"),
+    "autogo-design-review": ("CREATE | UPDATE | REFERENCE | NOT_NEEDED", "active/superseded", "同类型 active 唯一性"),
     "autogo-change-implement": (
-        "Fast 未创建 Objective、Plan 或 Review",
+        "Fast 未创建 Objective、Plan、Review 或 Session Review",
         "Standard 的 Progress 与正式制品事实一致",
-        "Fast 默认不创建任何生命周期制品",
+        "Fast 与 Standard 的 Journal",
     ),
     "autogo-change-review": (
         "进入 Reconcile",
         "不因普通失败自动回滚",
         "standalone Review-only",
         "项目状态也完全只读",
+        "SCN-*",
+        "实际交互能力",
+        "显式工具约束",
+        "Spec/Design 决策矩阵",
+        "重复 active owner",
+    ),
+    "autogo-e2e-run": (
+        "前端功能验收",
+        "显式工具约束",
+        "不得静默替换",
+        "浏览器控制",
+        "桌面 UI 控制",
+        "同一 `SCN-*`",
     ),
     "autogo-work-continue": (
         "唯一事实 owner",
@@ -108,6 +144,21 @@ SKILL_WORKFLOW_MARKERS = {
         "Cancelled",
         "原子 Commit",
         "Fast 直接按根合同对账",
+        "validate_delivery_trace.py",
+        "--mode strict",
+        "Git 基线",
+        "superseded 替代链",
+    ),
+    "autogo-work-journal": (
+        "记录类型为 `delivery`、`handoff` 或 `cancel`",
+        "路由：Fast | Standard",
+        "Fast 不创建或要求 Objective、Plan、Review、Session Review 或 delivery trace",
+        "Session Review：NO_EVOLUTION",
+        "不回填 Commit hash",
+    ),
+    "autogo-session-review": (
+        "NO_EVOLUTION | OBSERVATION | CANDIDATE | PROPOSAL",
+        "每个 Standard Commit 前",
     ),
     "autogo-investigate": ("独立只读调查", "没有则交付发现"),
     "autogo-deploy": ("普通失败不自动回滚", "真实状态受损"),
@@ -226,14 +277,14 @@ def validate(root: Path) -> list[Issue]:
         f"{AUTOGO_DIR}/templates/component/component-agent-contract.md": ("## 1. 组件职责", "## 8. 完成标准"),
         f"{AUTOGO_DIR}/templates/documents/adr.md": ("## 背景", "## 决策", "## 影响"),
         f"{AUTOGO_DIR}/templates/documents/bug.md": ("## 现象与影响", "## 根因与促成因素", "## 验证证据"),
-        f"{AUTOGO_DIR}/templates/documents/design.md": ("## 上下文与目标", "## 方案与权衡", "## 验证计划"),
-        f"{AUTOGO_DIR}/templates/documents/evolution.md": ("## 证据与出现次数", "## 复杂度变化", "## 回滚"),
-        f"{AUTOGO_DIR}/templates/documents/journal.md": ("## 本次实际完成", "## 当前证据", "## 下一恢复点"),
+        f"{AUTOGO_DIR}/templates/documents/design.md": ("Boundary ID：", "Owner boundary：", "Status：active", "Created by Plan：", "## 上下文与目标", "## 方案与权衡", "## 验证计划"),
+        f"{AUTOGO_DIR}/templates/documents/evolution.md": ("Session Review 结果：`PROPOSAL`", "## 证据与出现次数", "## 复杂度变化", "## 回滚"),
+        f"{AUTOGO_DIR}/templates/documents/journal.md": ("记录类型：delivery", "路由：Standard", "Fast 使用相同公共章节", "Session Review：NO_EVOLUTION", "## 本次实际完成", "## 当前证据", "## 下一恢复点", "## 预期 Commit subject"),
         f"{AUTOGO_DIR}/templates/documents/operation.md": ("## 执行前检查", "## 恢复方案", "## 证据记录"),
         f"{AUTOGO_DIR}/templates/documents/plan.md": ("## 目标与范围", "## Phase 1：", "- [ ] 1.1 ", "## Phase 3："),
-        f"{AUTOGO_DIR}/templates/documents/review.md": ("## 审查范围", "## 结论", "## 必需的后续行动"),
-        f"{AUTOGO_DIR}/templates/documents/scenario.md": ("## 前置状态", "## 操作步骤", "## 预期结果"),
-        f"{AUTOGO_DIR}/templates/documents/spec.md": ("父 Plan：", "## 验收标准", "AC-001"),
+        f"{AUTOGO_DIR}/templates/documents/review.md": ("## 审查范围", "## 结论", "## Spec/Design decision matrix", "Type | Boundary ID | Decision | Target | Reason", "CREATE | UPDATE | REFERENCE | NOT_NEEDED", "## 必需的后续行动"),
+        f"{AUTOGO_DIR}/templates/documents/scenario.md": ("# SCN-001：", "关联验收：", "## 前置状态", "## 交互能力", "显式工具约束：", "## 操作步骤", "## 预期结果", "## 自动化入口", "UI：", "API/CLI：", "后台状态："),
+        f"{AUTOGO_DIR}/templates/documents/spec.md": ("Boundary ID：", "Owner boundary：", "Status：active", "Created by Plan：", "## 验收标准", "AC-001"),
         f"{AUTOGO_DIR}/templates/project/project-context.md": ("### 1. 项目使命与当前阶段", "### 7. 项目特有完成标准"),
     }
     for relative, markers in required_examples.items():
@@ -292,8 +343,13 @@ def validate(root: Path) -> list[Issue]:
         docs_instructions = docs / INSTRUCTIONS_FILE
         if not docs_instructions.is_file():
             issues.append(Issue("error", "DOCS_INSTRUCTIONS_MISSING", f"docs {INSTRUCTIONS_FILE} is missing", str(docs_instructions.relative_to(root))))
-        elif DOCS_BEGIN not in read(docs_instructions):
-            issues.append(Issue("error", "DOCS_BLOCK_MISSING", f"docs {INSTRUCTIONS_FILE} lacks the Harness docs contract block", str(docs_instructions.relative_to(root))))
+        else:
+            docs_instructions_text = read(docs_instructions)
+            if DOCS_BEGIN not in docs_instructions_text:
+                issues.append(Issue("error", "DOCS_BLOCK_MISSING", f"docs {INSTRUCTIONS_FILE} lacks the Harness docs contract block", str(docs_instructions.relative_to(root))))
+            for marker in DOCS_WORKFLOW_MARKERS:
+                if marker not in docs_instructions_text:
+                    issues.append(Issue("error", "DOCS_LIFECYCLE", f"docs lifecycle marker is missing: {marker}", str(docs_instructions.relative_to(root))))
         docs_readme = docs / "README.md"
         if not docs_readme.is_file():
             issues.append(Issue("error", "DOCS_README_MISSING", "docs README.md is missing", str(docs_readme.relative_to(root))))

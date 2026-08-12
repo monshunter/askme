@@ -25,15 +25,17 @@ description: "以新鲜上下文审查 Standard 变更的正确性、兼容性�
 2. 先阅读目标和验收，再审 Diff
 3. 检查所有 producer/consumer、接口、数据和状态链路
 4. 检查异常、并发、安全、资源和兼容性
-5. 检查测试是否真正覆盖当前 Spec、已完成 Phase Items 与回归风险
-6. 检查无关改动、过度设计和文档漂移
-7. 只记录发现；`FAIL` 显式返回对应 owner 进入 Reconcile，修复和验证后重新 Review，不因普通失败自动回滚
-8. Standard 将 Verdict、缺失 Evidence 和下一路由写入 Review；standalone Review-only 只报告。Plan 只更新任务是否完成，PASS 不自动勾选 Progress 中的上层 Plan
+5. 检查 Plan Review 的 Spec/Design 决策矩阵、Boundary 独立性、Target 长期 owner 和实际 Diff 是否一致；确认没有同类型重复 active owner，`REFERENCE/NOT_NEEDED` 没有被写入，不能只改标签绕过错误边界
+6. 检查测试是否真正覆盖当前 Spec、已完成 Phase Items 与回归风险；真实浏览器、跨组件 smoke、from-zero/restart 或部署后 E2E 必须在运行前链接稳定 `SCN-*`，并检查实际交互能力、选择原因和显式工具约束是否与 Scenario 一致
+7. 检查无关改动、过度设计、Scenario/Operation 混淆和文档漂移
+8. 只记录发现；缺少决策矩阵、稳定身份、Scenario 或其他关闭不变量时 `FAIL` 并返回对应 owner进入 Reconcile，修复和验证后重新 Review，不因普通失败自动回滚
+9. Standard 将 Verdict、缺失 Evidence 和下一路由写入 Review；standalone Review-only 只报告。Plan 只更新任务是否完成，PASS 不自动勾选 Progress 中的上层 Plan
 
 ## 验证与完成
 - 每条发现有位置、证据、影响和建议
 - 结论不依赖作者自述
-- Review 覆盖当前 Spec 的全部已完成 Phase Items 和验收项
+- Review 覆盖决策矩阵中全部 Spec/Design Target、已完成 Phase Items 和验收项
+- 真实 UI E2E 没有用低层测试或静态截图替代，Evidence 同时覆盖可见结果、console/page/network 和 API/后台边界
 - 跨组件、公共契约、数据、安全或生产风险优先使用新上下文或独立 Reviewer
 
 ## 失败、重试与幂等

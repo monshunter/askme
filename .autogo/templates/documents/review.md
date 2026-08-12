@@ -17,6 +17,15 @@
 
 有条件通过。模板正文方向符合目标，但在安装验收完成前不能宣布交付闭环。
 
+## Spec/Design decision matrix
+
+| Type | Boundary ID | Decision | Target | Reason |
+|---|---|---|---|---|
+| Spec | `harness-reference-documents` | `UPDATE` | [SPEC-001](../specs/SPEC-001.md) | 现有行为 owner 仍正确，本次扩展安装验收语义 |
+| Design | `harness-reference-documents` | `REFERENCE` | [DESIGN-001](../architecture/DESIGN-001.md) | 现有资源组织和分发设计已完整支撑本次变更 |
+
+四态只使用 `CREATE | UPDATE | REFERENCE | NOT_NEEDED`；`UPDATE` 为默认，只有新的独立边界才使用 `CREATE`。
+
 ## 发现
 
 发现按已满足项和仍需修正项分组，避免把未验证内容混入通过结论。
@@ -25,7 +34,7 @@
 
 - 所有文档样例使用中文标题和说明。
 - 样例包含具体事实、取舍、失败处理和验证方式。
-- Plan 与 Spec 通过正文链接和表格保持父子关系。
+- Plan Review 与长期 Spec/Design 通过决策矩阵保持可追溯关系。
 
 ### 需要修正
 

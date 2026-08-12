@@ -15,7 +15,7 @@ description: "在批准范围内实施代码、配置、迁移、测试和必要
 - 实际变更说明、偏离 Plan 的原因和新发现
 - 可复核 Diff 与局部验证 Evidence
 - Standard 中仅在任务实际完成后更新的 Spec 验收项与 Phase Item；Fast 不创建或更新 Progress/Plan
-- Standard 必要时写入 Spec、Journal 或 Agent Todo 的实现结果；Fast 默认不创建任何生命周期制品
+- Standard 必要时写入 Spec 或 Agent Todo 的实现结果；Fast 与 Standard 的 Journal 都由 autogo-work-journal 在 Commit 前独立拥有
 
 ## 副作用与 Human Gate
 可修改项目文件和执行当前风险允许的命令；生产、删除、权限和不可逆动作受 Human Gate。
@@ -29,13 +29,13 @@ description: "在批准范围内实施代码、配置、迁移、测试和必要
 6. 同步更新契约、Migration、consumer、测试和文档
 7. 运行与真实故障模式相称的验证；Standard 任务实际完成后才勾选对应 Phase Item，并按 Spec 规则更新相关 AC
 8. 实现过程不写入 Plan；必要记录放入对应事实 owner，Progress 只在上层 Plan 开始或完成时更新
-9. Fast 完成后回根合同对账；Standard 当前交付增量完成后进入 autogo-change-review，Review `FAIL` 时修复并重审
+9. Fast 完成后回根合同对账并在 Commit 前调用 autogo-work-journal；Standard 当前交付增量完成后进入 autogo-change-review，Review `FAIL` 时修复并重审
 
 ## 验证与完成
 - Diff 与目标一一对应且无无关改动
 - 受影响测试通过或失败被准确记录
 - Standard 的已勾选 Phase Items 都与当前实际结果一致，未完成项保持未勾选
-- Fast 未创建 Objective、Plan 或 Review；Standard 的 Progress 与正式制品事实一致
+- Fast 未创建 Objective、Plan、Review 或 Session Review，且下一步已返回根合同进入 delivery Journal 收口；Standard 的 Progress 与正式制品事实一致
 - 没有把未完成工作写成完成
 - 未越过生产、破坏性、权限、Secret、计费或不可逆副作用的 Human Gate
 

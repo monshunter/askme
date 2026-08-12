@@ -27,7 +27,7 @@ description: "从 Git、代码、测试和持久制品恢复真实状态并继�
 3. 读取 Progress、正式 Plan 和全部相关事实 owner；重新检查代码、测试、环境与外部依赖
 4. 以当前事实纠正过期记录；缺失或损坏时重建最小真实 Objective / Plan 状态，不重复创建已有制品或副作用
 5. 若处于 Waiting，先检查唯一事实 owner 中的精确恢复条件；条件未满足时保持 Objective `正在处理`，不勾选 Plan
-6. 为当前未完成 Plan 确认最近一次 Plan Review；新建或实质调整后尚未通过时先路由 autogo-plan-review
+6. 为当前未完成 Plan 确认最近一次 Plan Review 及 Spec/Design 决策矩阵；恢复前重新检查 Target 身份、Git Diff 和 active 唯一性，新建或实质调整后尚未通过时先路由 autogo-plan-review
 7. 选择下一条未勾选 Phase Item 或 Reconcile 修复项继续；任务实际完成且 Evidence 成立后才勾选
 8. Plan 通过 Change Review 并满足关闭条件后调用 autogo-change-close；存在下一 Plan 时立即继续
 9. 直到 Objective Completed、用户 Cancelled、Waiting、用户明确停止或继续会超出授权范围才退出

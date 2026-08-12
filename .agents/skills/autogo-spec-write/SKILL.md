@@ -11,9 +11,10 @@ description: "创建或更新可验收的行为规范、边界和非目标；在
 - 用户目标、业务约束、现有行为和相关事实源
 - autogo-change-intake 结果和调查证据
 - 既有 Spec、契约、术语和非目标
+- 当前 Plan Review 中所有 Spec `CREATE | UPDATE | REFERENCE | NOT_NEEDED` 决策行
 
 ## 输出与持久制品
-- 在正文链接唯一父 Plan 的新建或更新 Spec
+- `CREATE` 时新建、`UPDATE` 时修改的长期 Spec owner，或 `REFERENCE/NOT_NEEDED` 的无写入结论
 - 明确的范围、非目标、术语、行为、异常和验收标准
 - 带稳定 AC ID 的验收 Checklist 和 Evidence 占位
 - 假设、开放问题和需用户决定项
@@ -24,17 +25,19 @@ description: "创建或更新可验收的行为规范、边界和非目标；在
 
 ## 执行步骤
 1. 从 Progress 确认当前上层 Plan，再读取对应正式 Plan；无上层 Plan 时返回 autogo-change-intake，不创建孤立 Spec
-2. 搜索并复用相关 Phase 已链接的 Spec，避免重复事实源
-3. 使用已初始化的 `docs/specs/`，保留项目自有 README/INDEX 内容并更新索引
-4. 在正文链接唯一父 Plan，从目标、用户、场景、边界和非目标开始
-5. 定义正常流程、异常流程、数据/权限/兼容性约束
-6. 为每条验收标准分配稳定 AC ID，并初始化未勾选的验收 Checklist；未获得 Evidence 前不得打勾
-7. 标记事实、假设和开放决策；不在 Spec 中展开低层实现
-8. 在对应 Plan Phase 下补充简短 Spec 链接并更新索引，再路由 autogo-spec-review；不把 Spec 状态表写入 Plan 或 Progress
+2. 读取当前 Plan Review 的 Spec 决策行；`NOT_NEEDED` 不创建、修改或引用 Spec，`REFERENCE` 只建立 Plan/Review 引用且不修改 Target，只有 `CREATE/UPDATE` 继续写入
+3. `CREATE` 只按已审查的新边界 Target 新建文档；`UPDATE` 修改既有 active owner，无身份旧文档也以 `UPDATE` 完成首次收编，不为新 Plan 复制 Spec
+4. 使用已初始化的 `docs/specs/` 或项目既有权威路径，保留项目自有 README/INDEX 内容并更新索引
+5. 写入稳定 `Boundary ID`、一句话 `Owner boundary` 和 `Status: active | superseded`；Plan 只作为 `Created by Plan` 或修改历史来源，不拥有长期 Spec
+6. 定义正常流程、异常流程、数据/权限/兼容性约束
+7. 为每条验收标准分配稳定 AC ID，并初始化未勾选的验收 Checklist；未获得 Evidence 前不得打勾
+8. 标记事实、假设和开放决策；不在 Spec 中展开低层实现
+9. 在对应 Plan Phase 下补充简短 Spec 链接并更新索引，再路由 autogo-spec-review；不把 Spec 状态表写入 Plan 或 Progress
 
 ## 验证与完成
 - 每个需求有可验证验收标准
-- Spec 只属于一个正式 Plan，且 Progress 不包含该 Spec
+- 同一个 `Boundary ID` 最多一份 active Spec，且 Progress 不包含该 Spec
+- 四态与 Plan Review 一致；`REFERENCE/NOT_NEEDED` 没有修改低价值 Spec
 - 不与其他权威契约冲突；冲突已显式对账
 - 范围和非目标足以阻止隐式扩张
 - 未为 Fast 或已有契约内的简单局部变更创建无价值 Spec

@@ -2,6 +2,14 @@
 
 > 这是完整设计文档样例。真实设计应保留相同的问题覆盖面，但内容必须来自当前项目证据。
 
+Boundary ID：`harness-reference-documents`
+
+Owner boundary：Harness 参考文档的资源组织、分发职责和失败恢复方案
+
+Status：active
+
+Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLAN-001.md)
+
 ## 上下文与目标
 
 `.autogo/templates/` 的直接使用者是 Agent。目标是让 Agent 只阅读一份文件，就能理解该类文档的内容深度、边界和证据表达方式。

@@ -8,6 +8,7 @@ description: "只读审查系统设计的边界、契约、状态、风险和复
 ## 输入与发现
 - Progress 中当前 Objective 和 Plan；待审 Design 与内部 Spec 从正式制品读取
 - Spec、Design、ADR、现有系统事实和风险约束
+- Plan Review 中对应 Design 的 `CREATE | UPDATE | REFERENCE | NOT_NEEDED` 决策行
 
 ## 输出与持久制品
 - PASS / PASS_WITH_NOTES / FAIL / BLOCKED
@@ -19,9 +20,9 @@ description: "只读审查系统设计的边界、契约、状态、风险和复
 默认只读被审 Design；只可写 Review 制品和索引。
 
 ## 执行步骤
-1. 从 Progress 确认当前上层 Plan，再从正式制品绑定本次 Review 对象
-2. 从 Spec 验收和系统不变量反向审查
-3. 检查组件职责、依赖方向和事实源
+1. 从 Progress 确认当前上层 Plan，再从决策矩阵绑定 Design Target；只有 `CREATE/UPDATE` 产生内容审查，`REFERENCE/NOT_NEEDED` 不修改文档
+2. 从 Spec 验收和系统不变量反向审查；`CREATE` 检查独立架构边界 Evidence，`UPDATE` 检查现有 owner 或旧文档收编仍正确
+3. 检查 `Boundary ID`、`Owner boundary`、active/superseded 状态、替代链接和同类型 active 唯一性，再检查组件职责、依赖方向和事实源
 4. 检查 API/事件/数据兼容性和迁移
 5. 检查失败恢复、观测、安全、成本和回滚
 6. 寻找更简单的生态方案或可删除抽象

@@ -2,6 +2,8 @@
 
 > 这是 Harness 演进提案样例。它展示提案应如何引用事实、说明风险和验证回放，不代表自动获得实施授权。
 
+Session Review 结果：`PROPOSAL`
+
 ## 证据与出现次数
 
 - 16 份模板中存在 YAML Front Matter 或占位变量。

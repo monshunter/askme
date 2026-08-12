@@ -7,21 +7,22 @@ description: "只读审查 Spec 的一致性、完备性和可测试性；在 Sp
 以只读方式审查 Spec 的一致性、完备性、可测试性、简洁性和事实依据。
 ## 输入与发现
 - Progress 中的 Objective 和 Plan；待审 Spec、上游目标、现有契约和项目事实从正式制品读取
+- Plan Review 中对应 Spec 的 `CREATE | UPDATE | REFERENCE | NOT_NEEDED` 决策行
 - 相关组件项目指令和实际风险信号
 
 ## 输出与持久制品
 - PASS / PASS_WITH_NOTES / FAIL / BLOCKED
 - 按严重度排序的发现、证据、影响和修复建议
-- 绑定父 Plan/子 Spec 的 Review 结论、未解决决策点和建议下一路由
+- 绑定 Plan Review 决策行与 Spec Target 的 Review 结论、未解决决策点和建议下一路由
 - 已写入 Review 制品的阻塞或下一步；Review PASS 不等于该 Spec 已交付完成
 
 ## 副作用与 Human Gate
 默认只读被审 Spec；只可写 Review 记录和索引。
 
 ## 执行步骤
-1. 从 Progress 确认当前上层 Plan，再从对应 Phase 的链接确认待审 Spec 和版本
-2. 确认审查范围和权威事实源
-3. 逐项检查目标、边界、术语、行为、异常、兼容性和验收
+1. 从 Progress 确认当前上层 Plan，再从对应 Phase 和决策矩阵确认待审 Spec Target 与版本；只有 `CREATE/UPDATE` 产生内容审查，`REFERENCE/NOT_NEEDED` 不修改文档
+2. 确认审查范围和权威事实源；`CREATE` 检查独立边界 Evidence，`UPDATE` 检查现有 owner 或旧文档收编仍正确
+3. 检查 `Boundary ID`、`Owner boundary`、active/superseded 状态、替代链接和同类型 active 唯一性，再逐项检查目标、边界、术语、行为、异常、兼容性和验收
 4. 检查是否混入不必要实现细节或过度设计
 5. 检查每条验收标准有稳定 AC ID 且能被独立验证
 6. 只记录发现，不在审查中隐式修改 Spec
@@ -30,7 +31,7 @@ description: "只读审查 Spec 的一致性、完备性和可测试性；在 Sp
 ## 验证与完成
 - 每条 FAIL 有具体证据和可执行修复方向
 - 结论与发现严重度一致
-- Review、Spec 和正式 Plan 指向同一审查对象
+- Review、决策矩阵、Spec Target 和正式 Plan 指向同一审查对象
 - 没有因作者身份而降低审查标准
 
 ## 失败、重试与幂等

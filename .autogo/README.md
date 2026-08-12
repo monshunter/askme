@@ -20,6 +20,7 @@
 - Claude Code Skills：`.claude/skills/autogo-<name>/`；
 - 全局变更循环：项目根 Agent 指令文件的 Fast / Standard、内层工程循环与精简 Standard Skill graph；
 - Skill 发现与触发：只读取 frontmatter `name` 和 `description`；正文只在命中后加载并负责执行合同，根 graph 只维护固定门禁、能力分组和失败回流，不复制各 Skill 的细分触发条件；
+- 真实 UI E2E：`autogo-e2e-run` 根据场景和显式工具约束选择当前 Agent 的浏览器或桌面 UI 控制能力；能力、权限、认证或环境不足时 fail closed，不自动安装插件；
 - 完整参考样例：`.autogo/templates/`；
 - 安装清单：`.autogo/manifests/`；
 - Skill 内包资源：对应 Skill 目录内的 `scripts/`、`references/`、`examples/` 或 `assets/`。
