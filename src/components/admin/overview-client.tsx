@@ -4,7 +4,6 @@ import { Bot, ExternalLink, FileSearch, MessageSquareText, Quote, ShieldAlert, T
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { adminRequest } from "./admin-api";
@@ -56,7 +55,7 @@ export function AdminOverviewClient({ initialOverview, adminName, locale }: { in
   }
 
   return <div className="admin-page admin-overview-page">
-    <section className="admin-hero"><p className="page-kicker">{t("admin.overview.kicker")}</p><h1>{t("admin.overview.title")} <span className="title-seal" aria-hidden="true">问候</span></h1><p>{t("admin.overview.copy", { name: adminName })}</p></section>
+    <section className="admin-hero"><p className="page-kicker">{t("admin.overview.kicker")}</p><h1>{t("admin.overview.title")} <span className="title-seal" aria-hidden="true">职问</span></h1><p>{t("admin.overview.copy", { name: adminName })}</p></section>
     {feedback ? <div className="inline-feedback error" role="alert">{feedback}</div> : null}
     <section className="admin-metric-grid" aria-label={t("admin.metrics.label")}>{overview.metrics.map((metric, index) => { const Icon = metricIcons[index] ?? ShieldAlert; return <article className="admin-metric-card" key={metric.key}><span><Icon size={29} /></span><div><small>{metricLabel(metric.key, locale)}</small><strong>{metric.value.toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US")}</strong><em className={metric.change === null ? "neutral" : metric.change >= 0 ? "positive" : "negative"}>{metric.change === null ? t("admin.metric.noBaseline") : <>{metric.change >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{t("admin.metric.change", { change: Math.abs(metric.change) })}</>}</em></div></article>; })}</section>
     <div className="admin-overview-grid">
@@ -65,6 +64,6 @@ export function AdminOverviewClient({ initialOverview, adminName, locale }: { in
       <section className="admin-card admin-growth-card"><header><h2>{t("admin.growth.title")}</h2><label><span className="sr-only">{t("admin.range.label")}</span><select value={overview.range} disabled={loading} onChange={(event) => void changeRange(event.target.value as Overview["range"])}><option value="7d">{t("admin.range.7d")}</option><option value="30d">{t("admin.range.30d")}</option><option value="90d">{t("admin.range.90d")}</option></select></label></header><div className="admin-series-tabs">{trendKeys.map((key) => <button type="button" key={key} className={series === key ? "active" : ""} onClick={() => setSeries(key)}>{trendLabel(locale, key)}</button>)}</div>{overview.hasTrendData ? <AdminTrendChart points={overview.trend} series={series} locale={locale} /> : <div className="admin-empty chart-empty"><TrendingUp size={28} /><p>{t("admin.growth.empty")}</p></div>}</section>
       <section className="admin-card admin-quick-card"><header><h2>{t("admin.quick.title")}</h2></header><Link href="/admin/reviews"><FileSearch size={19} /><span><strong>{t("admin.quick.reviewTitle")}</strong><small>{t("admin.quick.reviewCopy", { count: overview.reviewQueue.length })}</small></span></Link><Link href="/admin/agents"><Bot size={19} /><span><strong>{t("admin.quick.agentsTitle")}</strong><small>{t("admin.quick.agentsCopy")}</small></span></Link><Link href="/admin/settings#invite"><UserRoundPlus size={19} /><span><strong>{t("admin.quick.inviteTitle")}</strong><small>{t("admin.quick.inviteCopy")}</small></span></Link><Link href="/admin/settings"><ShieldAlert size={19} /><span><strong>{t("admin.quick.settingsTitle")}</strong><small>{t("admin.quick.settingsCopy")}</small></span></Link></section>
     </div>
-    <footer className="admin-footer"><span>{t("shared.footerRights")}</span><span>{t("admin.footer.boundary")}</span><LanguageSwitcher locale={locale} compact /></footer>
+    <footer className="admin-footer"><span>{t("shared.footerRights")}</span><span>{t("admin.footer.boundary")}</span></footer>
   </div>;
 }

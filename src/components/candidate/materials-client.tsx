@@ -4,7 +4,6 @@ import { AlertCircle, ArrowRight, BookOpen, Check, FileArchive, FileCode2, FileT
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { useModalFocus } from "@/components/use-modal-focus";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
@@ -188,7 +187,7 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
     <div className="candidate-page materials-page">
       <section className="page-hero compact-hero">
         <p className="page-kicker">{t("materials.kicker")}</p>
-        <h1>{t("materials.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <h1>{t("materials.title")} <span className="title-seal" aria-hidden="true">职问</span></h1>
         <p>{t("materials.copy1")}<br />{t("materials.copy2")}</p>
       </section>
 
@@ -318,7 +317,7 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
           </section>
         </div>
       ) : null}
-      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

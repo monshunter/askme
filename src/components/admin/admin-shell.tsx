@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { useSearchShortcut } from "@/components/use-search-shortcut";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
@@ -35,7 +34,7 @@ export function AdminShell({ user, locale, children }: { user: { displayName: st
   return <div className="admin-app">
     <a className="skip-link" href="#main-content">{t("shared.skip")}</a>
     <aside className="admin-sidebar">
-      <Link className="admin-wordmark" href="/admin" aria-label={t("admin.home")}>Askme <span aria-hidden="true">问候</span></Link>
+      <Link className="admin-wordmark" href="/admin" aria-label={t("admin.home")}>Askme <span aria-hidden="true">职问</span></Link>
       <AdminNavigation pathname={pathname} locale={locale} />
       <div className="admin-sidebar-art" aria-hidden="true"><span>知<br />行<br />合<br />一</span></div>
       <Link className="admin-invite-card" href="/admin/settings#invite"><UserRoundPlus size={21} /><span><strong>{t("admin.invite.title")}</strong><small>{t("admin.invite.copy")}</small></span></Link>
@@ -44,7 +43,7 @@ export function AdminShell({ user, locale, children }: { user: { displayName: st
       <header className="admin-topbar">
         <details className="admin-mobile-menu" open={mobileNavOpen} onToggle={(event) => setMobileNavOpen(event.currentTarget.open)}>
           <summary aria-label={t("admin.nav.open")}><Menu size={22} /></summary>
-          <div className="admin-mobile-popover"><Link className="admin-wordmark compact" href="/admin" onClick={() => setMobileNavOpen(false)}>Askme <span aria-hidden="true">问候</span></Link><AdminNavigation pathname={pathname} locale={locale} mobile onNavigate={() => setMobileNavOpen(false)} /></div>
+          <div className="admin-mobile-popover"><Link className="admin-wordmark compact" href="/admin" onClick={() => setMobileNavOpen(false)}>Askme <span aria-hidden="true">职问</span></Link><AdminNavigation pathname={pathname} locale={locale} mobile onNavigate={() => setMobileNavOpen(false)} /></div>
         </details>
         <form className="admin-global-search" action="/admin/search" method="get" role="search"><Search size={20} /><label className="sr-only" htmlFor="admin-global-search">{t("admin.search.label")}</label><input ref={searchRef} id="admin-global-search" name="q" minLength={2} maxLength={120} placeholder={t("admin.search.placeholder")} /><kbd>⌘ K</kbd></form>
         <div className="admin-topbar-actions">
@@ -54,7 +53,7 @@ export function AdminShell({ user, locale, children }: { user: { displayName: st
             {/* Admin avatar URLs are user data and may not belong to a configured Next image host. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={user.avatarUrl} alt="" />
-          </> : <span>{initials}</span>}<i><strong>{user.displayName}</strong><small>{t("shared.role.admin")}</small></i><ChevronDown size={16} /></summary><div><p>{t("admin.profile.authenticated")}</p><LanguageSwitcher locale={locale} /><form action="/api/auth/logout" method="post"><button type="submit">{t("admin.signOut")}</button></form></div></details>
+          </> : <span>{initials}</span>}<i><strong>{user.displayName}</strong><small>{t("shared.role.admin")}</small></i><ChevronDown size={16} /></summary><div><p>{t("admin.profile.authenticated")}</p><form action="/api/auth/logout" method="post"><button type="submit">{t("admin.signOut")}</button></form></div></details>
         </div>
       </header>
       <main className="admin-main" id="main-content" tabIndex={-1}>{children}</main>

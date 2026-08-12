@@ -1,7 +1,6 @@
 import { ArrowRight, BookOpen, Bot, Check, CircleAlert, FileText, MessageSquareText, Quote, ShieldCheck, UploadCloud } from "lucide-react";
 import Link from "next/link";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 import { getRequestLocale } from "@/i18n/server";
 import { requirePageUser } from "@/server/auth/current";
@@ -51,7 +50,7 @@ export default async function WorkspacePage() {
     <div className="candidate-page dashboard-page">
       <section className="page-hero dashboard-hero">
         <p className="page-kicker">{t("dashboard.kicker")}</p>
-        <h1>{t("dashboard.heroLine1")}<br /><em>{t("dashboard.heroLine2")}</em> <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <h1>{t("dashboard.heroLine1")}<br /><em>{t("dashboard.heroLine2")}</em> <span className="title-seal" aria-hidden="true">职问</span></h1>
         <p>{t("dashboard.heroCopy1")}<br />{t("dashboard.heroCopy2")}</p>
       </section>
 
@@ -116,7 +115,7 @@ export default async function WorkspacePage() {
           <p className="calligraphy-line" aria-hidden="true">其 料 实 料　自 信 应 答 <span>问</span></p>
         </section>
       </div>
-      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

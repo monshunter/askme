@@ -126,15 +126,3 @@ export async function requirePublicAgentContext(slugInput: string) {
   if (!context) throw new AppError("PUBLIC_AGENT_UNAVAILABLE", "This public Agent is unavailable.", 404);
   return context;
 }
-
-export async function loadCandidatePublicPreview(ownerId: string) {
-  const publication = await getPool().query<PublicationContext>(
-    `SELECT id AS "publicationId",owner_id AS "ownerId",slug,status,published_at AS "publishedAt",updated_at AS "updatedAt"
-     FROM publications WHERE owner_id=$1 AND status IN ('draft','published','paused')
-     ORDER BY created_at DESC,id DESC LIMIT 1`,
-    [ownerId],
-  );
-  const context = publication.rows[0];
-  if (!context) throw new AppError("PUBLICATION_LINK_REQUIRED", "Generate a share link before opening the public preview.", 409);
-  return projectPublicAgent(context);
-}

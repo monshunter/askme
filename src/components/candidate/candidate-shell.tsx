@@ -1,11 +1,10 @@
 "use client";
 
-import { Bell, BookOpen, Bot, ChevronDown, Globe2, House, Menu, Monitor, Plus, Search, ShieldCheck, UploadCloud } from "lucide-react";
+import { Bell, BookOpen, ChevronDown, House, Menu, Monitor, Search, ShieldCheck, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { useSearchShortcut } from "@/components/use-search-shortcut";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
@@ -21,7 +20,6 @@ const navigation = [
   { href: "/workspace/knowledge", labelKey: "candidate.nav.knowledge" as TranslationKey, icon: BookOpen },
   { href: "/workspace/privacy", labelKey: "candidate.nav.privacy" as TranslationKey, icon: ShieldCheck },
   { href: "/workspace/agent", labelKey: "candidate.nav.agent" as TranslationKey, icon: Monitor },
-  { href: "/workspace/publish", labelKey: "candidate.nav.publish" as TranslationKey, icon: Globe2 },
 ];
 
 function Navigation({ pathname, locale, mobile = false, onNavigate }: { pathname: string; locale: Locale; mobile?: boolean; onNavigate?: () => void }) {
@@ -58,15 +56,10 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
       <a className="skip-link" href="#main-content">{t("shared.skip")}</a>
       <aside className="candidate-sidebar">
         <Link className="candidate-wordmark" href="/workspace" aria-label={t("candidate.home")}>
-          Askme <span aria-hidden="true">问候</span>
+          Askme <span aria-hidden="true">职问</span>
         </Link>
         <Navigation pathname={pathname} locale={locale} />
         <div className="sidebar-art" aria-hidden="true"><span>知<br />行<br />合<br />一</span></div>
-        <Link className="invite-card" href="/workspace/publish">
-          <span className="round-icon"><Globe2 size={22} /></span>
-          <span><strong>{t("candidate.invite.title")}</strong><small>{t("candidate.invite.copy")}</small></span>
-          <ChevronDown className="side-chevron" size={17} />
-        </Link>
       </aside>
 
       <div className="candidate-stage">
@@ -74,7 +67,7 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
           <details className="mobile-nav-menu" open={mobileNavOpen} onToggle={(event) => setMobileNavOpen(event.currentTarget.open)}>
             <summary aria-label={t("candidate.nav.open")}><Menu size={22} /></summary>
             <div className="mobile-nav-popover">
-              <Link className="candidate-wordmark compact" href="/workspace" onClick={() => setMobileNavOpen(false)}>Askme <span aria-hidden="true">问候</span></Link>
+              <Link className="candidate-wordmark compact" href="/workspace" onClick={() => setMobileNavOpen(false)}>Askme <span aria-hidden="true">职问</span></Link>
               <Navigation pathname={pathname} locale={locale} mobile onNavigate={() => setMobileNavOpen(false)} />
             </div>
           </details>
@@ -85,14 +78,6 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
             <kbd>⌘ K</kbd>
           </form>
           <div className="topbar-actions">
-            <details className="quick-actions">
-              <summary><Plus size={19} /> {t("candidate.quick.title")} <ChevronDown size={16} /></summary>
-              <div className="quick-actions-menu">
-                <Link href="/workspace/materials"><UploadCloud size={17} /> {t("candidate.quick.upload")}</Link>
-                <Link href="/workspace/knowledge"><BookOpen size={17} /> {t("candidate.quick.knowledge")}</Link>
-                <Link href="/workspace/agent"><Bot size={17} /> {t("candidate.quick.preview")}</Link>
-              </div>
-            </details>
             <button className="icon-button notification-button" type="button" aria-label={t("candidate.notifications")} title={t("candidate.notifications.empty")}>
               <Bell size={22} /><span aria-hidden="true" />
             </button>
@@ -106,7 +91,6 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
               </summary>
               <div className="profile-popover">
                 <p>{user.headline ?? t("candidate.profile.fallback")}</p>
-                <LanguageSwitcher locale={locale} />
                 <form action="/api/auth/logout" method="post"><button type="submit">{t("candidate.signOut")}</button></form>
               </div>
             </details>

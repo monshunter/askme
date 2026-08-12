@@ -5,7 +5,6 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiClientError, requestApi } from "@/components/candidate/api-client";
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale } from "@/i18n/core";
 
 type Citation = { chunkId: string; rank: number; excerpt: string; materialId: string; materialTitle: string; materialKind: string; externalUrl: string | null };
@@ -180,12 +179,12 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
 
   const initials = initialProjection.profile.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   if (agentUnavailable) {
-    return <main className="public-unavailable"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><section><span><AlertCircle size={34} /></span><h1>{t("public.unavailable.title")}</h1><p>{t("public.unavailable.changed")}</p><Link href="/">{t("public.return")}</Link></section></main>;
+    return <main className="public-unavailable"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">职问</span></Link><section><span><AlertCircle size={34} /></span><h1>{t("public.unavailable.title")}</h1><p>{t("public.unavailable.changed")}</p><Link href="/">{t("public.return")}</Link></section></main>;
   }
   return (
     <div className="public-agent-page">
       <a className="skip-link" href="#public-main">{t("shared.skip")}</a>
-      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">问候</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>{t("public.trust.title")}</strong><small>{t("public.trust.copy")}</small></span></div></header>
+      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">职问</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>{t("public.trust.title")}</strong><small>{t("public.trust.copy")}</small></span></div></header>
       <div className="public-agent-layout">
         <aside className="public-candidate-sidebar">
           <section className="public-candidate-card">
@@ -201,7 +200,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
         </aside>
 
         <main className="public-agent-main" id="public-main" tabIndex={-1}>
-          <section className="public-agent-hero"><p className="page-kicker">{t("public.hero.kicker")}</p><h1>{t("public.hero.title")} <span className="title-seal" aria-hidden="true">问候</span></h1><p>{t("public.hero.copy", { name: initialProjection.profile.displayName })}</p></section>
+          <section className="public-agent-hero"><p className="page-kicker">{t("public.hero.kicker")}</p><h1>{t("public.hero.title")} <span className="title-seal" aria-hidden="true">职问</span></h1><p>{t("public.hero.copy", { name: initialProjection.profile.displayName })}</p></section>
           {notice ? <div className={`inline-feedback ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>{notice.tone === "error" ? <AlertCircle size={18} /> : notice.tone === "success" ? <Check size={18} /> : <LoaderCircle size={18} />}{notice.message}{retryQuestion ? <button className="inline-retry" type="button" disabled={sending} onClick={() => void sendQuestion(retryQuestion)}><RefreshCw size={15} /> {t("public.retry")}</button> : null}<button type="button" onClick={() => setNotice(null)} aria-label={t("shared.dismiss")}><X size={16} /></button></div> : null}
 
           <div className="public-chat-shell">
@@ -218,7 +217,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
           </div>
         </main>
       </div>
-      <footer className="public-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <footer className="public-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

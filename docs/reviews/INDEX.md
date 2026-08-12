@@ -34,4 +34,15 @@
 | REVIEW-029 | REVIEW-029：PLAN-008 Plan Review | [REVIEW-029.md](REVIEW-029.md) |
 | REVIEW-030 | REVIEW-030：PLAN-008 Change Review | [REVIEW-030.md](REVIEW-030.md) |
 | REVIEW-031 | REVIEW-031：PLAN-008 delivery trace Reconcile 后 Change Review | [REVIEW-031.md](REVIEW-031.md) |
+| REVIEW-032 | REVIEW-032：PLAN-009 Plan Review | [REVIEW-032.md](REVIEW-032.md) |
+| REVIEW-033 | REVIEW-033：PLAN-009 Spec Review | [REVIEW-033.md](REVIEW-033.md) |
+| REVIEW-034 | REVIEW-034：PLAN-009 Design Review | [REVIEW-034.md](REVIEW-034.md) |
+| REVIEW-035 | REVIEW-035：PLAN-009 范围调整 Plan Review | [REVIEW-035.md](REVIEW-035.md) |
+| REVIEW-036 | REVIEW-036：全局语言入口 Spec Review | [REVIEW-036.md](REVIEW-036.md) |
+| REVIEW-037 | REVIEW-037：全局语言入口 Design Review | [REVIEW-037.md](REVIEW-037.md) |
+| REVIEW-038 | REVIEW-038：PLAN-009 中文品牌范围调整 Plan Review | [REVIEW-038.md](REVIEW-038.md) |
+| REVIEW-039 | REVIEW-039：Askme 中文品牌 Spec Review | [REVIEW-039.md](REVIEW-039.md) |
+| REVIEW-040 | REVIEW-040：Askme 中文品牌 Design Review | [REVIEW-040.md](REVIEW-040.md) |
+| REVIEW-041 | REVIEW-041：PLAN-009 Change Review（初审） | [REVIEW-041.md](REVIEW-041.md) |
+| REVIEW-042 | REVIEW-042：PLAN-009 专用预览后端 Reconcile 后 Change Review | [REVIEW-042.md](REVIEW-042.md) |
 <!-- AGENT-HARNESS:END INDEX -->

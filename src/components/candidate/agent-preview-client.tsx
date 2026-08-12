@@ -22,10 +22,10 @@ import {
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
+import { AgentPublicationControls, type PublicationOverview } from "./agent-publication-controls";
 
 type Visibility = "private" | "agent_only" | "citation_allowed" | "public_preview";
 type Citation = {
@@ -84,7 +84,7 @@ function visibilityLabel(visibility: Visibility, locale: Locale) {
   return t("agent.visibility.private");
 }
 
-export function AgentPreviewClient({ initialThread, initialSettings, locale }: { initialThread: PreviewThread; initialSettings: AgentSettings; locale: Locale }) {
+export function AgentPreviewClient({ initialThread, initialSettings, initialPublicationOverview, locale }: { initialThread: PreviewThread; initialSettings: AgentSettings; initialPublicationOverview: PublicationOverview; locale: Locale }) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [thread, setThread] = useState(initialThread);
   const [settings, setSettings] = useState(initialSettings);
@@ -221,7 +221,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, locale }: {
     <div className="candidate-page agent-preview-page">
       <section className="page-hero compact-hero agent-hero">
         <p className="page-kicker">{t("agent.kicker")}</p>
-        <h1>{t("agent.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <h1>{t("agent.title")} <span className="title-seal" aria-hidden="true">职问</span></h1>
         <p>{t("agent.copy")}</p>
         <span className="agent-evidence-note"><ShieldCheck size={18} /> {t("agent.evidence")}</span>
       </section>
@@ -280,8 +280,13 @@ export function AgentPreviewClient({ initialThread, initialSettings, locale }: {
         <label className="paper-card agent-setting"><span className="setting-icon"><ShieldCheck size={19} /></span><span><strong>{t("agent.settings.privacy")}</strong><small>{t("agent.settings.privacyCopy")}</small></span><select value={settings.privacySafeMode ? "on" : "off"} disabled={savingSetting === "privacySafeMode"} onChange={(event) => void updateSetting("privacySafeMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
       </section>
 
-      <section className="paper-card preview-publish-card"><span className="publish-icon"><Globe2 size={26} /></span><span><h2>{t("agent.publish.title")}</h2><p>{t("agent.publish.copy")}</p></span><Link className="secondary-button" href="/workspace/publish"><Link2 size={17} /> {t("agent.publish.generate")}</Link><Link className="primary-button" href="/workspace/publish"><Send size={17} /> {t("agent.publish.submit")}</Link></section>
-      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <AgentPublicationControls
+        initialOverview={initialPublicationOverview}
+        locale={locale}
+        publicMode={settings.publicMode}
+        onPublicModeChange={(publicMode) => setSettings((current) => current.publicMode === publicMode ? current : { ...current, publicMode })}
+      />
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

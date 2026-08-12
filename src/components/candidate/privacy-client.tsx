@@ -4,7 +4,6 @@ import { AlertCircle, BookOpen, Check, ChevronDown, Eye, FileText, Github, Globe
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
@@ -122,7 +121,7 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
     <div className="candidate-page privacy-page">
       <section className="page-hero compact-hero privacy-hero">
         <p className="page-kicker">{t("privacy.kicker")}</p>
-        <h1>{t("privacy.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <h1>{t("privacy.title")} <span className="title-seal" aria-hidden="true">职问</span></h1>
         <p>{t("privacy.copy")}</p>
       </section>
 
@@ -179,7 +178,7 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
           <button className="primary-button" type="button" disabled={confirming} onClick={() => void confirmPolicy()}>{confirming ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {confirming ? t("privacy.confirm.confirming") : overview.confirmation.confirmed ? t("privacy.confirm.again") : t("privacy.confirm.submit")}</button>
         </section>
       </div>
-      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

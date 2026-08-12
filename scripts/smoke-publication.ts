@@ -177,29 +177,51 @@ try {
   const rawVisitorToken = visitorCookie.split("=", 2)[1]!;
   if (!storedVisitor.rows[0]?.visitorTokenHash || storedVisitor.rows[0].visitorTokenHash.includes(rawVisitorToken)) throw new Error("Raw visitor credential was stored in the database");
 
-  const candidateProjection = await request("/api/publications/preview");
   const publicProjection = await request(`/api/public/agents/${firstSlug}`);
   const publicJson = JSON.stringify(publicProjection.data);
   if (
-    !candidateProjection.response.ok ||
     !publicProjection.response.ok ||
-    JSON.stringify(candidateProjection.data) !== publicJson ||
     !publicJson.includes("Public Spotlight") ||
     publicJson.includes("Agent Secret") ||
     publicJson.includes("Private Secret")
   ) {
-    throw new Error("Candidate and anonymous public projections diverged or leaked hidden knowledge");
+    throw new Error("The anonymous public projection leaked hidden knowledge or omitted public evidence");
   }
 
-  const publishPage = await fetch(`${baseUrl}/workspace/publish`, { headers: { cookie } });
-  const publishHtml = await publishPage.text();
-  if (!publishPage.ok || !publishHtml.includes("Ready to publish") || !publishHtml.includes(firstSlug) || !publishHtml.includes("Public Preview") || !publishHtml.includes("Revoke Access")) {
-    throw new Error("Candidate publishing controls did not render current readiness and link state");
+  const agentPage = await fetch(`${baseUrl}/workspace/agent`, { headers: { cookie } });
+  const agentHtml = await agentPage.text();
+  const languageSwitcherCount = agentHtml.match(/class="language-switcher/g)?.length ?? 0;
+  if (
+    !agentPage.ok ||
+    !agentHtml.includes("Ready to publish") ||
+    !agentHtml.includes(firstSlug) ||
+    !agentHtml.includes("Revoke Access") ||
+    agentHtml.includes('href="/workspace/publish"') ||
+    agentHtml.includes("Quick Action") ||
+    agentHtml.includes("Invite Interviewers") ||
+    agentHtml.includes("问候") ||
+    !agentHtml.includes("职问") ||
+    !agentHtml.includes('class="global-language-control"') ||
+    languageSwitcherCount !== 1
+  ) {
+    throw new Error("Candidate Agent page did not render the consolidated publication and shell contract");
   }
-  const candidatePreviewPage = await fetch(`${baseUrl}/workspace/publish/preview`, { headers: { cookie } });
-  const candidatePreviewHtml = await candidatePreviewPage.text();
-  if (!candidatePreviewPage.ok || !candidatePreviewHtml.includes("Public Spotlight") || candidatePreviewHtml.includes("Agent Secret") || candidatePreviewHtml.includes("Private Secret")) {
-    throw new Error("Candidate public preview page did not use the safe public projection");
+  const anonymousGlobalPages = await Promise.all([
+    fetch(`${baseUrl}/login`),
+    fetch(`${baseUrl}/a/${firstSlug}`),
+  ]);
+  for (const [index, page] of anonymousGlobalPages.entries()) {
+    const html = await page.text();
+    const switcherCount = html.match(/class="language-switcher/g)?.length ?? 0;
+    if (!page.ok || !html.includes('class="global-language-control"') || !html.includes("职问") || html.includes("问候") || switcherCount !== 1) {
+      throw new Error(`Anonymous page ${index + 1} did not render exactly one global language switcher`);
+    }
+  }
+  const retiredPublishPage = await fetch(`${baseUrl}/workspace/publish`, { headers: { cookie } });
+  const retiredPreviewPage = await fetch(`${baseUrl}/workspace/publish/preview`, { headers: { cookie } });
+  const retiredPreviewApi = await fetch(`${baseUrl}/api/publications/preview`, { headers: { cookie } });
+  if (retiredPublishPage.status !== 404 || retiredPreviewPage.status !== 404 || retiredPreviewApi.status !== 404) {
+    throw new Error("A retired Candidate publishing page or preview API remained routable");
   }
 
   const hiddenUpdate = await request(`/api/privacy/materials/${publicMaterialId}`, "PATCH", { visibility: "private" });
@@ -241,7 +263,7 @@ try {
     throw new Error(`Publication persistence is inconsistent: ${JSON.stringify(row)}`);
   }
 
-  console.log(JSON.stringify({ event: "smoke.publication.completed", readinessBlocked: true, opaqueSlug: true, publishIdempotent: true, pausedUnavailable: true, nonexistentUnavailable: true, visitorSession: "persisted", visitorTokenStored: false, sessionRateLimited: true, publicProjectionEqual: true, publishPageRendered: true, candidatePreviewRendered: true, visibilityImmediate: true, hiddenKnowledgeLeak: false, revoked: true, oldSlugUnavailable: true, republishedWithNewSlug: true, auditEvents: row.audits }));
+  console.log(JSON.stringify({ event: "smoke.publication.completed", readinessBlocked: true, opaqueSlug: true, publishIdempotent: true, pausedUnavailable: true, nonexistentUnavailable: true, visitorSession: "persisted", visitorTokenStored: false, sessionRateLimited: true, publicProjectionSafe: true, agentPublicationRendered: true, retiredPublishPagesUnavailable: true, singleGlobalLanguageSwitcher: true, visibilityImmediate: true, hiddenKnowledgeLeak: false, revoked: true, oldSlugUnavailable: true, republishedWithNewSlug: true, auditEvents: row.audits }));
 } finally {
   if (rateScopeKeys.length > 0) await db.query("DELETE FROM public_rate_limits WHERE scope_key=ANY($1::text[])", [rateScopeKeys]).catch(() => undefined);
   await db.query("DELETE FROM users WHERE id=$1", [ownerId]).catch(() => undefined);

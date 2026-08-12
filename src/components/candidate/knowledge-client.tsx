@@ -3,7 +3,6 @@
 import { AlertCircle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, FileText, Grid2X2, List, LoaderCircle, LockKeyhole, Pencil, Quote, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
@@ -170,7 +169,7 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
     <div className="candidate-page knowledge-page">
       <section className="page-hero knowledge-hero">
         <p className="page-kicker">{t("knowledge.kicker")}</p>
-        <h1>{t("knowledge.title")} <span className="title-seal" aria-hidden="true">问候</span></h1>
+        <h1>{t("knowledge.title")} <span className="title-seal" aria-hidden="true">职问</span></h1>
         <p>{t("knowledge.copy")}</p>
         <span className="private-badge"><LockKeyhole size={14} /> {t("knowledge.private")}</span>
       </section>
@@ -260,7 +259,7 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
           )}
         </aside>
       </div>
-      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span><LanguageSwitcher locale={locale} compact /></footer>
+      <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
     </div>
   );
 }

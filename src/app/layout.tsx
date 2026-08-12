@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { getRequestLocale } from "@/i18n/server";
 
 import "./globals.css";
@@ -13,7 +14,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const locale = await getRequestLocale();
   return (
     <html lang={locale}>
-      <body>{children}</body>
+      <body>
+        <div className="global-language-control">
+          <LanguageSwitcher locale={locale} />
+        </div>
+        {children}
+      </body>
     </html>
   );
 }

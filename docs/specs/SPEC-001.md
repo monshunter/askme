@@ -1,6 +1,12 @@
 # SPEC-001：Askme MVP 可验收产品合同
 
-状态：`approved`
+Boundary ID：`askme-mvp-product`
+
+Owner boundary：Askme MVP 的 Candidate、Interviewer 与 Platform Admin 外部可见行为和验收边界。
+
+Status：`active`
+
+批准状态：`approved`
 
 唯一父 Plan：[PLAN-001](../plans/PLAN-001.md)
 
@@ -88,13 +94,14 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 2. Agent 先检索 owner 范围内允许使用的证据，再调用 DeepSeek 生成简洁回答；每个事实性回答返回实际支撑它的 Citation，不能生成不存在的来源。
 3. 没有充分证据时 Agent 明确说明资料不足，并给出可补充资料或可回答问题；AI 不可用、超时或返回无效内容时提供可重试错误，不返回伪造答案。
 4. 页面提供可刷新的推荐问题、回答反馈、Answer Tone、Public Mode 和 Privacy-Safe Mode 控件；控件改变后续回答行为并持久化 Candidate 设置。
+5. Candidate Workspace 只提供一个英文 `Agent`、中文 `智能体` 的一级入口；该页面同时承载 Candidate 预览问答、设置和发布生命周期管理，不再提供独立的 Publish Agent / 发布 Agent 一级入口或页面。
 
 ### 3.7 发布与撤销
 
 1. 发布前必须至少存在一份 `indexed` 资料、已确认隐私策略和可用公开身份信息；不满足条件时逐项提示。
-2. Candidate 可生成可分享链接、发布、复制/下载链接信息和撤销访问。链接标识不可由邮箱或自增 id 推断。
+2. Candidate 可在 Agent / 智能体页面生成可分享链接、发布、复制/下载链接信息、打开已发布公共页和撤销访问。链接标识不可由邮箱或自增 id 推断。
 3. 发布状态、公开 slug、发布时间和撤销状态持久化；撤销后旧链接立即不可对话，再发布可生成新链接。
-4. Candidate 可从 Workspace 打开与 Interviewer 相同权限的公共预览，不得因 owner 已登录而泄露额外内容。
+4. Candidate 从 Agent / 智能体页面打开已发布公共页时使用与 Interviewer 相同的公开权限，不得因 owner 已登录而泄露额外内容；`/workspace/publish`、`/workspace/publish/preview` 与专用 `GET /api/publications/preview` 不再提供独立产品页面或预览后端。
 
 ### 3.8 Interviewer 公共 Agent
 
@@ -119,6 +126,9 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 3. Chrome DevTools 使用 `iPhone 14 Pro Max` 设备配置（430 × 932）时不产生横向溢出，导航可访问，主要操作与对话输入保持可用；桌面表格在移动端转为可读布局。
 4. 键盘可完成登录、导航、上传选择、筛选、隐私设置和对话；焦点可见，表单控件具有关联 label，状态不只依赖颜色表达。
 5. 默认语言为 English，并提供 English / 简体中文切换；语言选择持久化，核心页面和错误反馈不得混用未翻译的界面字符串。
+6. 全站无论是否登录、无论进入 Candidate、公共 Agent、Platform Admin、登录或邀请页面，都只在右上角显示同一个全局语言切换控件；页面、footer 与账号菜单不得再持有第二个语言入口。
+7. Candidate Shell 不显示与一级导航重复的 Quick Action / 快捷操作，也不显示与 Agent 页面发布能力重复的 Invite Interviewers / 邀请面试官卡片。
+8. 产品英文名保持 `Askme`，唯一中文名为“职问”；登录、Candidate、公共 Agent、Platform Admin、邀请与不可用页面中的品牌文字和印章不得再显示旧名“问候”。
 
 ### 3.11 AI、配置与本地运行
 
@@ -149,6 +159,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。
 - [x] `AC-AGENT-002` 无证据、AI 未配置、超时和上游失败具有不同反馈且不产生伪造答案。
 - [x] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
+- [x] `AC-AGENT-004` Candidate Workspace 只保留 Agent / 智能体一级入口，预览问答、设置、生成链接、发布、公开访问和撤销在该页面形成闭环，独立发布页面与专用 Candidate 公共预览 API 不再存在。
 - [x] `AC-PUB-001` 发布前置条件、不可推断链接、持久发布状态、撤销与再发布行为通过集成测试。
 - [x] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
 - [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
@@ -160,6 +171,9 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-UI-001` 七个参考主界面在 1448 × 1086 的结构、视觉语言与关键几何经 Chrome 截图对照验收。
 - [x] `AC-UI-002` Chrome DevTools `iPhone 14 Pro Max`（430 × 932）下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
 - [x] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
+- [x] `AC-UI-004` Candidate Shell 不再显示重复语言切换、Quick Action / 快捷操作、Invite Interviewers / 邀请面试官或 Publish Agent / 发布 Agent 入口。
+- [x] `AC-UI-005` 登录前后全部产品页面只在右上角显示一个全局 English / 简体中文切换控件，切换后同一 locale cookie 驱动当前页面重新渲染，页面、footer 与账号菜单没有第二入口。
+- [x] `AC-UI-006` 全部产品页面的中文品牌文字与印章统一显示“职问”，代码和渲染结果均不再将“问候”作为 Askme 中文品牌名。
 - [x] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
 - [x] `AC-AI-001` 运行时按优先级读取 DeepSeek 配置，真实 API health/chat 验证使用 `deepseek-v4-flash` 且不泄露 key。
 - [x] `AC-OPS-001` Docker Compose 可从空数据库启动 Web、worker、PostgreSQL 并通过健康检查。

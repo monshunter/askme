@@ -55,3 +55,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-008：对账 EVO-001 迁移实现并完成交付收口](docs/plans/PLAN-008.md)
 ---
+
+---
+ID: OBJ-004
+Objective: 合并 Candidate Agent 预览与发布入口并移除重复工作区操作
+Status: 已完成
+Plans:
+- [x] [PLAN-009：收敛 Candidate Agent 入口与发布体验](docs/plans/PLAN-009.md)
+---

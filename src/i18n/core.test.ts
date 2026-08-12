@@ -20,6 +20,13 @@ describe("locale core", () => {
     expect(translate("zh-CN", "invite.unavailable")).toBe("邀请不可用");
   });
 
+  it("uses the consolidated Candidate Agent navigation name", () => {
+    expect(translate("en", "candidate.nav.agent")).toBe("Agent");
+    expect(translate("zh-CN", "candidate.nav.agent")).toBe("智能体");
+    expect(translate("en", "agent.title")).toBe("Agent");
+    expect(translate("zh-CN", "agent.title")).toBe("智能体");
+  });
+
   it("defines a one-year same-site cookie contract", () => {
     expect(LOCALE_COOKIE).toBe("askme_locale");
     expect(localeCookieOptions(false)).toMatchObject({ httpOnly: true, maxAge: 31_536_000, path: "/", sameSite: "lax", secure: false });

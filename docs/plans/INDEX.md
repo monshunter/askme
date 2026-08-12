@@ -11,4 +11,5 @@
 | PLAN-006 | PLAN-006：闭环本地运行、可观测性与总验收 | [PLAN-006.md](PLAN-006.md) |
 | PLAN-007 | PLAN-007：复盘全量交付 Harness 并形成演进提案 | [PLAN-007.md](PLAN-007.md) |
 | PLAN-008 | PLAN-008：对账 EVO-001 迁移实现并完成交付收口 | [PLAN-008.md](PLAN-008.md) |
+| PLAN-009 | PLAN-009：收敛 Candidate Agent 入口与发布体验 | [PLAN-009.md](PLAN-009.md) |
 <!-- AGENT-HARNESS:END INDEX -->

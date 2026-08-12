@@ -48,7 +48,7 @@ export function ReportsClient({ initialReport, locale }: { initialReport: Report
   }
 
   return <div className="admin-page">
-    <section className="admin-hero compact"><p className="page-kicker">{t("admin.reports.kicker")}</p><h1>{t("admin.reports.title")} <span className="title-seal" aria-hidden="true">问候</span></h1><p>{t("admin.reports.copy")}</p></section>
+    <section className="admin-hero compact"><p className="page-kicker">{t("admin.reports.kicker")}</p><h1>{t("admin.reports.title")} <span className="title-seal" aria-hidden="true">职问</span></h1><p>{t("admin.reports.copy")}</p></section>
     {error ? <div className="inline-feedback error" role="alert">{error}</div> : null}
     <section className="admin-report-controls"><label>{t("admin.range.time")}<select value={report.range} disabled={loading} onChange={(event) => void changeRange(event.target.value as Report["range"])}><option value="7d">{t("admin.range.7d")}</option><option value="30d">{t("admin.range.30d")}</option><option value="90d">{t("admin.range.90d")}</option></select></label></section>
     <section className="admin-metric-grid report-metrics">{metricDefinitions.map(({ key, label, icon: Icon }) => <article className="admin-metric-card" key={key}><span><Icon size={27} /></span><div><small>{t(label)}</small><strong>{report.totals[key].toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US")}</strong><em className="neutral">{t("admin.reports.fact")}</em></div></article>)}</section>

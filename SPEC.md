@@ -1,6 +1,13 @@
 # Askme Product Specification v0.2
 
+Boundary ID：`askme-product-direction`
+
+Owner boundary：Askme 的长期产品定位、角色价值、MVP 能力范围和一级信息架构。
+
+Status：`active`
+
 > 产品代号：Askme\
+> 中文名称：职问\
 > 产品定位：个人职业知识库 Agent（Personal Career Knowledge Agent）\
 > 核心理念：Don't browse my resume. Ask my Agent.
 
@@ -343,7 +350,7 @@ MVP 只验证一个核心闭环：
 1.  上传资料；
 2.  AI整理职业知识库；
 3.  审核公开内容；
-4.  发布 Agent。
+4.  在 Agent 中管理发布与分享。
 
 ------------------------------------------------------------------------
 
@@ -381,8 +388,7 @@ MVP 不做：
     │   ├── Upload Materials
     │   ├── Career Knowledge Base
     │   ├── Privacy Control
-    │   ├── Agent Preview
-    │   └── Publish Agent
+    │   └── Agent
     │
 
     ├── Candidate Agent

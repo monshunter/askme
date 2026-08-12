@@ -1,6 +1,10 @@
 # DESIGN-003：全界面视觉、双语与可访问性闭环
 
-状态：`active`
+Boundary ID：`askme-ui-i18n-a11y`
+
+Owner boundary：Askme Candidate、公共 Agent 与 Platform Admin 的视觉、双语、响应式和可访问性界面边界。
+
+Status：`active`
 
 唯一父 Plan：[PLAN-005](../plans/PLAN-005.md)
 行为合同：[SPEC-001](../specs/SPEC-001.md)
@@ -10,6 +14,8 @@
 本设计让七张 1448 × 1086 参考图对应的 Platform Admin、Candidate Workspace 与公共 Candidate Agent 在真实数据和真实交互基础上形成统一视觉合同，并以同一套 English / 简体中文状态覆盖服务端首屏、客户端交互和错误反馈。Chrome DevTools `iPhone 14 Pro Max`（430 × 932）是移动端唯一验收基线。
 
 设计不新增业务样例、翻译平台、URL locale 前缀、用户语言数据库字段或新的产品能力。设计稿中的姓名、计数、时间、对话和资料只表达布局；页面继续只显示 PostgreSQL、运行时配置、上传文件和 DeepSeek 返回的当前事实。稳定错误码、API envelope、数据库枚举和审计事件不翻译，界面在显示边界把它们映射为当前语言。
+
+品牌合同保持英文 wordmark `Askme`，中文名称与红色印章统一使用“职问”。“问候”不再是产品名称；自然语言正文中的普通词组（例如“询问候选人”）不属于品牌替换范围。
 
 不变量：
 
@@ -30,7 +36,7 @@
 | `admin_uploadfile.png` | `/workspace/materials`；上传 API、ingestion job、外部连接 API | 拖放/选择、类型说明、处理状态、最近上传与外部来源均已连接真实行为 | 双语；压缩 hero、卡片间距和列表行高，让 Connect Sources 与关键反馈更接近首屏；失败资料继续显示真实原因 |
 | `admin_knowledge.png` | `/workspace/knowledge`；Knowledge API 与 owner-scoped evidence | 分类、搜索、状态/Citation 筛选、列表/详情、编辑与分页为真实数据 | 双语；提高 1448 桌面列表密度并保持 master/detail 比例；移动端详情改为顺序布局，不能产生宽表溢出 |
 | `admin_private_control.png` | `/workspace/privacy`；统一 visibility policy 与 confirmation revision | 来源可见性、能力矩阵、Interviewer Preview、发布前确认都来自服务端合同 | 双语；桌面压缩上部留白和卡片密度以呈现下部 Preview/Review；移动端表格用可读投影而非横向滚动 |
-| `admin_agent_preview.png` | `/workspace/agent`；真实检索、DeepSeek、Citation 和 Agent settings | 实际提问已返回真实回答与 1 个来源，左右回答/Citation、设置和发布 CTA 结构成立 | 双语；回答态与空/失败态都需覆盖；调整对话/Citation 高度和 settings 密度，使发布 CTA 在参考视口内可发现 |
+| `admin_agent_preview.png` | `/workspace/agent`；真实检索、DeepSeek、Citation、Agent settings 和 publication service | 实际提问已返回真实回答与 1 个来源，左右回答/Citation、设置和发布结构成立 | 作为唯一 Agent / 智能体入口承载问答、设置与发布生命周期；不再跳转到独立发布页 |
 | `admin_publish.png` | `/a/[slug]`；公开 projection、visitor session、DeepSeek 与 public Citation | 左侧公开身份、Chat-first 主区、右侧亮点、推荐问题和下载链接结构成立；真实问答返回 1 个 public Citation | 匿名双语与错误反馈；优化回答态垂直占用及移动顺序，保证输入、推荐问题和 Citation 可完成且 profile 不造成横向溢出 |
 
 真实 Candidate 名称、头像缺省状态、资料数量和回答长度与设计稿不同不属于视觉缺陷。验收比较固定侧栏/顶栏、hero、主列比例、卡片层次、操作位置、响应式顺序和可读密度；动态内容超出一屏时允许纵向滚动。
@@ -59,10 +65,10 @@ Locale 的唯一持久化 owner 是同源 cookie：
 flowchart LR
   C["askme_locale cookie"] --> R["RootLayout getLocale"]
   R --> H["html lang"]
+  R --> L["Global LanguageSwitcher"]
   R --> S["Server pages and layouts"]
   S --> P["locale prop"]
   P --> X["Client shells and feature clients"]
-  X --> L["LanguageSwitcher"]
   L --> A["PUT /api/preferences/locale"]
   A --> C
   A --> F["router.refresh"]
@@ -71,13 +77,13 @@ flowchart LR
 
 - `src/i18n/catalog.ts` 是可在 server/client 共用的纯 TypeScript catalog，英文 key 集定义完整类型，中文 catalog 必须具有同一 key 集；`translate(locale,key,params)` 对运行时缺失项回退 English。
 - `src/i18n/server.ts` 只负责 `await cookies()`、校验和默认值，不被 Client Component 引入。
-- Root Layout 读取 locale 并设置 `<html lang="en|zh-CN">`；Workspace/Admin/Public/Login 的 Server Component 把同一 locale 与所需文案传入 Client Component。
-- `LanguageSwitcher` 调用 locale API，只有成功后才 `router.refresh()`；pending 时禁用并提供状态，失败以当前语言的 `role="alert"` 显示且不乐观替换其他文案。
+- Root Layout 读取 locale、设置 `<html lang="en|zh-CN">`，并在所有登录前后路由共用的右上角位置渲染唯一 `LanguageSwitcher`；Workspace/Admin/Public/Login 的 Server Component 只把同一 locale 与所需文案传入 Client Component。
+- `LanguageSwitcher` 调用 locale API，只有成功后才 `router.refresh()`；pending 时禁用并提供状态，失败以当前语言的 `role="alert"` 显示且不乐观替换其他文案。页面、feature client、footer 和账号菜单不再渲染第二个实例。
 - Server Component 与 Client Component 都调用同一 catalog，不建立第二份 JSON、Context 状态或 `localStorage`。日期、数字继续由真实值生成，但使用与 locale 对应的 `Intl` locale 和显式 UTC 时区，避免 hydration 漂移。
 
 ## 4. 翻译覆盖边界
 
-本 Plan 覆盖 `/`、`/login`、`/invite/[token]`、全部 `/workspace/*`、`/workspace/publish/preview`、`/a/[slug]` 及全部 `/admin/*` 的导航、标题、说明、按钮、表单 label/placeholder、筛选与分页、空态、pending、成功、错误和不可用页面。Candidate/Agent/资料标题、用户输入、AI 回答、Citation 摘要、审计原因和外部来源内容保持原文，不机器翻译用户数据。
+双语覆盖 `/`、`/login`、`/invite/[token]`、当前产品定义的 `/workspace/*`、`/a/[slug]` 及全部 `/admin/*` 的导航、标题、说明、按钮、表单 label/placeholder、筛选与分页、空态、pending、成功、错误和不可用页面。Candidate/Agent/资料标题、用户输入、AI 回答、Citation 摘要、审计原因和外部来源内容保持原文，不机器翻译用户数据。`/workspace/publish` 与 `/workspace/publish/preview` 已从产品路由退役，不再承担双语页面边界。
 
 API 保持英文诊断消息和稳定错误码。Client API 边界优先按错误码映射当前语言；未知错误使用当前语言的通用失败文案并保留 request id，既不泄露服务端细节，也不出现英文错误插入中文界面。
 
@@ -89,15 +95,17 @@ API 保持英文诊断消息和稳定错误码。Client API 边界优先按错�
 | `server.ts` | 从 request cookie 得到规范化 locale |
 | Locale Route Handler | 校验、写 cookie、返回 envelope |
 | `LanguageSwitcher` | 提交选择、pending/error、刷新 server tree |
-| Root/Workspace/Admin layouts | 统一 `<html lang>`，向 shell 传 locale，不持有另一份语言状态 |
-| Candidate/Admin/Public shells | 翻译共享导航、身份标签、Quick Actions、footer 并渲染切换入口 |
+| Root Layout | 统一 `<html lang>`，在右上角渲染全站唯一 `LanguageSwitcher`，向下游传递同一 cookie 结果 |
+| Workspace/Admin layouts | 向 shell 传 locale，不持有另一份语言状态或切换入口 |
+| Candidate/Admin/Public shells | 翻译共享导航、身份标签和 footer；不渲染语言入口，Candidate Shell 也不渲染 Quick Actions |
 | 各页面/feature client | 翻译本领域固定 UI；真实业务数据与 API 状态保持原 owner |
+| Candidate Agent 页面 | 统一呈现英文 `Agent` / 中文 `智能体` 标题以及预览、设置和发布生命周期控件；publication API 只提供领域状态，不拥有第二个页面 |
 
 不引入第三方 i18n runtime：仅两种 locale、无复数规则扩展和 URL 路由需求，类型化本地 catalog 已足够，新增依赖只会制造重复状态和 bundle 成本。
 
 ## 6. 视觉与响应式合同
 
-1. 桌面使用现有 272 px sidebar、94 px topbar 和参考图同源水墨资产；Platform Admin 与 Candidate 主内容以 43 px 左右 padding 为基线，公共页保持 285 px profile/sidebar 与 Chat 主列。
+1. 桌面使用现有 272 px sidebar、94 px topbar 和参考图同源水墨资产；Platform Admin 与 Candidate 主内容以 43 px 左右 padding 为基线，公共页保持 285 px profile/sidebar 与 Chat 主列。全局语言控件固定在右上角，各顶栏为其保留不重叠空间；移动端仍固定在右上角并缩减控件宽度。
 2. `frontend_bg_left.png` 只用于 Platform Admin 侧栏；`admin_bg_left.png` 用于 Candidate 侧栏；`admin_bg_head.png` 用于 Candidate/Admin hero；`frontend_bg_head.png` 用于公共 Agent。资产通过构建期 CSS URL 解析，不请求不存在的 public 路径。
 3. 1448 × 1086 优先调小非内容性留白、行高和卡片 padding，不缩小可点击目标、不隐藏真实行、不固定动态回答高度。关键 CTA 可以在首屏附近，超长数据自然纵向滚动。
 4. `max-width: 860px` 隐藏固定侧栏并显示顶部 drawer；`430 × 932` 是最终断点 Evidence。表格使用 `data-label` 卡片投影或语义分组，能力矩阵提供逐规则移动投影，不能以整页横向滚动解决。
@@ -108,7 +116,7 @@ API 保持英文诊断消息和稳定错误码。Client API 边界优先按错�
 1. 所有页面提供可见的 Skip to content，目标 `#main-content`；每页有唯一可描述的 `h1`，Next route announcer 可读。
 2. 全局 `:focus-visible` 使用不低于 2 px 的高对比外框和 offset；`prefers-reduced-motion` 关闭非必要旋转/过渡。
 3. 登录、上传文件、搜索、筛选、隐私 select、Agent settings 和 Chat input 使用真实 `label` 或 `aria-labelledby`；占位符不能代替 label。
-4. drawer、Quick Action 和 profile 使用原生 `details/summary` 或 button，默认关闭；导航成功、Escape 或显式取消后关闭。自定义治理/撤销确认 dialog 具有 `role="dialog"`、`aria-modal`、标题关联、初始焦点、Escape、Tab 约束和关闭后焦点恢复。
+4. drawer 和 profile 使用原生 `details/summary` 或 button，默认关闭；导航成功、Escape 或显式取消后关闭。自定义治理/撤销确认 dialog 具有 `role="dialog"`、`aria-modal`、标题关联、初始焦点、Escape、Tab 约束和关闭后焦点恢复。
 5. 异步进度使用 `role="status"`/`aria-live="polite"`，阻断错误使用 `role="alert"`；indexed/failed、ready/blocked、published/paused 等状态同时包含可读文本或图标 label。
 6. 键盘验收链路：登录 → drawer/nav → Upload file picker → Knowledge 筛选 → Privacy visibility/confirm → Agent/Public Chat 提问。Tab 顺序按视觉顺序，不使用正 `tabIndex`。
 
@@ -125,8 +133,8 @@ API 保持英文诊断消息和稳定错误码。Client API 边界优先按错�
 1. Unit：locale 校验、默认值、catalog key parity、参数插值、error-code 映射与未知 fallback。
 2. SSR/component：`askme_locale` 分别为 `en/zh-CN/invalid` 时 `<html lang>`、首屏文本和 Client 初始 locale 一致；切换响应 cookie 属性正确。
 3. Static/build：ESLint、TypeScript、Vitest、Next production build 与 CSS 资源解析。
-4. Chrome 1448 × 1086：七图逐页截图、关键区域 bounding rect、footer/CTA 可发现性、console 和横向 overflow。
-5. 可见 DevTools `iPhone 14 Pro Max` 430 × 932：drawer、表单、筛选、Privacy、Candidate Agent 与公共 Chat 的真实操作；语言切换刷新后仍保留 locale。
+4. Chrome 1448 × 1086：七图逐页截图、关键区域 bounding rect、`Askme` / “职问”品牌标记、右上角唯一语言控件、footer/CTA 可发现性、console 和横向 overflow。
+5. 可见 DevTools `iPhone 14 Pro Max` 430 × 932：drawer、表单、筛选、Privacy、Candidate Agent 与公共 Chat 的真实操作；右上角语言控件不与顶栏交互重叠，切换刷新后仍保留 locale。
 6. 键盘：从登录开始只用 Tab/Shift+Tab/Enter/Space/Escape 完成合同链路，记录焦点可见性、dialog 行为、label 与 aria-live。
 
 ## 10. 实施顺序

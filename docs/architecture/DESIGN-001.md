@@ -1,6 +1,10 @@
 # DESIGN-001：Askme MVP 全栈系统设计
 
-状态：`active`
+Boundary ID：`askme-mvp-system`
+
+Owner boundary：Askme MVP 的全栈组件、数据、接口、状态、部署与恢复架构。
+
+Status：`active`
 
 唯一父 Plan：[PLAN-001](../plans/PLAN-001.md)
 行为合同：[SPEC-001](../specs/SPEC-001.md)
@@ -138,7 +142,7 @@ Route Handlers 统一返回 `{ data, error, requestId }`。错误包含稳定 `c
 - `/api/knowledge/*`：分类/搜索/分页、详情和允许字段编辑。
 - `/api/privacy/*`：visibility 修改、预览和确认。
 - `/api/agent/*`：设置、推荐问题和 Candidate preview conversation/chat/feedback。
-- `/api/publications/*`：readiness、generate/publish/revoke 和 owner public preview。
+- `/api/publications/*`：供 Candidate Agent 页面使用的 readiness、generate、publish 与 revoke；公共投影继续由公共 Agent service 按公开权限读取。
 - `/api/public/[slug]/*`：公开 profile、visitor conversation/chat/feedback。
 - `/api/admin/*`：overview、candidates、agents、reports、review、settings 和治理动作。
 - `/api/health/live` 只证明进程；`/api/health/ready` 检查数据库、migration、worker heartbeat 和 AI 配置状态并分别报告。
@@ -164,7 +168,9 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 
 ### Candidate Shell
 
-固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control、Agent Preview、Publish Agent；顶部包含 owner 范围搜索、Quick Action、通知和账号菜单。移动端变为可关闭 drawer，主内容使用单列卡片。
+固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control 和唯一的 Agent / 智能体入口；顶部包含 owner 范围搜索、通知和账号菜单。账号菜单只显示身份与注销，根布局在登录前后所有路由的右上角提供唯一语言设置，各 Shell 与页面 footer 不再渲染语言入口。Candidate Shell 不再持有 Quick Action、邀请面试官或独立 Publish Agent 导航。移动端变为可关闭 drawer，主内容使用单列卡片。
+
+`/workspace/agent` 的 Server Component 并行加载预览对话、Agent settings 与 publication overview；页面内部把预览问答、设置、发布 readiness、链接、发布/撤销和已发布公共页入口组成同一 Candidate Agent 工作流。`/workspace/publish`、`/workspace/publish/preview`、专用页面组件与 `GET /api/publications/preview` 退役；publication domain service 以及 current/link/publish/revoke API 继续作为 Agent 页与公共访问链路共享的服务端边界。
 
 ### Public Agent
 

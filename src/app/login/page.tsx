@@ -1,7 +1,6 @@
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { createTranslator } from "@/i18n/core";
 import { getRequestLocale } from "@/i18n/server";
 
@@ -13,7 +12,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main className="login-page">
       <section className="login-story" aria-labelledby="login-story-title">
         <Link className="wordmark" href="/" aria-label="Askme">
-          Askme <span aria-hidden="true">问候</span>
+          Askme <span aria-hidden="true">职问</span>
         </Link>
         <div className="story-copy">
           <p className="eyebrow">{t("login.eyebrow")}</p>
@@ -25,8 +24,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-card">
-          <LanguageSwitcher locale={locale} />
-          <p className="seal" aria-hidden="true">问候</p>
+          <p className="seal" aria-hidden="true">职问</p>
           <h2 id="login-title">{t("login.title")}</h2>
           <p className="muted">{t("login.copy")}</p>
 

@@ -6,7 +6,7 @@ import { useId, useState } from "react";
 
 import { type Locale, translate } from "@/i18n/core";
 
-export function LanguageSwitcher({ locale, compact = false }: { locale: Locale; compact?: boolean }) {
+export function LanguageSwitcher({ locale }: { locale: Locale }) {
   const id = useId();
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -32,7 +32,7 @@ export function LanguageSwitcher({ locale, compact = false }: { locale: Locale; 
   }
 
   return (
-    <div className={`language-switcher${compact ? " compact" : ""}`}>
+    <div className="language-switcher">
       {pending ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : <Globe2 size={14} aria-hidden="true" />}
       <label className="sr-only" htmlFor={id}>{translate(locale, "language.switch")}</label>
       <select id={id} value={locale} disabled={pending} onChange={(event) => void changeLocale(event.target.value as Locale)}>
