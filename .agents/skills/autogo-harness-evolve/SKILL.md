@@ -6,7 +6,7 @@ description: "基于重复证据提出受控 Harness Evolution Proposal，并在
 ## 目标
 根据重复失败和复盘证据，以 Proposal、复杂度预算、回归和回滚受控演进 Harness；默认不直接修改治理。
 ## 输入与发现
-- Session Review、Bug Report、历史 Evidence
+- 用户反馈、Bug Report、历史 Evidence 和明确的复盘结论
 - 现有项目指令、Skills、模板和 Skill 内包资源
 - 自我保护内核与用户目标
 
@@ -24,7 +24,7 @@ description: "基于重复证据提出受控 Harness Evolution Proposal，并在
 3. 形成最小 Proposal，列出新增/删除规则和用户介入变化
 4. 保护真实性、风险、Human Gate、Evidence、不可逆规则和演进审批本身
 5. 根治理、风险模型、个人全局 Harness 变化请求用户批准
-6. 批准后小步应用并运行历史场景回放或调用 `autogo-harness-validate`
+6. 批准后小步应用，并运行与本次真实故障模式直接对应的测试或场景回放；不向目标项目安装 Harness 自检能力
 7. 失败回滚并记录，成功后 Promote
 
 ## 验证与完成

@@ -23,7 +23,6 @@
 - `autogo-doc-index`
 - `autogo-session-review`
 - `autogo-harness-init`
-- `autogo-harness-validate`
 - `autogo-harness-evolve`
 
 实际 Skill 路径由所选 Agent 决定：Codex 使用 `.agents/skills/`，Claude Code 使用 `.claude/skills/`。

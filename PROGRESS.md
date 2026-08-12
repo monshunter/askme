@@ -63,3 +63,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-009：收敛 Candidate Agent 入口与发布体验](docs/plans/PLAN-009.md)
 ---
+
+---
+ID: OBJ-005
+Objective: 验收并收口 AutoGo 简化 Harness 安装与任务能力边界在 Askme 的迁移
+Status: 已完成
+Plans:
+- [x] [PLAN-010：对账简化 Harness 迁移并完成交付收口](docs/plans/PLAN-010.md)
+---

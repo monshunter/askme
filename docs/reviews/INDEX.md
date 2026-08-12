@@ -45,4 +45,6 @@
 | REVIEW-040 | REVIEW-040：Askme 中文品牌 Design Review | [REVIEW-040.md](REVIEW-040.md) |
 | REVIEW-041 | REVIEW-041：PLAN-009 Change Review（初审） | [REVIEW-041.md](REVIEW-041.md) |
 | REVIEW-042 | REVIEW-042：PLAN-009 专用预览后端 Reconcile 后 Change Review | [REVIEW-042.md](REVIEW-042.md) |
+| REVIEW-043 | REVIEW-043：PLAN-010 Plan Review | [REVIEW-043.md](REVIEW-043.md) |
+| REVIEW-044 | REVIEW-044：PLAN-010 Change Review | [REVIEW-044.md](REVIEW-044.md) |
 <!-- AGENT-HARNESS:END INDEX -->

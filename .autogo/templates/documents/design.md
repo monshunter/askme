@@ -2,14 +2,6 @@
 
 > 这是完整设计文档样例。真实设计应保留相同的问题覆盖面，但内容必须来自当前项目证据。
 
-Boundary ID：`harness-reference-documents`
-
-Owner boundary：Harness 参考文档的资源组织、分发职责和失败恢复方案
-
-Status：active
-
-Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLAN-001.md)
-
 ## 上下文与目标
 
 `.autogo/templates/` 的直接使用者是 Agent。目标是让 Agent 只阅读一份文件，就能理解该类文档的内容深度、边界和证据表达方式。
@@ -29,7 +21,7 @@ Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLA
 | 组件 | 职责 |
 |---|---|
 | `harness/locales/zh-CN/templates/` | 保存可直接阅读的中文参考样例 |
-| `harness/pack.json` | 声明固定资源路径和摘要 |
+| `harness/pack.json` | 声明固定资源路径、类型和权限 |
 | 安装器 | 原样分发资源并维护安装生命周期 |
 | Agent Skill | 读取样例和项目事实，创建真实文档 |
 
@@ -39,8 +31,8 @@ Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLA
 
 ## 失败与恢复
 
-- 资源摘要不一致时，安装器拒绝加载资源包。
-- 本地已修改的托管参考文件不静默覆盖，沿用现有冲突处理。
+- 资源包结构无效时，安装器在写入前拒绝安装。
+- AutoGo 管理文件按当前资源覆盖；安装后验证失败时事务回滚。
 - 内容审查失败时只修正对应样例，不引入新的生成层。
 
 ## 安全、观测与成本
@@ -53,7 +45,7 @@ Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLA
 
 ## 验证计划
 
-1. 校验资源包路径、摘要和文件数量。
+1. 校验资源包路径、登记关系和文件数量。
 2. 检查模板目录无 Front Matter、占位符和 `.tmpl` 后缀。
-3. 运行 Go 单元测试和 Harness 严格校验。
+3. 运行 Go 单元测试和安装器定向测试。
 4. 从 `temp/` 完成 Codex、Claude Code 与共存安装验收。

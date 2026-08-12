@@ -9,7 +9,7 @@ description: "设计满足 Spec 的最小系统方案，覆盖组件、契约、
 - Progress 中当前 Objective 和 Plan；已批准或足够稳定的 Spec 从正式制品读取
 - 现有系统架构、代码边界、运行约束和生态能力
 - 风险、成本、安全、兼容性和迁移要求
-- 当前 Plan Review 中所有 Design `CREATE | UPDATE | REFERENCE | NOT_NEEDED` 决策行
+- 当前任务已确认需要长期保存的设计决策
 
 ## 输出与持久制品
 - Solution Design 与必要 ADR
@@ -23,8 +23,8 @@ description: "设计满足 Spec 的最小系统方案，覆盖组件、契约、
 
 ## 执行步骤
 1. 从 Progress 确认当前上层 Plan，再从正式制品锁定设计范围，不为范围外工作扩张设计
-2. 读取 Design 决策行；`NOT_NEEDED` 不创建、修改或引用 Design，`REFERENCE` 只建立引用且不修改 Target，只有 `CREATE/UPDATE` 继续写入
-3. `CREATE` 新建已审查的独立架构边界；`UPDATE` 修改既有 active owner或收编无身份旧文档，写入稳定 `Boundary ID`、`Owner boundary` 和 `Status`
+2. 先确认技术方案是否需要跨实现长期存在；现有架构和代码已足够承载局部变更时停止且不创建 Design
+3. 优先更新或引用现有架构 owner；只有新的独立系统边界没有 owner 时才新建，并沿用项目既有身份与状态约定
 4. 从目标、已批准 Spec、边界和系统不变量开始
 5. 盘点项目已有能力和成熟生态，避免重复建设
 6. 设计能力和流程，再落到组件职责和契约
@@ -39,7 +39,7 @@ description: "设计满足 Spec 的最小系统方案，覆盖组件、契约、
 - 方案满足 Spec 且复杂度最小充分
 - 关键风险有验证和回滚路径
 - 设计范围与当前 Objective/Plan 及正式制品一致
-- 同一个 `Boundary ID` 最多一份 active Design，Plan 不成为长期 Design owner
+- 同一架构边界只有一个清晰事实 owner，Plan 不复制长期 Design 内容
 
 ## 失败、重试与幂等
 关键事实未知时回 autogo-investigate；关键产品语义未批准时回 autogo-spec-write。

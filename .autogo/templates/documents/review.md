@@ -11,20 +11,11 @@
 
 ## 审查范围
 
-检查模板语言、内容完整性、固定路径、Plan/Spec 可追溯关系，以及资源包和校验器是否仍引用旧渲染字段。
+检查模板语言、内容完整性、固定路径、Plan/Spec 可追溯关系，以及安装器是否仍引用旧渲染字段。
 
 ## 结论
 
 有条件通过。模板正文方向符合目标，但在安装验收完成前不能宣布交付闭环。
-
-## Spec/Design decision matrix
-
-| Type | Boundary ID | Decision | Target | Reason |
-|---|---|---|---|---|
-| Spec | `harness-reference-documents` | `UPDATE` | [SPEC-001](../specs/SPEC-001.md) | 现有行为 owner 仍正确，本次扩展安装验收语义 |
-| Design | `harness-reference-documents` | `REFERENCE` | [DESIGN-001](../architecture/DESIGN-001.md) | 现有资源组织和分发设计已完整支撑本次变更 |
-
-四态只使用 `CREATE | UPDATE | REFERENCE | NOT_NEEDED`；`UPDATE` 为默认，只有新的独立边界才使用 `CREATE`。
 
 ## 发现
 
@@ -34,12 +25,12 @@
 
 - 所有文档样例使用中文标题和说明。
 - 样例包含具体事实、取舍、失败处理和验证方式。
-- Plan Review 与长期 Spec/Design 通过决策矩阵保持可追溯关系。
+- Plan、Spec 和 Design 只在实际存在关系时通过正文链接保持可追溯。
 
 ### 需要修正
 
 - 若 `pack.json` 或测试仍引用 `.tmpl`，安装会失败。
-- 若校验器继续搜索 Front Matter 字段，会把正确的新样例误报为缺失。
+- 若测试继续锁定非必要固定文案，会把正确的新样例误报为缺失。
 
 ## 缺失证据
 
@@ -48,4 +39,4 @@
 
 ## 必需的后续行动
 
-完成全仓旧路径搜索，更新摘要后运行严格校验和 acceptance。只有这些证据成立后，才能将结论更新为通过。
+完成全仓旧路径搜索后运行定向测试和 acceptance。只有这些证据成立后，才能将结论更新为通过。

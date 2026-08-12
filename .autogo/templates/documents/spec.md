@@ -2,14 +2,6 @@
 
 > 这是完整 Spec 样例。真实 Spec 必须从用户目标和当前系统行为出发，不得复制本样例中的项目事实。
 
-Boundary ID：`harness-reference-documents`
-
-Owner boundary：Harness 参考文档的公开结构、安装行为和验收语义
-
-Status：active
-
-Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLAN-001.md)
-
 ## 背景与目标
 
 现有模板混合中英文、Front Matter 和占位变量，无法独立说明一份合格文档应包含的内容。目标是让 Agent 通过静态参考文件直接理解文档结构和质量要求。
@@ -21,7 +13,7 @@ Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLA
 ## 范围
 
 - 16 份模板改为固定路径的完整中文参考样例。
-- Plan Review 记录本次变更决策，Spec 作为长期行为 owner 被后续 Plan 更新或引用。
+- Spec 只保存需要跨实现长期维护的行为合同；局部实现由代码和测试直接拥有。
 - 同步更新资源清单、校验、测试和安装验收。
 
 ## 非目标
@@ -39,8 +31,8 @@ Created by Plan：[PLAN-001：中文完整参考模板改造计划](../plans/PLA
 
 ## 异常与边界
 
-- 资源文件缺失或摘要错误时，安装必须失败且不创建目标项目。
-- 更新遇到本地修改时，沿用现有保留和冲突报告机制。
+- 资源包结构无效或安装后结果不一致时，安装必须失败并回滚本轮写入。
+- AutoGo 管理文件按当前资源覆盖，托管区块外和项目 seed 内容保持不变。
 - 未知项目事实必须标记待确认，不能用样例事实替代。
 
 ## 约束与兼容性
@@ -51,7 +43,7 @@ Codex 与 Claude Code 安装相同的 `.autogo/templates/`。Host Adapter 只影
 
 - [ ] AC-001：模板目录不存在 `.tmpl` 文件和双花括号占位符。
 - [ ] AC-002：每份 Markdown 参考文件都有完整中文内容，不存在空章节。
-- [ ] AC-003：Progress 中的 Objective/Plan 关系可追溯，Spec 的稳定 Boundary 与创建来源清楚。
+- [ ] AC-003：Progress 中的 Objective/Plan 关系可追溯，Spec 没有复制实现或流程状态。
 - [ ] AC-004：资源校验、Go 测试和黑盒安装验收全部通过。
 
 ## 验收证据
@@ -60,7 +52,7 @@ Codex 与 Claude Code 安装相同的 `.autogo/templates/`。Host Adapter 只影
 |---|---|---|
 | AC-001 | 待验证 | 路径和内容搜索结果 |
 | AC-002 | 待验证 | 逐文件结构检查结果 |
-| AC-003 | 待验证 | Progress 的 Objective/Plan 关系与 Spec 稳定身份检查 |
+| AC-003 | 待验证 | Progress 的 Objective/Plan 关系与 Spec 内容审查 |
 | AC-004 | 待验证 | 实际命令、退出码和安装产物 |
 
 ## 假设与开放问题

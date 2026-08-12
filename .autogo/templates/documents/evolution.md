@@ -2,7 +2,7 @@
 
 > 这是 Harness 演进提案样例。它展示提案应如何引用事实、说明风险和验证回放，不代表自动获得实施授权。
 
-Session Review 结果：`PROPOSAL`
+状态：proposal
 
 ## 证据与出现次数
 
@@ -21,7 +21,7 @@ Session Review 结果：`PROPOSAL`
 ## 受影响的规则、Skill 与模板
 
 - docs 文档契约与根生命周期说明；
-- `autogo-plan-write`、`autogo-spec-write`、`autogo-doc-index`、`autogo-harness-validate`；
+- `autogo-plan-write`、`autogo-spec-write`、`autogo-doc-index`；
 - `.autogo/templates/` 下的全部参考文件；
 - 资源清单、安装测试和 acceptance。
 

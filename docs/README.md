@@ -8,6 +8,6 @@
 - 用户通过自然语言提出目标，无需运行文档 CRUD 命令；
 - Agent 根据 Fast / Standard 路由、实际风险信号和任务上下文自动创建、更新、索引和归档制品；Fast 不创建 Objective、Plan 或 Review；
 - 根 `PROGRESS.md` 只追踪 Objective 三态和内嵌 Plans Checklist；正式 Plan 使用按 Phase 组织的单文件 Checklist，不拆分第二份状态文件；
-- active Spec/Design 使用稳定 `Boundary ID` 标识长期 owner，Plan Review 只记录本次四态决策与 Target；
+- Spec、Design、Scenario、Journal 与 Evolution 只在当前任务确有长期价值时创建，并沿用项目既有文档约定；
 - 完整参考样例由 AutoGo 安装到 `.autogo/templates/`，Agent 结合真实项目事实仿写，不复制样例事实。
 <!-- AGENT-HARNESS:END DOCS-README -->

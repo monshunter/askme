@@ -29,19 +29,19 @@
 
 1. 用户向 Agent 描述上传失败的目标和约束。
 2. Agent 从 Progress 确认当前 Objective/Plan，再读取 Plan、代码事实和 Spec 参考样例。
-3. Agent 创建新的 Spec，写明正常行为、失败边界、非目标和稳定验收项。
+3. 若行为合同确需长期维护，Agent 创建或更新 Spec，写明正常行为、失败边界、非目标和验收项；否则直接更新代码与测试事实 owner。
 4. Agent 更新当前 Plan 和文档索引；仅在 Objective 状态或内嵌 Plans Checklist 变化时更新 Progress。
 
 ## 预期结果
 
 - UI：不适用；本场景不声称浏览器结果。
 - API/CLI：Agent 创建的新 Spec 不包含未解析变量或示例项目事实。
-- 文档状态：Spec 声明稳定 `Boundary ID`、`Owner boundary` 和 active 状态，每个验收项可通过 API 或浏览器行为验证，没有证据的验收项保持未完成。
+- 文档状态：存在 Spec 时，每个验收项可通过 API 或浏览器行为验证，没有证据的验收项保持未完成。
 - 后台状态：Progress 只在 Objective 或 Plans Checklist 变化时更新，Index 与正文一致。
 
 ## 自动化入口
 
-执行 Harness 安装 acceptance；脚本文件头或输出必须声明 `SCN-001`，不得只凭代码测试宣称本场景通过。
+执行 Harness 安装 acceptance；不得只凭代码测试宣称真实用户场景通过。
 
 ## 证据
 

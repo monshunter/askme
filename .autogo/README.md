@@ -10,12 +10,13 @@
 - 不安装项目根 `./harness`，不要求用户执行 Work/Doc/Component CRUD；
 - Skills 根据上下文自动维护必要的文档和进度；
 - 每个 Skill 独立拥有自己的 `scripts/`、`references/` 或 `assets/`，不得依赖共享 `internal/` 辅助目录；
-- `.autogo/` 不启用持久化备份模式；安装失败依靠事务回滚，项目本地改动默认保留并将候选内容写入 `.autogo/conflicts/`；
-- 项目根全局唯一 `PROGRESS.md` 与标准 docs 子工作区 README/INDEX 一样在缺失时初始化；初始 Progress 依次包含使用规则、格式样例和空的 Objectives 区域，不使用表格或独立 Plans 章节，重复安装和 `--force` 不覆盖，安装器不生成 `WORKGRAPH.yaml` 或对应模板。
+- `.autogo/` 不启用持久化备份或冲突目录；安装失败依靠事务回滚；所选 Agent 的根治理文件和其他 AutoGo 管理文件每次按资源包整文件覆盖，docs 托管区块只替换区块正文并保留区块外项目内容；
+- 项目根全局唯一 `PROGRESS.md` 与标准 docs 子工作区 README/INDEX 一样只在缺失时初始化；已有 seed 归项目所有，重复安装不覆盖，安装器不生成 `WORKGRAPH.yaml` 或对应模板；
+- 安装事务负责资源和落盘结果的结构校验，安装后的 Skills 不检查 Harness 自身、固定文案或流程完整性。
 
 ## 入口
 
-- 工程治理：项目根 `AGENTS.md` 或 `CLAUDE.md` 的 Harness 托管区块；
+- 工程治理：项目根由 AutoGo 完整管理的 `AGENTS.md` 或 `CLAUDE.md`；
 - Codex Skills：`.agents/skills/autogo-<name>/`；
 - Claude Code Skills：`.claude/skills/autogo-<name>/`；
 - 全局变更循环：项目根 Agent 指令文件的 Fast / Standard、内层工程循环与精简 Standard Skill graph；
