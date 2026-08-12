@@ -17,7 +17,7 @@ Status：`active`
 
 1. Source Material、Knowledge Item、Chunk、预览会话和设置始终由 `owner_id` 隔离。
 2. 任何发送给 AI 的上下文都先经过 owner 和 visibility 过滤；AI 不能扩大访问权限。
-3. Citation 必须引用当前数据库中实际参与本次回答的 Chunk；上传文件路径和私有原文不进入公共响应。
+3. Citation 必须引用当前数据库中实际参与本次回答的 Chunk；内部上传路径和私有原文不进入公共响应，公开来源文件只能通过每次重新授权的 Route Handler 访问。
 4. 数据库是业务状态唯一事实源；浏览器状态、设计稿示例、后台进程内存和日志均不能替代它。
 5. Secret 只存在于服务端进程环境或当前用户 `~/.env`，不持久化到业务表和客户端。
 6. Docker restart 保留 PostgreSQL 与上传文件；只有显式 reset 可删除本地数据。
@@ -46,7 +46,7 @@ flowchart LR
 | Web | SSR 页面、JSON API、身份会话、owner/role 授权、上传接收、公开 Chat 与 Admin 查询 |
 | Worker | 原子领取 ingestion job，从本地上传或远端快照提取/切分资料，调用 AI 整理，事务性写入派生知识 |
 | PostgreSQL | 用户、业务状态、全文检索、job 队列、会话、Citation、审计与聚合事实源 |
-| Upload volume | 保存 owner 隔离的原始上传文件；只被 Web/Worker 服务端访问 |
+| Upload volume | 保存 owner 隔离的原始上传文件；只由 Web/Worker 服务端读取，浏览器仅通过授权 Route Handler 获得响应内容 |
 | DeepSeek adapter | 统一超时、错误映射、JSON 解析、Chat 生成和 Secret 边界 |
 | External source adapters | 请求内完成 GitHub、Notion 与 Website 的安全获取、校验、限额，并写入不含凭证的规范化快照 |
 
@@ -120,7 +120,7 @@ draft → ready(资料+隐私确认+profile) → published → revoked
 
 - `published` 只有一个当前 active publication；再发布在新事务中生成新的随机 slug，旧 slug 永不复活。
 - Admin pause 不修改 Candidate 内容，只改变公共可访问状态；恢复回到同一 publication。
-- 每次公共请求重新读取 publication 和 material visibility，不依赖发布时快照。
+- 每次公共页面、Chat 和来源文件请求重新读取 publication 与 material visibility，不依赖发布时快照或旧访问 URL。
 
 ### 5.3 Agent 回答
 
@@ -131,6 +131,14 @@ draft → ready(资料+隐私确认+profile) → published → revoked
 5. 一个事务保存 user/assistant message、Citation、usage 与必要 flag 后返回；失败保存安全错误状态，不返回半个伪答案。
 6. 推荐问题仅从允许可见的知识标题/类型生成；无 AI 时使用基于真实已索引类型的确定性问题，不虚构经历。
 
+### 5.4 来源文件访问
+
+1. Candidate 来源请求先校验 Candidate session，再以 `owner_id + material_id` 查询；任何 visibility 均可由 owner 查看，跨 owner 统一返回不存在。
+2. 公共来源请求先校验 opaque publication slug 当前仍为 `published`、owner 账号有效且 Public Mode 开启，再以同一 owner 查询 `status='indexed' AND visibility='public_preview'` 的 material；`citation_allowed` 即使出现在回答 Citation 中也不返回地址。
+3. 本地上传文件由服务端解析 owner/material 固定目录并返回正确 MIME、`Content-Disposition: inline`、`nosniff` 与 `no-store`；外部来源只有 `public_preview` 才把原公开 URL 投影为可打开地址。数据库 `storage_path` 永不进入客户端。
+4. 公共 Chat 投影保留 Citation 的来源名称；不返回 `excerpt`、类型或来源摘要。只有当前可公开访问的来源额外返回由服务端生成的访问描述，权限撤销后下一次内容请求立即失败。
+5. 共享查看组件使用 CommonMark + GFM 子集渲染 Chat 与 Markdown 文件且不启用 raw HTML；PDF 在有焦点约束的居中 dialog 中按 A4 比例展示，其他文件使用新标签页。失败、关闭、Escape、焦点恢复和移动端缩放由同一组件负责。
+
 ## 6. 接口边界
 
 Route Handlers 统一返回 `{ data, error, requestId }`。错误包含稳定 `code`、安全 `message` 和可选字段问题；HTTP 状态表达认证、权限、输入、冲突、限流和上游失败。
@@ -138,12 +146,12 @@ Route Handlers 统一返回 `{ data, error, requestId }`。错误包含稳定 `c
 主要资源边界：
 
 - `/api/auth/*`：login、logout、current session。
-- `/api/materials/*`：列表、文件/connector 创建、状态、retry、delete。
+- `/api/materials/*`：列表、文件/connector 创建、状态、retry、delete；`GET /api/materials/[materialId]/content` 提供 Candidate owner 范围的文件内容访问。
 - `/api/knowledge/*`：分类/搜索/分页、详情和允许字段编辑。
 - `/api/privacy/*`：visibility 修改、预览和确认。
 - `/api/agent/*`：设置、推荐问题和 Candidate preview conversation/chat/feedback。
 - `/api/publications/*`：供 Candidate Agent 页面使用的 readiness、generate、publish 与 revoke；公共投影继续由公共 Agent service 按公开权限读取。
-- `/api/public/[slug]/*`：公开 profile、visitor conversation/chat/feedback。
+- `/api/public/agents/[slug]/*`：公开 profile、visitor conversation/chat/feedback；`GET /api/public/agents/[slug]/materials/[materialId]` 提供 `public_preview` 来源内容访问。
 - `/api/admin/*`：overview、candidates、agents、reports、review、settings 和治理动作。
 - `/api/health/live` 只证明进程；`/api/health/ready` 检查数据库、migration、worker heartbeat 和 AI 配置状态并分别报告。
 
@@ -168,17 +176,17 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 
 ### Candidate Shell
 
-固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control 和唯一的 Agent / 智能体入口；顶部包含 owner 范围搜索、通知和账号菜单。账号菜单只显示身份与注销，根布局在登录前后所有路由的右上角提供唯一语言设置，各 Shell 与页面 footer 不再渲染语言入口。Candidate Shell 不再持有 Quick Action、邀请面试官或独立 Publish Agent 导航。移动端变为可关闭 drawer，主内容使用单列卡片。
+固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control 和唯一的 Agent / 智能体入口；顶部只保留通知和账号菜单，不再提供页眉搜索或快捷操作。账号菜单只显示身份与注销，根布局在登录前后所有路由的右上角提供唯一语言设置，各 Shell 与页面 footer 不再渲染语言入口。Candidate Shell 不再持有 Quick Action、邀请面试官或独立 Publish Agent 导航。移动端变为可关闭 drawer，主内容使用单列卡片。
 
 `/workspace/agent` 的 Server Component 并行加载预览对话、Agent settings 与 publication overview；页面内部把预览问答、设置、发布 readiness、链接、发布/撤销和已发布公共页入口组成同一 Candidate Agent 工作流。`/workspace/publish`、`/workspace/publish/preview`、专用页面组件与 `GET /api/publications/preview` 退役；publication domain service 以及 current/link/publish/revoke API 继续作为 Agent 页与公共访问链路共享的服务端边界。
 
 ### Public Agent
 
-独立公共壳层：左侧 Candidate 授权 profile/Agent 状态，中央 Chat 与 Citation，右侧 highlights/recommendations；移动端顺序为 profile 摘要 → Chat → Citation/highlights，输入固定在可见内容流末端而不遮挡正文。
+独立公共壳层：左侧 Candidate 授权 profile/Agent 状态，中央 Markdown Chat 与只显示来源名称的 Citation，右侧 highlights/recommendations；`public_preview` 来源名称可打开，其他 Citation 保持无地址文本。移动端顺序为 profile 摘要 → Chat → Citation/highlights，输入固定在可见内容流末端而不遮挡正文。
 
 ### Platform Admin
 
-独立 Admin 侧栏和身份标签；Overview 使用指标、最近发布、review 队列、趋势和 quick actions。子页面复用统一表格/筛选/空态，不显示 Candidate 私有原文。
+独立 Admin 侧栏和身份标签；页眉不显示全局搜索或 Quick Action，Overview 内容区仍使用指标、最近发布、review 队列、趋势和真实 quick actions。子页面复用统一表格/筛选/空态与各自领域搜索，不显示 Candidate 私有原文。
 
 三种 Shell 共享 design tokens、纸张纹理、墨绿色和水墨资产，但路由、角色标识和数据权限不共享。English/简体中文字典在服务端选择首屏语言，客户端切换写用户设置或匿名 cookie，避免 hydration 混用。
 
@@ -190,6 +198,7 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 - 外部 connector 401/403/404/429/timeout/SSRF：保存安全错误和 retry eligibility；凭证不入错误文本。
 - migration 失败：Web/Worker 不进入 ready；先修 migration，不自动降级旧 schema。
 - 文件与数据库不一致：定期 cleanup 只处理数据库已不存在且明确位于 upload root 下的孤儿；禁止宽范围递归删除。
+- 来源内容请求期间权限、publication 或文件状态变化：每个请求重新查询；不缓存授权决定，返回不存在且不暴露先前状态。Markdown 加载或 PDF 浏览器预览失败只影响当前 dialog，可关闭后重试或按允许格式在新标签页访问。
 
 结构化日志字段包含 timestamp、level、service、request/job id、action、outcome、safe error code；敏感 headers、cookie、密码、token、AI prompt、Chunk 原文和完整文件内容默认不记录。
 
@@ -201,10 +210,10 @@ Compose 包含 `db`、一次性 `migrate`、`web` 和 `worker`。`web`/`worker` 
 
 ## 11. 验证策略
 
-1. Domain/unit：password/session、visibility matrix、config allowlist、URL 安全、retrieval filter、状态机与 AI response parser。
+1. Domain/unit：password/session、visibility matrix、公开文件访问矩阵、Markdown 安全渲染、config allowlist、URL 安全、retrieval filter、状态机与 AI response parser。
 2. PostgreSQL integration：migration、双 owner 隔离、job lease/idempotency、级联删除、全文检索、发布/撤销与 Admin 聚合。
 3. Adapter contract：真实样例文件、受控 GitHub/Notion/Website HTTP fixture、DeepSeek mock 与一次不记录响应正文的真实 health/chat smoke。
 4. Docker：空 volume 启动、健康、bootstrap、worker job、restart 持久性和显式 reset 目标审计。
-5. Browser：Candidate 完整主闭环、公共访客对话、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、390 × 844 overflow/a11y；最后用 Chrome 重跑核心场景。
+5. Browser：Candidate 完整主闭环、公开访客 Markdown 对话、Candidate/Public 来源预览、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、430 × 932 overflow/a11y；最后用 Chrome 重跑核心场景。
 
 每个 `SPEC-001` AC 必须在 Review/Scenario/Operation owner 中指向当前 Evidence 后才可勾选；窄测试不能替代跨角色或真实浏览器结论。

@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 
 const publicChatInputSchema = z.object({
   clientMessageId: z.string().uuid(),
-  question: z.string().transform((value) => value.replace(/\s+/g, " ").trim()).pipe(z.string().min(1).max(500)),
+  question: z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(500)),
 }).strict();
 
 const feedbackInputSchema = z.object({ value: z.enum(["up", "down"]) }).strict();

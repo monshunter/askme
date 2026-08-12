@@ -15,6 +15,7 @@ import { assessPublicQuestion, isContextDependentPublicQuestion } from "./public
 import { publicAnswerRisk } from "./public-risk";
 import { retrievePublicQuestionEvidence } from "./public-retrieval";
 import { consumePublicRateLimit } from "./rate-limit";
+import { projectPublicCitations, type RawPublicCitation } from "./public-citation";
 import { requirePublicConversation, type PublicConversation } from "./session-service";
 import { hashVisitorToken } from "./visitor-credential";
 
@@ -98,7 +99,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
   const { conversation, token } = await requirePublicConversation(slug, visitorToken);
   await recoverStaleAnswers(conversation.id, conversation.ownerId, getPool());
   const actorKey = `visitor:${hashVisitorToken(token)}`;
-  const messages = await getPool().query(
+  const messages = await getPool().query<{ citations: RawPublicCitation[] } & Record<string, unknown>>(
     `SELECT message.id,message.role,message.status,
             CASE WHEN message.source_invalidated_at IS NOT NULL OR coalesce(bool_or(citation.chunk_id IS NOT NULL AND (material.id IS NULL OR material.status<>'indexed' OR material.visibility NOT IN ('citation_allowed','public_preview'))),false)
                  THEN 'This answer is no longer available because its source permissions changed.' ELSE message.content END AS content,
@@ -108,8 +109,9 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
             message.reply_to_message_id AS "replyToMessageId",message.created_at AS "createdAt",
             (SELECT value FROM answer_feedback WHERE message_id=message.id AND actor_key=$3) AS feedback,
             coalesce(jsonb_agg(jsonb_build_object(
-              'chunkId',citation.chunk_id,'rank',citation.rank,'excerpt',citation.excerpt,
-              'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,'externalUrl',material.external_url
+              'chunkId',citation.chunk_id,'rank',citation.rank,
+              'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
+              'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
             ) ORDER BY citation.rank) FILTER (
               WHERE citation.chunk_id IS NOT NULL AND material.status='indexed' AND material.visibility IN ('citation_allowed','public_preview')
             ),'[]'::jsonb) AS citations
@@ -122,7 +124,10 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
      ORDER BY message.created_at ASC,CASE WHEN message.role='user' THEN 0 ELSE 1 END,message.id ASC`,
     [conversation.id, conversation.ownerId, actorKey],
   );
-  return { conversation: { id: conversation.id, expiresAt: conversation.expiresAt }, messages: messages.rows };
+  return {
+    conversation: { id: conversation.id, expiresAt: conversation.expiresAt },
+    messages: messages.rows.map((message) => ({ ...message, citations: projectPublicCitations(slug, message.citations) })),
+  };
 }
 
 type AnswerResult =

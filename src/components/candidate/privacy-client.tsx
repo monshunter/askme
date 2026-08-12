@@ -4,6 +4,7 @@ import { AlertCircle, BookOpen, Check, ChevronDown, Eye, FileText, Github, Globe
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
+import { CandidateSourceLink } from "@/components/source-viewer";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
@@ -13,12 +14,14 @@ type Material = {
   id: string;
   title: string;
   kind: "file" | "github" | "notion" | "website";
+  mimeType: string | null;
+  externalUrl: string | null;
   status: "queued" | "processing" | "indexed" | "failed";
   visibility: Visibility;
   createdAt: string;
   updatedAt: string;
 };
-type PreviewMaterial = Pick<Material, "id" | "title" | "kind" | "status" | "visibility" | "updatedAt">;
+type PreviewMaterial = Pick<Material, "id" | "title" | "kind" | "mimeType" | "externalUrl" | "status" | "visibility" | "updatedAt">;
 type PrivacyOverview = {
   materials: { items: Material[]; page: number; pageSize: number; total: number; totalPages: number };
   counts: { private: number; agentOnly: number; citationAllowed: number; publicPreview: number; interviewerAccessible: number; interviewerHidden: number };
@@ -39,7 +42,7 @@ const permissionRows = [
   { labelKey: "privacy.permission.answers" as TranslationKey, values: [false, false, true, true] },
   { labelKey: "privacy.permission.cited" as TranslationKey, values: [false, false, true, true] },
   { labelKey: "privacy.permission.highlights" as TranslationKey, values: [false, false, false, true] },
-  { labelKey: "privacy.permission.download" as TranslationKey, values: [false, false, false, false] },
+  { labelKey: "privacy.permission.download" as TranslationKey, values: [false, false, false, true] },
 ];
 
 function sourceIcon(kind: Material["kind"]) {
@@ -138,7 +141,7 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
                 return (
                   <div className="visibility-row" role="row" key={material.id}>
                     <span className={`source-kind ${material.kind}`}><Icon size={18} /></span>
-                    <span className="visibility-source"><strong>{material.title}</strong><small>{material.kind.toUpperCase()} · {t(`status.${material.status}` as TranslationKey)}</small></span>
+                    <span className="visibility-source"><CandidateSourceLink materialId={material.id} title={material.title} kind={material.kind} mimeType={material.mimeType} externalUrl={material.externalUrl} locale={locale} /><small>{material.kind.toUpperCase()} · {t(`status.${material.status}` as TranslationKey)}</small></span>
                     <label className={`visibility-select ${material.visibility}`}>
                       <span className="sr-only">{t("privacy.manage.visibilityFor", { title: material.title })}</span>
                       {savingId === material.id ? <LoaderCircle className="spin" size={15} /> : material.visibility === "private" ? <LockKeyhole size={15} /> : material.visibility === "public_preview" ? <Globe2 size={15} /> : material.visibility === "citation_allowed" ? <Quote size={15} /> : <Eye size={15} />}
@@ -186,6 +189,6 @@ export function PrivacyClient({ initialOverview, locale }: { initialOverview: Pr
 function PreviewList({ title, tone, icon: Icon, items, empty, locale }: { title: string; tone: string; icon: typeof Eye; items: PreviewMaterial[]; empty: string; locale: Locale }) {
   const t = createTranslator(locale);
   return (
-    <section className={`privacy-preview-list ${tone}`}><h3><Icon size={16} /> {title}<span>{items.length}</span></h3>{items.length === 0 ? <p>{empty}</p> : <ul>{items.map((item) => { const SourceIcon = sourceIcon(item.kind); const option = visibilityOptions.find((entry) => entry.value === item.visibility); return <li key={item.id}><SourceIcon size={15} /><span><strong>{item.title}</strong><small>{option ? t(option.labelKey) : item.visibility}</small></span></li>; })}</ul>}</section>
+    <section className={`privacy-preview-list ${tone}`}><h3><Icon size={16} /> {title}<span>{items.length}</span></h3>{items.length === 0 ? <p>{empty}</p> : <ul>{items.map((item) => { const SourceIcon = sourceIcon(item.kind); const option = visibilityOptions.find((entry) => entry.value === item.visibility); return <li key={item.id}><SourceIcon size={15} /><span><CandidateSourceLink materialId={item.id} title={item.title} kind={item.kind} mimeType={item.mimeType} externalUrl={item.externalUrl} locale={locale} /><small>{option ? t(option.labelKey) : item.visibility}</small></span></li>; })}</ul>}</section>
   );
 }

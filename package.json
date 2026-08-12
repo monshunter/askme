@@ -19,6 +19,7 @@
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "e2e:admin-fixture": "tsx scripts/admin-browser-fixture.ts",
     "e2e:fixture": "tsx scripts/browser-fixture.ts",
+    "e2e:public-thread-fixture": "tsx scripts/seed-browser-public-thread.ts",
     "ai:check": "tsx scripts/check-ai.ts",
     "smoke:auth": "tsx scripts/smoke-auth.ts",
     "smoke:connect": "tsx scripts/smoke-connect.ts",
@@ -47,6 +48,8 @@
     "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
     "undici": "^8.10.0",
     "zod": "4.4.3"
   },

@@ -1,6 +1,7 @@
 import { ArrowRight, BookOpen, Bot, Check, CircleAlert, FileText, MessageSquareText, Quote, ShieldCheck, UploadCloud } from "lucide-react";
 import Link from "next/link";
 
+import { CandidateSourceLink, type MaterialKind } from "@/components/source-viewer";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 import { getRequestLocale } from "@/i18n/server";
 import { requirePageUser } from "@/server/auth/current";
@@ -94,7 +95,7 @@ export default async function WorkspacePage() {
               {dashboard.recentMaterials.map((material) => (
                 <li key={String(material.id)}>
                   <span className="file-tile"><FileText size={18} /></span>
-                  <span className="list-main"><strong>{String(material.title)}</strong><small>{String(material.kind).toUpperCase()} · {formatDate(material.createdAt as string, locale)}</small></span>
+                  <span className="list-main"><CandidateSourceLink materialId={String(material.id)} title={String(material.title)} kind={material.kind as MaterialKind} mimeType={material.mimeType as string | null} externalUrl={material.externalUrl as string | null} locale={locale} /><small>{String(material.kind).toUpperCase()} · {formatDate(material.createdAt as string, locale)}</small></span>
                   <span className={`status-pill ${String(material.status)}`}>{prettyStatus(String(material.status), locale)}</span>
                 </li>
               ))}

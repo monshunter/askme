@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, BookOpen, Check, FileArchive, FileCode2, FileT
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { CandidateSourceLink } from "@/components/source-viewer";
 import { useModalFocus } from "@/components/use-modal-focus";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
@@ -275,7 +276,7 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
                 {materials.items.slice(0, 5).map((material) => (
                   <li key={material.id}>
                     <span className="file-tile"><FileText size={17} /></span>
-                    <span className="list-main"><strong>{material.title}</strong><small>{formatBytes(material.sizeBytes, locale)}</small><span className={`progress-line ${material.status}`}><i /></span>{material.errorMessage ? <em>{locale === "en" ? material.errorMessage : t("materials.error.processing")}</em> : null}</span>
+                    <span className="list-main"><CandidateSourceLink materialId={material.id} title={material.title} kind={material.kind} mimeType={material.mimeType} externalUrl={material.externalUrl} locale={locale} /><small>{formatBytes(material.sizeBytes, locale)}</small><span className={`progress-line ${material.status}`}><i /></span>{material.errorMessage ? <em>{locale === "en" ? material.errorMessage : t("materials.error.processing")}</em> : null}</span>
                     <span className={`status-symbol ${material.status}`}>{material.status === "indexed" ? <Check size={17} /> : material.status === "failed" ? <AlertCircle size={17} /> : <LoaderCircle className={material.status === "processing" ? "spin" : ""} size={17} />}</span>
                   </li>
                 ))}
@@ -290,7 +291,7 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
                 {materials.items.map((material) => (
                   <li key={material.id}>
                     <span className="file-tile"><FileText size={17} /></span>
-                    <span className="list-main"><strong>{material.title}</strong><small>{formatDate(material.createdAt, locale)} · {formatBytes(material.sizeBytes, locale)}</small>{material.errorMessage ? <em>{locale === "en" ? material.errorMessage : t("materials.error.processing")}</em> : null}</span>
+                    <span className="list-main"><CandidateSourceLink materialId={material.id} title={material.title} kind={material.kind} mimeType={material.mimeType} externalUrl={material.externalUrl} locale={locale} /><small>{formatDate(material.createdAt, locale)} · {formatBytes(material.sizeBytes, locale)}</small>{material.errorMessage ? <em>{locale === "en" ? material.errorMessage : t("materials.error.processing")}</em> : null}</span>
                     <span className={`status-pill ${material.status}`}>{statusLabel(material.status, locale)}</span>
                     <span className="row-actions">
                       {material.status === "failed" ? <button type="button" onClick={() => void retry(material)} aria-label={t("materials.retry", { title: material.title })} title={t("materials.action.retry")}><RotateCcw size={16} /></button> : null}

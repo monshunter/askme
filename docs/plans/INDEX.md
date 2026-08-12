@@ -14,4 +14,5 @@
 | PLAN-009 | PLAN-009：收敛 Candidate Agent 入口与发布体验 | [PLAN-009.md](PLAN-009.md) |
 | PLAN-010 | PLAN-010：对账简化 Harness 迁移并完成交付收口 | [PLAN-010.md](PLAN-010.md) |
 | PLAN-011 | PLAN-011：优化 Agent 发布、访问与分享体验 | [PLAN-011.md](PLAN-011.md) |
+| PLAN-012 | PLAN-012：交付 Markdown 问答与授权来源预览 | [PLAN-012.md](PLAN-012.md) |
 <!-- AGENT-HARNESS:END INDEX -->

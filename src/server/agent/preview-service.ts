@@ -116,7 +116,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
             coalesce(jsonb_agg(jsonb_build_object(
               'chunkId',citation.chunk_id,'rank',citation.rank,'excerpt',citation.excerpt,
               'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
-              'externalUrl',material.external_url,'visibility',material.visibility
+              'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
             ) ORDER BY citation.rank) FILTER (WHERE citation.chunk_id IS NOT NULL AND material.status='indexed' AND material.visibility<>'private'),'[]'::jsonb) AS citations
      FROM messages message
      LEFT JOIN message_citations citation ON citation.message_id=message.id AND citation.owner_id=message.owner_id

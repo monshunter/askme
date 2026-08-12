@@ -11,6 +11,7 @@ describe("Agent API input", () => {
       question: "Tell me about Askme.",
     });
     expect(parseChatInput({ clientMessageId: "11111111-1111-4111-8111-111111111111", conversationId: "22222222-2222-4222-8222-222222222222", question: "Askme?" }).conversationId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(parseChatInput({ clientMessageId: "11111111-1111-4111-8111-111111111111", question: "  # Focus\n\n- Askme\n- Evidence  " }).question).toBe("# Focus\n\n- Askme\n- Evidence");
   });
 
   it("rejects malformed ids, empty questions, and extra fields", () => {

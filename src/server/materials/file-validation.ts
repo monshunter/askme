@@ -104,6 +104,10 @@ export function buildStorageLocation(root: string, ownerId: string, materialId: 
 }
 
 export function resolveStoredMaterialDirectory(root: string, ownerId: string, materialId: string, storagePath: string) {
+  return path.dirname(resolveStoredMaterialPath(root, ownerId, materialId, storagePath));
+}
+
+export function resolveStoredMaterialPath(root: string, ownerId: string, materialId: string, storagePath: string) {
   if (!UUID_PATTERN.test(ownerId) || !UUID_PATTERN.test(materialId)) {
     throw new AppError("INVALID_STORAGE_ID", "The material storage identifier is invalid.", 500);
   }
@@ -113,7 +117,7 @@ export function resolveStoredMaterialDirectory(root: string, ownerId: string, ma
   if (path.dirname(absoluteFile) !== expectedDirectory || !absoluteFile.startsWith(`${absoluteRoot}${path.sep}`)) {
     throw new AppError("INVALID_STORAGE_PATH", "The stored material path is outside its owner boundary.", 500);
   }
-  return expectedDirectory;
+  return absoluteFile;
 }
 
 export function safeOriginalName(name: string) {

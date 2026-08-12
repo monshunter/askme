@@ -50,4 +50,8 @@
 | REVIEW-045 | REVIEW-045：PLAN-011 Plan Review | [REVIEW-045.md](REVIEW-045.md) |
 | REVIEW-046 | REVIEW-046：SPEC-001 Agent 发布与分享增量 Review | [REVIEW-046.md](REVIEW-046.md) |
 | REVIEW-047 | REVIEW-047：PLAN-011 Change Review | [REVIEW-047.md](REVIEW-047.md) |
+| REVIEW-048 | REVIEW-048：PLAN-012 Plan Review | [REVIEW-048.md](REVIEW-048.md) |
+| REVIEW-049 | REVIEW-049：SPEC-001 Markdown 与来源访问增量 Review | [REVIEW-049.md](REVIEW-049.md) |
+| REVIEW-050 | REVIEW-050：来源文件访问与 Markdown 体验 Design Review | [REVIEW-050.md](REVIEW-050.md) |
+| REVIEW-051 | REVIEW-051：PLAN-012 Change Review | [REVIEW-051.md](REVIEW-051.md) |
 <!-- AGENT-HARNESS:END INDEX -->

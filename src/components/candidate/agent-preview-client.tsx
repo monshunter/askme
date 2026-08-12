@@ -8,7 +8,6 @@ import {
   CircleUserRound,
   FileText,
   Globe2,
-  Link2,
   LoaderCircle,
   MessageSquareText,
   RefreshCw,
@@ -23,6 +22,8 @@ import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 
 import { createTranslator, type Locale } from "@/i18n/core";
+import { MarkdownContent } from "@/components/markdown-content";
+import { CandidateSourceLink } from "@/components/source-viewer";
 
 import { ApiClientError, requestApi } from "./api-client";
 import { AgentPublicationControls, type PublicationOverview } from "./agent-publication-controls";
@@ -35,6 +36,7 @@ type Citation = {
   materialId: string;
   materialTitle: string;
   materialKind: "file" | "github" | "notion" | "website";
+  mimeType: string | null;
   externalUrl: string | null;
   visibility: Visibility;
 };
@@ -112,7 +114,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   }
 
   async function sendQuestion(value: string) {
-    const normalized = value.replace(/\s+/g, " ").trim();
+    const normalized = value.trim();
     if (!normalized || sending) return;
     setSending(true);
     setNotice(null);
@@ -236,13 +238,13 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
             ) : thread.messages.map((message) => message.role === "user" ? (
               <article className="chat-message user-message" key={message.id}>
                 <span className="chat-avatar user"><CircleUserRound size={24} /></span>
-                <div><p>{message.content}</p><time dateTime={message.createdAt}>{timeLabel(message.createdAt, locale)}</time></div>
+                <div><MarkdownContent content={message.content} /><time dateTime={message.createdAt}>{timeLabel(message.createdAt, locale)}</time></div>
               </article>
             ) : (
               <article className={`chat-message assistant-message ${message.status}`} key={message.id} onClick={() => setSelectedAnswerId(message.id)}>
                 <span className="chat-avatar agent"><Bot size={22} /></span>
                 <div className="assistant-bubble">
-                  {message.status === "pending" ? <p className="answer-status"><LoaderCircle className="spin" size={16} /> {t("agent.grounding")}</p> : <p>{message.content}</p>}
+                  {message.status === "pending" ? <p className="answer-status"><LoaderCircle className="spin" size={16} /> {t("agent.grounding")}</p> : <MarkdownContent content={message.content} />}
                   {message.errorCode ? <span className={`answer-outcome ${message.status}`}>{message.errorCode === "INSUFFICIENT_EVIDENCE" ? t("agent.outcome.moreEvidence") : message.errorCode === "REFUSED" ? t("agent.outcome.refused") : t("agent.outcome.failed")}</span> : null}
                   <footer>
                     <span>{message.citations.length > 0 ? t("agent.citedSources", { count: message.citations.length }) : message.status === "completed" ? t("agent.noSource") : ""}</span>
@@ -268,7 +270,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
         <aside className="paper-card citations-card" aria-label={t("agent.citations.label")}>
           <header><span><h2>{t("agent.citations.title")}</h2><small>{activeAnswer ? t("agent.citations.used") : t("agent.citations.select")}</small></span><strong>{t("agent.citations.count", { count: activeAnswer?.citations.length ?? 0 })}</strong></header>
           {!activeAnswer || activeAnswer.citations.length === 0 ? <div className="empty-state citations-empty"><FileText size={26} /><p>{t("agent.citations.empty")}</p><small>{t("agent.citations.copy")}</small></div> : (
-            <ol className="citation-list">{activeAnswer.citations.map((citation) => <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><strong>{citation.materialTitle}</strong><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p>{citation.externalUrl ? <a href={citation.externalUrl} target="_blank" rel="noreferrer"><Link2 size={13} /> {t("agent.citations.open")}</a> : null}</div></li>)}</ol>
+            <ol className="citation-list">{activeAnswer.citations.map((citation) => <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><CandidateSourceLink materialId={citation.materialId} title={citation.materialTitle} kind={citation.materialKind} mimeType={citation.mimeType} externalUrl={citation.externalUrl} locale={locale} /><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p></div></li>)}</ol>
           )}
           <Link className="knowledge-deep-link" href="/workspace/knowledge"><FileText size={17} /> {t("agent.citations.viewAll")} <ChevronRight size={17} /></Link>
         </aside>

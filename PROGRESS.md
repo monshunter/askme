@@ -79,3 +79,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-011：优化 Agent 发布、访问与分享体验](docs/plans/PLAN-011.md)
 ---
+
+---
+ID: OBJ-007
+Objective: 统一后台页眉、问答 Markdown 渲染与授权来源查看体验
+Status: 已完成
+Plans:
+- [x] [PLAN-012：交付 Markdown 问答与授权来源预览](docs/plans/PLAN-012.md)
+---

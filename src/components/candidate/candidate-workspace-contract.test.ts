@@ -2,9 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const shellSource = readFileSync(new URL("./candidate-shell.tsx", import.meta.url), "utf8");
+const adminShellSource = readFileSync(new URL("../admin/admin-shell.tsx", import.meta.url), "utf8");
 const agentClientSource = readFileSync(new URL("./agent-preview-client.tsx", import.meta.url), "utf8");
 const publicationControlsSource = readFileSync(new URL("./agent-publication-controls.tsx", import.meta.url), "utf8");
 const privacyClientSource = readFileSync(new URL("./privacy-client.tsx", import.meta.url), "utf8");
+const materialsClientSource = readFileSync(new URL("./materials-client.tsx", import.meta.url), "utf8");
+const knowledgeClientSource = readFileSync(new URL("./knowledge-client.tsx", import.meta.url), "utf8");
+const dashboardPageSource = readFileSync(new URL("../../app/workspace/page.tsx", import.meta.url), "utf8");
 const agentPageSource = readFileSync(new URL("../../app/workspace/agent/page.tsx", import.meta.url), "utf8");
 const publicationServiceSource = readFileSync(new URL("../../server/publication/publication-service.ts", import.meta.url), "utf8");
 
@@ -14,6 +18,15 @@ describe("Candidate Workspace consolidation contract", () => {
     expect(shellSource).not.toContain("candidate.quick.");
     expect(shellSource).not.toContain("candidate.invite.");
     expect(shellSource).not.toContain("LanguageSwitcher");
+  });
+
+  it("removes header search and quick actions without retiring domain search pages", () => {
+    expect(shellSource).not.toContain("global-search");
+    expect(shellSource).not.toContain("useSearchShortcut");
+    expect(adminShellSource).not.toContain("admin-global-search");
+    expect(adminShellSource).not.toContain("admin-quick-actions");
+    expect(adminShellSource).not.toContain("useSearchShortcut");
+    expect(existsSync(new URL("../../app/admin/search/page.tsx", import.meta.url))).toBe(true);
   });
 
   it("retires the dedicated publishing pages", () => {
@@ -47,5 +60,12 @@ describe("Candidate Workspace consolidation contract", () => {
   it("places published Agent access before revocation", () => {
     expect(publicationControlsSource).toContain('t("publish.manage.visit")');
     expect(publicationControlsSource.indexOf('t("publish.manage.visit")')).toBeLessThan(publicationControlsSource.indexOf('t("publish.manage.revoke")'));
+  });
+
+  it("uses one owner-scoped source viewer from every Candidate material surface", () => {
+    for (const source of [dashboardPageSource, materialsClientSource, knowledgeClientSource, privacyClientSource, agentClientSource]) {
+      expect(source).toContain("CandidateSourceLink");
+    }
+    expect(existsSync(new URL("../../app/api/materials/[materialId]/content/route.ts", import.meta.url))).toBe(true);
   });
 });

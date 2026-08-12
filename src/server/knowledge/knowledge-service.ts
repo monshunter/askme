@@ -118,7 +118,7 @@ export async function getKnowledgeDetail(ownerId: string, knowledgeItemId: strin
   if (!item.rows[0]) throw new AppError("KNOWLEDGE_NOT_FOUND", "The knowledge item was not found.", 404);
   const [sources, evidence] = await Promise.all([
     pool.query(
-      `SELECT m.id,m.title,m.kind,m.status,m.visibility,m.external_url AS "externalUrl",m.summary,m.updated_at AS "updatedAt",
+      `SELECT m.id,m.title,m.kind,m.mime_type AS "mimeType",m.status,m.visibility,m.external_url AS "externalUrl",m.summary,m.updated_at AS "updatedAt",
               count(c.id)::int AS "chunkCount"
        FROM knowledge_sources ks
        JOIN materials m ON m.id=ks.material_id AND m.owner_id=ks.owner_id

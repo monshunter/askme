@@ -3,6 +3,7 @@
 import { AlertCircle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, FileText, Grid2X2, List, LoaderCircle, LockKeyhole, Pencil, Quote, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CandidateSourceLink, type MaterialKind } from "@/components/source-viewer";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 import { ApiClientError, requestApi } from "./api-client";
@@ -24,7 +25,7 @@ type KnowledgeItem = {
   updatedAt: string;
 };
 type KnowledgePage = { items: KnowledgeItem[]; counts: Record<string, number>; page: number; pageSize: number; total: number; totalPages: number };
-type Source = { id: string; title: string; kind: string; status: string; visibility: string; externalUrl: string | null; summary: string | null; chunkCount: number; updatedAt: string };
+type Source = { id: string; title: string; kind: MaterialKind; mimeType: string | null; status: string; visibility: string; externalUrl: string | null; summary: string | null; chunkCount: number; updatedAt: string };
 type Evidence = { id: string; materialId: string; position: number; excerpt: string };
 type KnowledgeDetail = KnowledgeItem & { sources: Source[]; evidence: Evidence[] };
 type ApiEnvelope<T = unknown> = { data?: T; error?: { message?: string } | null };
@@ -253,7 +254,7 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
               <div className="detail-tabs"><span className="active">{t("knowledge.detail.overview")}</span><span>{t("knowledge.detail.sources", { count: detail.sources.length })}</span><span>{t("knowledge.detail.evidence", { count: detail.evidence.length })}</span></div>
               <section className="detail-section"><h3>{t("knowledge.detail.summary")} <Sparkles size={15} /></h3><p>{detail.summary}</p></section>
               <section className="detail-section"><h3>{t("knowledge.detail.highlights")}</h3>{detail.highlights.length === 0 ? <p className="muted">{t("knowledge.detail.noHighlights")}</p> : <ul className="highlight-list">{detail.highlights.map((highlight, index) => <li key={`${highlight}-${index}`}><Check size={14} />{highlight}</li>)}</ul>}</section>
-              <section className="detail-section"><h3>{t("knowledge.detail.sourcesTitle")} <span>{detail.sources.length}</span></h3><ul className="source-list">{detail.sources.map((source) => <li key={source.id}><span className="file-tile"><FileText size={15} /></span><span><strong>{source.title}</strong><small>{t("knowledge.detail.sourceMeta", { kind: source.kind.toUpperCase(), count: source.chunkCount, visibility: source.visibility.replaceAll("_", " ") })}</small></span></li>)}</ul></section>
+              <section className="detail-section"><h3>{t("knowledge.detail.sourcesTitle")} <span>{detail.sources.length}</span></h3><ul className="source-list">{detail.sources.map((source) => <li key={source.id}><span className="file-tile"><FileText size={15} /></span><span><CandidateSourceLink materialId={source.id} title={source.title} kind={source.kind} mimeType={source.mimeType} externalUrl={source.externalUrl} locale={locale} /><small>{t("knowledge.detail.sourceMeta", { kind: source.kind.toUpperCase(), count: source.chunkCount, visibility: source.visibility.replaceAll("_", " ") })}</small></span></li>)}</ul></section>
               <section className="detail-section citation-readiness"><h3>{t("knowledge.readiness.title")}</h3><div><span className={detail.citationReady ? "ready" : "private"}>{detail.citationReady ? <Quote size={24} /> : <LockKeyhole size={24} />}<strong>{detail.citationReady ? t("status.ready") : t("knowledge.private")}</strong></span><p>{detail.citationReady ? t("knowledge.readiness.supported", { count: detail.chunkCount }) : t("knowledge.readiness.private")}</p></div></section>
             </>
           )}

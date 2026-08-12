@@ -1,11 +1,10 @@
 "use client";
 
-import { Bell, BookOpen, ChevronDown, House, Menu, Monitor, Search, ShieldCheck, UploadCloud } from "lucide-react";
+import { Bell, BookOpen, ChevronDown, House, Menu, Monitor, ShieldCheck, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
-import { useSearchShortcut } from "@/components/use-search-shortcut";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
 type CandidateShellProps = {
@@ -43,7 +42,6 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
   const t = createTranslator(locale);
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const searchRef = useSearchShortcut();
   const initials = user.displayName
     .split(/\s+/)
     .map((part) => part[0])
@@ -71,12 +69,6 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
               <Navigation pathname={pathname} locale={locale} mobile onNavigate={() => setMobileNavOpen(false)} />
             </div>
           </details>
-          <form className="global-search" action="/workspace/knowledge" method="get" role="search">
-            <Search size={20} aria-hidden="true" />
-            <label className="sr-only" htmlFor="global-search">{t("candidate.search.label")}</label>
-            <input ref={searchRef} id="global-search" name="search" placeholder={t("candidate.search.placeholder")} />
-            <kbd>⌘ K</kbd>
-          </form>
           <div className="topbar-actions">
             <button className="icon-button notification-button" type="button" aria-label={t("candidate.notifications")} title={t("candidate.notifications.empty")}>
               <Bell size={22} /><span aria-hidden="true" />

@@ -8,6 +8,7 @@ describe("public chat input", () => {
       clientMessageId: "11111111-1111-4111-8111-111111111111",
       question: "What did the candidate build?",
     });
+    expect(parsePublicChatInput({ clientMessageId: "11111111-1111-4111-8111-111111111111", question: "  **Impact**\n\n1. Scale\n2. Reliability  " }).question).toBe("**Impact**\n\n1. Scale\n2. Reliability");
   });
 
   it("rejects client-supplied conversation identifiers and invalid feedback", () => {

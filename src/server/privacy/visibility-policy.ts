@@ -1,10 +1,11 @@
 export type MaterialVisibility = "private" | "agent_only" | "citation_allowed" | "public_preview";
-export type VisibilityConsumer = "candidate_preview" | "public_answer" | "public_highlight";
+export type VisibilityConsumer = "candidate_preview" | "public_answer" | "public_highlight" | "public_file";
 
 const policy = {
   candidate_preview: Object.freeze(["agent_only", "citation_allowed", "public_preview"]),
   public_answer: Object.freeze(["citation_allowed", "public_preview"]),
   public_highlight: Object.freeze(["public_preview"]),
+  public_file: Object.freeze(["public_preview"]),
 } as const satisfies Record<VisibilityConsumer, readonly MaterialVisibility[]>;
 
 export function allowedVisibilities(consumer: VisibilityConsumer): readonly MaterialVisibility[] {

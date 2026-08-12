@@ -30,7 +30,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 ### 2.1 角色
 
 - **Candidate**：职业资料、知识库、隐私策略和 Candidate Agent 的唯一 owner。
-- **Interviewer**：匿名打开已发布 Agent 的访客；只能提问并查看本次回答允许公开的引用元数据。
+- **Interviewer**：匿名打开已发布 Agent 的访客；只能提问、查看本次回答允许公开的引用名称，并在来源允许公开访问时打开该来源。
 - **Platform Admin**：治理平台账号、已发布 Agent、内容风险和运行设置；不能以 Candidate 身份修改其私有知识内容。
 
 ### 2.2 核心术语
@@ -43,7 +43,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 ### 2.3 MVP 非目标
 
 - 不做 ATS 集成、招聘自动筛选、候选人评分、自动录用或淘汰、面试作弊能力和复杂企业后台。
-- 不向 Interviewer 提供完整知识库浏览、原始上传文件下载或未授权内容检索。
+- 不向 Interviewer 提供完整知识库浏览、未公开来源文件访问或未授权内容检索。
 - 不把平台统计、AI 回答、上传进度或处理结果伪造为成功。
 - 不要求生产部署、第三方付费账号或公开互联网发布；本地 Docker 是本 Objective 的部署边界。
 
@@ -69,6 +69,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 3. 每份资料具有 `queued`、`processing`、`indexed`、`failed` 生命周期和可读错误；刷新页面后状态仍由数据库恢复。
 4. 后台处理必须从真实文件或远端响应提取文本、切分可检索证据、生成资料摘要和 Knowledge Item，并保存来源关系。失败可重试且不能重复创建同一处理结果。
 5. Candidate 可查看最近导入、重试失败资料、按 owner 删除资料；删除同步移除其文件、证据片段和仅由该资料支撑的派生关系，且不得影响其他 owner。
+6. Candidate 工作区中每个 Source Material 文件名都可打开 owner 范围内的真实来源；Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开。
 
 ### 3.4 Career Knowledge Base
 
@@ -76,6 +77,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 2. 列表和详情必须展示真实标题、类型、来源数、索引/置信信息、更新时间和可见性；选择条目后可查看摘要、重点、来源和 Citation readiness。
 3. Candidate 可修改允许编辑的标题、摘要、重点和分类；修改保留来源追溯，不改写原始 Source Material。
 4. 搜索同时覆盖资料元数据、知识条目与证据片段，结果只属于当前 Candidate。
+5. Dashboard、资料列表、Knowledge 来源、Privacy 来源预览和 Candidate Agent Citation 中出现的 Source Material 文件名使用同一查看行为，不能存在只有部分入口可打开的并行语义。
 
 ### 3.5 Privacy Control
 
@@ -83,15 +85,15 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 
 - `private`：Agent 不读取，Interviewer 不可见、不可引用。
 - `agent_only`：Candidate 预览 Agent 可读取，Interviewer 回答不可使用或引用。
-- `citation_allowed`：Candidate 与已发布 Agent 可读取，Interviewer 回答可展示引用元数据和必要证据摘要。
-- `public_preview`：具备 `citation_allowed` 能力，并允许在公共 Agent 的候选人亮点或公开来源摘要中展示。
+- `citation_allowed`：Candidate 与已发布 Agent 可读取，Interviewer 回答只展示引用来源名称，不提供来源访问地址、正文、摘要或证据片段。
+- `public_preview`：具备 `citation_allowed` 能力，并允许在公共 Agent 展示候选人亮点，以及从回答中的来源名称打开原来源。
 
 Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即时预览，并在发布前确认当前策略。首次未确认时提供确认操作；当前策略修订已经确认时隐藏确认按钮，只有后续来源可见性变更使修订失效后才显示“再次确认”。已经打开的公共页面也必须在下一次请求时遵守最新策略。
 
 ### 3.6 Candidate Agent 预览
 
 1. Candidate 可在未发布时使用预览对话，提问范围为自己的职业经历、项目、技能和证据；预览可使用 `agent_only`、`citation_allowed` 和 `public_preview`，但必须标注哪些引用不会公开。
-2. Agent 先检索 owner 范围内允许使用的证据，再调用 DeepSeek 生成简洁回答；每个事实性回答返回实际支撑它的 Citation，不能生成不存在的来源。
+2. Agent 先检索 owner 范围内允许使用的证据，再调用 DeepSeek 生成简洁回答；每个事实性回答返回实际支撑它的 Citation，不能生成不存在的来源；用户问题与 Agent 回答按安全 Markdown 渲染。
 3. 没有充分证据时 Agent 明确说明资料不足，并给出可补充资料或可回答问题；AI 不可用、超时或返回无效内容时提供可重试错误，不返回伪造答案。
 4. 页面提供可刷新的推荐问题、回答反馈、Answer Tone、Public Mode 和 Privacy-Safe Mode 控件；控件改变后续回答行为并持久化 Candidate 设置。
 5. Candidate Workspace 只提供一个英文 `Agent`、中文 `智能体` 的一级入口；该页面同时承载 Candidate 预览问答、设置和发布生命周期管理，不再提供独立的 Publish Agent / 发布 Agent 一级入口或页面。
@@ -108,10 +110,11 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 1. 公共页面呈现 Candidate 授权的头像/姓名/头衔/地点/简介、Agent 状态、知识和 Citation 概况、公开亮点、推荐问题与 Chat-first 主区域。
 2. Interviewer 可匿名建立会话、连续提问并刷新推荐问题；问题和回答持久化到该公共会话，不能访问其他访客会话。
-3. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答展示来源标题、类型、公开外链（仅当来源本身是公开 URL）和必要证据摘要，不提供上传文件下载地址或内部存储路径。
+3. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答中的 Citation 只展示来源名称，不展示类型、正文、摘要或证据片段；`citation_allowed` 不返回访问地址，`public_preview` 名称可打开来源。Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开；任何响应都不得包含内部存储路径。
 4. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
 5. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
 6. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
+7. Interviewer 的问题与 Agent 回答按安全 Markdown 渲染；标题、列表、引用、链接、表格、行内代码和围栏代码块保持可读，原始 HTML、脚本和危险 URL 不得执行。
 
 ### 3.9 Platform Admin
 
@@ -131,6 +134,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 6. 全站无论是否登录、无论进入 Candidate、公共 Agent、Platform Admin、登录或邀请页面，都只在右上角显示同一个全局语言切换控件；页面、footer 与账号菜单不得再持有第二个语言入口。
 7. Candidate Shell 不显示与一级导航重复的 Quick Action / 快捷操作，也不显示与 Agent 页面发布能力重复的 Invite Interviewers / 邀请面试官卡片。
 8. 产品英文名保持 `Askme`，唯一中文名为“职问”；登录、Candidate、公共 Agent、Platform Admin、邀请与不可用页面中的品牌文字和印章不得再显示旧名“问候”。
+9. Candidate Workspace 与 Platform Admin 页眉不显示搜索或快捷操作；通知、身份、语言和移动导航继续可用，Knowledge/Admin 领域页面自己的搜索能力不受影响。
 
 ### 3.11 AI、配置与本地运行
 
@@ -154,20 +158,24 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-MAT-002` GitHub、Notion 与 Website 至少各完成一次真实导入路径或可控官方 API 测试替身的契约验证。
 - [x] `AC-MAT-003` 后台 job 可从 queued 收敛到 indexed/failed，失败可重试且不会重复派生数据。
 - [x] `AC-MAT-004` 删除资料同步清理 owner 范围内文件和派生关系，其他资料与其他 owner 不受影响。
+- [x] `AC-MAT-005` Candidate 工作区全部 Source Material 文件名可按格式打开 owner 文件，Markdown/PDF 当前页预览且 PDF 默认 A4，其他格式新标签页打开。
 - [x] `AC-KB-001` Knowledge Base 的分类、搜索、筛选、分页和详情对真实索引结果生效。
 - [x] `AC-KB-002` Candidate 编辑知识摘要后持久化且保留来源与 Citation 追溯。
 - [x] `AC-PRIV-001` 四级可见性矩阵由服务端统一执行，Candidate 预览与公共回答的证据集合符合合同。
 - [x] `AC-PRIV-002` 隐私修改即时影响后续公共请求，确认状态被持久化；当前修订已确认时确认按钮隐藏，来源可见性变更后显示“再次确认”。
+- [x] `AC-PRIV-003` `citation_allowed` 公共 Citation 不含访问地址，`public_preview` 才能打开来源；权限、publication 或 owner 状态变化后旧访问请求立即失败。
 - [x] `AC-AGENT-001` Candidate 预览对话使用真实检索和 DeepSeek 回答并返回真实 Citation。
 - [x] `AC-AGENT-002` 无证据、AI 未配置、超时和上游失败具有不同反馈且不产生伪造答案。
 - [x] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
 - [x] `AC-AGENT-004` Candidate Workspace 只保留 Agent / 智能体一级入口，预览问答、设置、直接发布、发布后访问和撤销在该页面形成闭环，独立链接模块、链接生成 API、发布页面与专用 Candidate 公共预览 API 不再存在。
+- [x] `AC-AGENT-005` Candidate 预览的用户问题和 Agent 回答安全渲染 Markdown，且 Citation 中的来源文件名可按 owner 权限查看。
 - [x] `AC-PUB-001` 发布前置条件、发布时生成的不可推断链接、历史 draft 兼容、持久发布状态、撤销与再发布行为通过集成测试。
 - [x] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
 - [x] `AC-PUB-003` 公共 Agent 页的“分享 Agent 链接”复制当前页面 URL、反馈成功或失败且不下载文件。
 - [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
-- [x] `AC-CHAT-002` 私有数据、跨 owner 数据、原文件下载、提示注入和完整知识库索取被拒绝或隔离。
+- [x] `AC-CHAT-002` 私有数据、跨 owner 数据、未公开原文件访问、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
+- [x] `AC-CHAT-004` 公共问答安全渲染 Markdown；Citation 只展示来源名称，并仅为 `public_preview` 提供按格式打开来源的能力。
 - [x] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
 - [x] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
 - [x] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。
@@ -177,6 +185,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-UI-004` Candidate Shell 不再显示重复语言切换、Quick Action / 快捷操作、Invite Interviewers / 邀请面试官或 Publish Agent / 发布 Agent 入口。
 - [x] `AC-UI-005` 登录前后全部产品页面只在右上角显示一个全局 English / 简体中文切换控件，切换后同一 locale cookie 驱动当前页面重新渲染，页面、footer 与账号菜单没有第二入口。
 - [x] `AC-UI-006` 全部产品页面的中文品牌文字与印章统一显示“职问”，代码和渲染结果均不再将“问候”作为 Askme 中文品牌名。
+- [x] `AC-UI-007` Candidate 与 Platform Admin 页眉不再显示搜索或快捷操作，其他页眉功能、移动导航和领域页面搜索保持可用。
 - [x] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。
 - [x] `AC-AI-001` 运行时按优先级读取 DeepSeek 配置，真实 API health/chat 验证使用 `deepseek-v4-flash` 且不泄露 key。
 - [x] `AC-OPS-001` Docker Compose 可从空数据库启动 Web、worker、PostgreSQL 并通过健康检查。

@@ -31,13 +31,13 @@ Status：`active`
 
 | 参考图 | 路由与真实 owner | 已成立结构 | 本 Plan 需闭环的差距 |
 | --- | --- | --- | --- |
-| `frontend_index.png` | `/admin`；Admin 聚合 service、PostgreSQL、health/config | 272 px 固定侧栏、94 px 顶栏、五指标、最近发布、Review、趋势、Quick Actions 已与参考层次一致 | 补齐 Platform Admin 双语；语言入口从静态文字变为可操作控件；保留真实空态和 `No prior baseline`，不复刻示例数字 |
-| `admin_dashboard.png` | `/workspace`；dashboard service | Candidate 侧栏/顶栏、水墨 hero、四指标、workflow、资料和下一步均为真实投影 | 双语；微调桌面垂直密度，使主要 lower grid 与页脚更接近参考视口，同时不截断动态内容 |
+| `frontend_index.png` | `/admin`；Admin 聚合 service、PostgreSQL、health/config | 272 px 固定侧栏、94 px 顶栏、五指标、最近发布、Review、趋势、Quick Actions 已与参考层次一致 | 页眉移除全局搜索和 Quick Action；内容区保留真实治理 Quick Actions、空态和 `No prior baseline`，不复刻示例数字 |
+| `admin_dashboard.png` | `/workspace`；dashboard service | Candidate 侧栏/顶栏、水墨 hero、四指标、workflow、资料和下一步均为真实投影 | 页眉移除全局搜索；通知、身份、全局语言和真实内容区保持可用，资料名称增加授权查看入口 |
 | `admin_uploadfile.png` | `/workspace/materials`；上传 API、ingestion job、外部连接 API | 拖放/选择、类型说明、处理状态、最近上传与外部来源均已连接真实行为 | 双语；压缩 hero、卡片间距和列表行高，让 Connect Sources 与关键反馈更接近首屏；失败资料继续显示真实原因 |
 | `admin_knowledge.png` | `/workspace/knowledge`；Knowledge API 与 owner-scoped evidence | 分类、搜索、状态/Citation 筛选、列表/详情、编辑与分页为真实数据 | 双语；提高 1448 桌面列表密度并保持 master/detail 比例；移动端详情改为顺序布局，不能产生宽表溢出 |
 | `admin_private_control.png` | `/workspace/privacy`；统一 visibility policy 与 confirmation revision | 来源可见性、能力矩阵、Interviewer Preview、发布前确认都来自服务端合同 | 双语；桌面压缩上部留白和卡片密度以呈现下部 Preview/Review；移动端表格用可读投影而非横向滚动 |
-| `admin_agent_preview.png` | `/workspace/agent`；真实检索、DeepSeek、Citation、Agent settings 和 publication service | 实际提问已返回真实回答与 1 个来源，左右回答/Citation、设置和发布结构成立 | 作为唯一 Agent / 智能体入口承载问答、设置与发布生命周期；不再跳转到独立发布页 |
-| `admin_publish.png` | `/a/[slug]`；公开 projection、visitor session、DeepSeek 与 public Citation | 左侧公开身份、Chat-first 主区、右侧亮点、推荐问题和下载链接结构成立；真实问答返回 1 个 public Citation | 匿名双语与错误反馈；优化回答态垂直占用及移动顺序，保证输入、推荐问题和 Citation 可完成且 profile 不造成横向溢出 |
+| `admin_agent_preview.png` | `/workspace/agent`；真实检索、DeepSeek、Citation、Agent settings 和 publication service | 实际提问已返回真实回答与 1 个来源，左右回答/Citation、设置和发布结构成立 | 问题与回答渲染安全 Markdown；Citation 文件名沿用 Candidate owner 来源查看入口 |
+| `admin_publish.png` | `/a/[slug]`；公开 projection、visitor session、DeepSeek 与 public Citation | 左侧公开身份、Chat-first 主区、右侧亮点、推荐问题和分享入口成立；真实问答返回 public Citation | 问题与回答渲染安全 Markdown；Citation 只显示名称，只有 `public_preview` 可打开来源，Markdown/PDF 使用居中预览 |
 
 真实 Candidate 名称、头像缺省状态、资料数量和回答长度与设计稿不同不属于视觉缺陷。验收比较固定侧栏/顶栏、hero、主列比例、卡片层次、操作位置、响应式顺序和可读密度；动态内容超出一屏时允许纵向滚动。
 
@@ -83,7 +83,7 @@ flowchart LR
 
 ## 4. 翻译覆盖边界
 
-双语覆盖 `/`、`/login`、`/invite/[token]`、当前产品定义的 `/workspace/*`、`/a/[slug]` 及全部 `/admin/*` 的导航、标题、说明、按钮、表单 label/placeholder、筛选与分页、空态、pending、成功、错误和不可用页面。Candidate/Agent/资料标题、用户输入、AI 回答、Citation 摘要、审计原因和外部来源内容保持原文，不机器翻译用户数据。`/workspace/publish` 与 `/workspace/publish/preview` 已从产品路由退役，不再承担双语页面边界。
+双语覆盖 `/`、`/login`、`/invite/[token]`、当前产品定义的 `/workspace/*`、`/a/[slug]` 及全部 `/admin/*` 的导航、标题、说明、按钮、表单 label/placeholder、筛选与分页、空态、pending、成功、错误和不可用页面。Candidate/Agent/资料标题、用户输入、AI 回答、Citation 名称与外部来源内容保持原文，不机器翻译用户数据。`/workspace/publish` 与 `/workspace/publish/preview` 已从产品路由退役，不再承担双语页面边界。
 
 API 保持英文诊断消息和稳定错误码。Client API 边界优先按错误码映射当前语言；未知错误使用当前语言的通用失败文案并保留 request id，既不泄露服务端细节，也不出现英文错误插入中文界面。
 
@@ -97,7 +97,7 @@ API 保持英文诊断消息和稳定错误码。Client API 边界优先按错�
 | `LanguageSwitcher` | 提交选择、pending/error、刷新 server tree |
 | Root Layout | 统一 `<html lang>`，在右上角渲染全站唯一 `LanguageSwitcher`，向下游传递同一 cookie 结果 |
 | Workspace/Admin layouts | 向 shell 传 locale，不持有另一份语言状态或切换入口 |
-| Candidate/Admin/Public shells | 翻译共享导航、身份标签和 footer；不渲染语言入口，Candidate Shell 也不渲染 Quick Actions |
+| Candidate/Admin/Public shells | 翻译共享导航、身份标签和 footer；不渲染语言入口，Candidate/Admin 页眉不渲染搜索或 Quick Actions |
 | 各页面/feature client | 翻译本领域固定 UI；真实业务数据与 API 状态保持原 owner |
 | Candidate Agent 页面 | 统一呈现英文 `Agent` / 中文 `智能体` 标题以及预览、设置和发布生命周期控件；publication API 只提供领域状态，不拥有第二个页面 |
 
@@ -110,6 +110,7 @@ API 保持英文诊断消息和稳定错误码。Client API 边界优先按错�
 3. 1448 × 1086 优先调小非内容性留白、行高和卡片 padding，不缩小可点击目标、不隐藏真实行、不固定动态回答高度。关键 CTA 可以在首屏附近，超长数据自然纵向滚动。
 4. `max-width: 860px` 隐藏固定侧栏并显示顶部 drawer；`430 × 932` 是最终断点 Evidence。表格使用 `data-label` 卡片投影或语义分组，能力矩阵提供逐规则移动投影，不能以整页横向滚动解决。
 5. 公共 Agent 移动顺序为 trust header → profile →主标题 → conversation → highlights/recommendations；Chat 输入在正常文档流中保持可触达，不覆盖回答或 iOS 安全区域。
+6. Markdown 内容继承消息气泡宽度，表格和代码块在自身容器内滚动而不扩大页面；来源预览 dialog 居中、可关闭且受视口约束，PDF 画布默认保持 A4 比例并在移动端等比缩小。
 
 ## 7. 键盘与语义合同
 

@@ -31,7 +31,7 @@ export async function getCandidateDashboard(ownerId: string) {
       [ownerId],
     ),
     pool.query(
-      `SELECT id,title,kind,status,visibility,error_code AS "errorCode",error_message AS "errorMessage",created_at AS "createdAt",updated_at AS "updatedAt"
+      `SELECT id,title,kind,mime_type AS "mimeType",external_url AS "externalUrl",status,visibility,error_code AS "errorCode",error_message AS "errorMessage",created_at AS "createdAt",updated_at AS "updatedAt"
        FROM materials WHERE owner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 5`,
       [ownerId],
     ),

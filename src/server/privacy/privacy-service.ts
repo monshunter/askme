@@ -45,14 +45,14 @@ export async function getPrivacyOverview(ownerId: string, query: MaterialListQue
       [ownerId],
     ),
     pool.query(
-      `SELECT id,title,kind,status,visibility,updated_at AS "updatedAt"
+      `SELECT id,title,kind,mime_type AS "mimeType",external_url AS "externalUrl",status,visibility,updated_at AS "updatedAt"
        FROM materials WHERE owner_id=$1
        ORDER BY updated_at DESC,id DESC LIMIT 20`,
       [ownerId],
     ),
   ]);
   const counts = Object.fromEntries(countsResult.rows.map((row) => [row.visibility, row.count])) as Partial<Record<MaterialVisibility, number>>;
-  const samples = samplesResult.rows as Array<{ id: string; title: string; kind: string; status: string; visibility: MaterialVisibility; updatedAt: Date }>;
+  const samples = samplesResult.rows as Array<{ id: string; title: string; kind: string; mimeType: string | null; externalUrl: string | null; status: string; visibility: MaterialVisibility; updatedAt: Date }>;
   return {
     materials,
     counts: {
