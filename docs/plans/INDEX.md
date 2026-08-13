@@ -15,4 +15,5 @@
 | PLAN-010 | PLAN-010：对账简化 Harness 迁移并完成交付收口 | [PLAN-010.md](PLAN-010.md) |
 | PLAN-011 | PLAN-011：优化 Agent 发布、访问与分享体验 | [PLAN-011.md](PLAN-011.md) |
 | PLAN-012 | PLAN-012：交付 Markdown 问答与授权来源预览 | [PLAN-012.md](PLAN-012.md) |
+| PLAN-013 | PLAN-013：定义代码仓库知识与深度分析 V1 | [PLAN-013.md](PLAN-013.md) |
 <!-- AGENT-HARNESS:END INDEX -->

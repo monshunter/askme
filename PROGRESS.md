@@ -87,3 +87,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-012：交付 Markdown 问答与授权来源预览](docs/plans/PLAN-012.md)
 ---
+
+---
+ID: OBJ-008
+Objective: 固化代码仓库知识与 Pi 深度分析 V1 的产品合同和系统设计
+Status: 已完成
+Plans:
+- [x] [PLAN-013：定义代码仓库知识与深度分析 V1](docs/plans/PLAN-013.md)
+---
