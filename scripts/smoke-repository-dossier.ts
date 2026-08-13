@@ -13,6 +13,7 @@ import { citationContentHash } from "../src/server/repositories/dossier-output";
 import { completeRepositoryAnalysisRun } from "../src/server/repositories/dossier-service";
 import {
   approveCandidateRepositoryDossier,
+  getCandidateActiveRepositoryKnowledge,
   getCandidateRepositoryDossier,
   markRepositoryDossiersOutdated,
   updateCandidateWikiProjectionPage,
@@ -20,6 +21,7 @@ import {
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
+const baseUrl = process.env.ASKME_BASE_URL ?? "http://127.0.0.1:3000";
 const databaseUrl = new URL(connectionString);
 if (!["127.0.0.1", "localhost", "::1", "db"].includes(databaseUrl.hostname)) throw new Error("The Repository Wiki smoke may only target a local database");
 
@@ -64,6 +66,11 @@ try {
   artifactStoragePath = artifact.storagePath;
 
   await pool.query("INSERT INTO users(id,email,password_hash,role,display_name) VALUES ($1,$2,$3,'candidate','Repository Wiki Smoke')", [ownerId, candidateEmail, await hashPassword(candidatePassword)]);
+  await pool.query(
+    `INSERT INTO knowledge_items(owner_id,type,title,summary,highlights,confidence)
+     VALUES ($1,'project','Repository Wiki smoke companion','Legacy Knowledge Item used to prove unified pagination.','[]'::jsonb,1)`,
+    [ownerId],
+  );
   await pool.query(
     `INSERT INTO repository_artifacts(content_key,checksum,manifest_checksum,storage_path,compressed_bytes,extracted_bytes,file_count,reference_count)
      VALUES ($1,$2,$3,$4,$5,$6,$7,1)`,
@@ -145,6 +152,47 @@ try {
   if (!evidence.some((item) => "repositoryWikiPageId" in item && item.repositoryWikiPageId === page.id && item.sourceCitations.length === 1)) {
     throw new Error("Approved Repository Wiki did not join the unified knowledge retrieval path");
   }
+  const publicEvidence = await retrieveUnifiedEvidence(pool, ownerId, "public_answer", { query: "approved answer", limit: 8 });
+  if (!publicEvidence.some((item) => "repositoryWikiPageId" in item && item.repositoryWikiPageId === page.id && item.sourceCitations.length === 1)) {
+    throw new Error("Citation-authorized Repository Wiki did not join the Public Agent retrieval path");
+  }
+
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: candidateEmail, password: candidatePassword }),
+  });
+  const cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+  if (login.status !== 200 || !cookie) throw new Error(`Repository Wiki smoke login failed with ${login.status}`);
+  type Envelope<T> = { data: T | null; error: { code: string; message: string } | null };
+  async function request<T>(pathname: string, init?: RequestInit) {
+    const response = await fetch(`${baseUrl}${pathname}`, {
+      ...init,
+      headers: { cookie: cookie!, ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers },
+    });
+    return { response, payload: await response.json() as Envelope<T> };
+  }
+  type KnowledgeListItem = { id: string; sourceKind: string; type: string; wikiPageCount: number | null };
+  const firstKnowledgePage = await request<{ items: KnowledgeListItem[]; counts: Record<string, number>; total: number }>("/api/knowledge?page=1&pageSize=1&status=active");
+  const secondKnowledgePage = await request<{ items: KnowledgeListItem[]; counts: Record<string, number>; total: number }>("/api/knowledge?page=2&pageSize=1&status=active");
+  if (
+    firstKnowledgePage.response.status !== 200
+    || secondKnowledgePage.response.status !== 200
+    || firstKnowledgePage.payload.data?.total !== 2
+    || secondKnowledgePage.payload.data?.total !== 2
+    || firstKnowledgePage.payload.data.items[0]?.id === secondKnowledgePage.payload.data.items[0]?.id
+    || firstKnowledgePage.payload.data.counts.project !== 1
+    || firstKnowledgePage.payload.data.counts.repository !== 1
+  ) throw new Error("Knowledge Item and Approved Repository Wiki did not share one paginated read model");
+  const repositoryKnowledge = await request<{ items: KnowledgeListItem[]; total: number }>("/api/knowledge?type=repository&status=active&citationReady=true&search=approved%20answer");
+  const repositoryKnowledgeItem = repositoryKnowledge.payload.data?.items.find((item) => item.id === repositoryId && item.sourceKind === "repository_wiki");
+  if (repositoryKnowledge.response.status !== 200 || repositoryKnowledge.payload.data?.total !== 1 || repositoryKnowledgeItem?.wikiPageCount !== 1) {
+    throw new Error("Approved Repository Wiki was not searchable and filterable in Candidate Knowledge");
+  }
+  const activeKnowledge = await request<Awaited<ReturnType<typeof getCandidateActiveRepositoryKnowledge>>>(`/api/knowledge/repositories/${repositoryId}`);
+  if (activeKnowledge.response.status !== 200 || activeKnowledge.payload.data?.dossier.id !== review.dossier.id || activeKnowledge.payload.data.dossier.pages[0]?.editedMarkdown !== editedMarkdown) {
+    throw new Error("Candidate Knowledge detail did not follow the active approved Wiki projection");
+  }
 
   const second = await createRevisionAndRun(1, first.revisionId);
   const secondCompletion = await completeRepositoryAnalysisRun({
@@ -155,6 +203,8 @@ try {
   if (!pending.dossier || pending.dossier.isActive || pending.repository.activeProjectionId !== firstApproval.projectionId) {
     throw new Error("A pending Wiki rerun replaced the approved knowledge version before review");
   }
+  const knowledgeDuringPending = await request<Awaited<ReturnType<typeof getCandidateActiveRepositoryKnowledge>>>(`/api/knowledge/repositories/${repositoryId}`);
+  if (knowledgeDuringPending.payload.data?.dossier.id !== review.dossier.id) throw new Error("Pending Repository Wiki replaced Candidate Knowledge before approval");
   const secondApproval = await approveCandidateRepositoryDossier({ pool, artifactRoot, ownerId, repositoryId, dossierId: pending.dossier.id, requestId: "wiki-smoke-approve-v2" });
   const projectionStates = await pool.query<{ oldState: string; currentState: string }>(
     `SELECT old.state AS "oldState",current.state AS "currentState" FROM repository_dossier_projections old,repository_dossier_projections current WHERE old.id=$1 AND current.id=$2`,
@@ -164,10 +214,20 @@ try {
     throw new Error("Repository Wiki approval did not supersede the previous knowledge projection");
   }
 
-  const outdated = await markRepositoryDossiersOutdated(pool, { imageDigest: "sha256:new-runtime", skillHash: "1".repeat(64), promptVersion: "repository-wiki-v2", profileFingerprint: "2".repeat(64) });
-  const activeAfterOutdated = await getCandidateRepositoryDossier(pool, ownerId, repositoryId);
-  if (outdated.markedOutdated !== 1 || !activeAfterOutdated.dossier?.isActive || activeAfterOutdated.dossier.outdatedReason !== "runtime_provenance_changed") {
-    throw new Error("Runtime provenance drift did not preserve and mark the active Repository Wiki");
+  const provenanceClient = await pool.connect();
+  try {
+    await provenanceClient.query("BEGIN");
+    const outdated = await markRepositoryDossiersOutdated(provenanceClient, { imageDigest: "sha256:new-runtime", skillHash: "1".repeat(64), promptVersion: "repository-wiki-v2", profileFingerprint: "2".repeat(64) });
+    const activeAfterOutdated = await getCandidateRepositoryDossier(provenanceClient, ownerId, repositoryId);
+    if (outdated.markedOutdated < 1 || !activeAfterOutdated.dossier?.isActive || activeAfterOutdated.dossier.outdatedReason !== "runtime_provenance_changed") {
+      throw new Error("Runtime provenance drift did not preserve and mark the active Repository Wiki");
+    }
+    await provenanceClient.query("ROLLBACK");
+  } catch (error) {
+    await provenanceClient.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    provenanceClient.release();
   }
 
   const invalid = await createRevisionAndRun(2, first.revisionId);
@@ -184,6 +244,15 @@ try {
   }
   if (rejectedCode !== "DOSSIER_CITATION_HASH_INVALID") throw new Error("Invalid Repository Wiki Citation was not rejected before persistence");
 
+  const lowered = await request<{ visibility: string }>(`/api/repositories/${repositoryId}`, { method: "PATCH", body: JSON.stringify({ visibility: "private" }) });
+  if (lowered.response.status !== 200 || lowered.payload.data?.visibility !== "private") throw new Error("Repository Wiki smoke visibility lowering failed");
+  const hiddenKnowledge = await request<{ items: KnowledgeListItem[]; total: number }>("/api/knowledge?type=repository&status=active");
+  const hiddenDetail = await request<unknown>(`/api/knowledge/repositories/${repositoryId}`);
+  const hiddenEvidence = await retrieveUnifiedEvidence(pool, ownerId, "candidate_preview", { query: "approved answer", limit: 8 });
+  if (hiddenKnowledge.payload.data?.items.some((item) => item.id === repositoryId) || hiddenDetail.response.status !== 404 || hiddenDetail.payload.error?.code !== "REPOSITORY_KNOWLEDGE_NOT_FOUND" || hiddenEvidence.some((item) => "repositoryWikiPageId" in item && item.repositoryId === repositoryId)) {
+    throw new Error("Private Repository Wiki remained available to Knowledge or Agent retrieval");
+  }
+
   console.info(JSON.stringify({
     event: "smoke.repository-wiki.completed",
     generatedVersion: completed.generatedVersion,
@@ -193,11 +262,17 @@ try {
     idempotentReplay: true,
     projectionEdited: true,
     approvalActivatedKnowledge: true,
+    unifiedKnowledgeListed: true,
+    unifiedKnowledgePaginated: true,
+    unifiedKnowledgeSearched: true,
+    activeKnowledgeDetail: true,
     unifiedKnowledgeRetrieved: true,
+    publicKnowledgeRetrieved: true,
     pendingRerunPreservedApprovedKnowledge: true,
     previousProjectionSuperseded: true,
     activeWikiMarkedOutdated: true,
     invalidCitationRejected: true,
+    visibilityLoweringImmediate: true,
   }));
 } finally {
   if (!keepFixture) {

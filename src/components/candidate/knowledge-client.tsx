@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, FileText, Grid2X2, List, LoaderCircle, LockKeyhole, Pencil, Quote, Search, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, FileText, Github, Grid2X2, List, LoaderCircle, LockKeyhole, Pencil, Quote, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { MarkdownContent } from "@/components/markdown-content";
 import { CandidateSourceLink, type MaterialKind } from "@/components/source-viewer";
 import { createTranslator, type Locale, type TranslationKey } from "@/i18n/core";
 
@@ -11,14 +12,16 @@ import { ApiClientError, requestApi } from "./api-client";
 type KnowledgeType = "project" | "experience" | "skill" | "article" | "repository" | "summary";
 type KnowledgeItem = {
   id: string;
+  sourceKind: "knowledge_item" | "repository_wiki";
   type: KnowledgeType;
   status: "active" | "archived";
   title: string;
   summary: string;
   highlights: string[];
-  confidence: number;
+  confidence: number | null;
   sourceCount: number;
   chunkCount: number;
+  wikiPageCount: number | null;
   sourceTitles: string[];
   sourceVisibilities: string[];
   citationReady: boolean;
@@ -27,8 +30,42 @@ type KnowledgeItem = {
 type KnowledgePage = { items: KnowledgeItem[]; counts: Record<string, number>; page: number; pageSize: number; total: number; totalPages: number };
 type Source = { id: string; title: string; kind: MaterialKind; mimeType: string | null; status: string; visibility: string; externalUrl: string | null; summary: string | null; chunkCount: number; updatedAt: string };
 type Evidence = { id: string; materialId: string; position: number; excerpt: string };
-type KnowledgeDetail = KnowledgeItem & { sources: Source[]; evidence: Evidence[] };
+type KnowledgeItemDetail = KnowledgeItem & { sourceKind: "knowledge_item"; sources: Source[]; evidence: Evidence[] };
+type RepositoryWikiPage = {
+  id: string;
+  path: string;
+  title: string;
+  generatedMarkdown: string;
+  editedMarkdown: string | null;
+  sortOrder: number;
+  citations: Array<{ marker: string; path: string; lineStart: number; lineEnd: number; contentHash: string; rank: number }>;
+};
+type RepositoryKnowledgeDetail = {
+  sourceKind: "repository_wiki";
+  repository: { id: string; displayName: string; visibility: "agent_only" | "citation_allowed" | "public_preview" };
+  dossier: {
+    id: string;
+    revisionId: string;
+    commitSha: string;
+    generatedVersion: number;
+    title: string;
+    summary: string;
+    coverage: { eligibleFileCount?: number; examinedFileCount?: number; analysisMode?: string };
+    outdatedReason: string | null;
+    updatedAt: string;
+    pages: RepositoryWikiPage[];
+  };
+};
+type KnowledgeDetail = KnowledgeItemDetail | RepositoryKnowledgeDetail;
 type ApiEnvelope<T = unknown> = { data?: T; error?: { message?: string } | null };
+
+function knowledgeItemKey(item: Pick<KnowledgeItem, "id" | "sourceKind">) {
+  return `${item.sourceKind}:${item.id}`;
+}
+
+function knowledgeDetailKey(detail: KnowledgeDetail) {
+  return detail.sourceKind === "knowledge_item" ? knowledgeItemKey(detail) : `repository_wiki:${detail.repository.id}`;
+}
 
 const categories: Array<{ type: KnowledgeType | null; labelKey: TranslationKey; countKey: string }> = [
   { type: null, labelKey: "knowledge.category.all", countKey: "all" },
@@ -43,6 +80,12 @@ const categories: Array<{ type: KnowledgeType | null; labelKey: TranslationKey; 
 const typeKeys: Record<KnowledgeType, TranslationKey> = {
   project: "knowledge.type.project", experience: "knowledge.type.experience", skill: "knowledge.type.skill", article: "knowledge.type.article", repository: "knowledge.type.repository", summary: "knowledge.type.summary",
 };
+
+const repositoryVisibilityKeys = {
+  agent_only: "privacy.visibility.agentOnly",
+  citation_allowed: "privacy.visibility.citation",
+  public_preview: "privacy.visibility.publicPreview",
+} as const satisfies Record<RepositoryKnowledgeDetail["repository"]["visibility"], TranslationKey>;
 
 function typeLabel(type: KnowledgeType, locale: Locale) {
   return createTranslator(locale)(typeKeys[type]);
@@ -66,13 +109,15 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
   const [search, setSearch] = useState(initialSearch);
   const [status, setStatus] = useState<"active" | "archived">("active");
   const [citation, setCitation] = useState<"all" | "ready" | "private">("all");
-  const [selectedId, setSelectedId] = useState<string | null>(initialKnowledge.items[0]?.id ?? null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialKnowledge.items[0] ? knowledgeItemKey(initialKnowledge.items[0]) : null);
   const [detail, setDetail] = useState<KnowledgeDetail | null>(null);
+  const [selectedWikiPages, setSelectedWikiPages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "grid">("list");
-  const detailLoading = Boolean(selectedId && detail?.id !== selectedId);
+  const selectedItem = useMemo(() => knowledge.items.find((item) => knowledgeItemKey(item) === selectedKey) ?? null, [knowledge.items, selectedKey]);
+  const detailLoading = Boolean(selectedItem && (!detail || knowledgeDetailKey(detail) !== selectedKey));
 
   const loadList = useCallback(
     async (page = 1, overrides: { nextType?: KnowledgeType | null; nextSearch?: string; nextStatus?: "active" | "archived"; nextCitation?: "all" | "ready" | "private" } = {}) => {
@@ -94,8 +139,10 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
         }
         if (!payload.data) throw new ApiClientError("invalid_response");
         setKnowledge(payload.data);
-        const nextSelected = payload.data.items.some((item) => item.id === selectedId) ? selectedId : payload.data.items[0]?.id ?? null;
-        setSelectedId(nextSelected);
+        const nextSelected = payload.data.items.some((item) => knowledgeItemKey(item) === selectedKey)
+          ? selectedKey
+          : payload.data.items[0] ? knowledgeItemKey(payload.data.items[0]) : null;
+        setSelectedKey(nextSelected);
         if (!nextSelected) setDetail(null);
       } catch (error) {
         setFeedback(requestFailureMessage(error, t("knowledge.action.list"), locale));
@@ -103,36 +150,49 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
         setLoading(false);
       }
     },
-    [citation, locale, search, selectedId, status, t, type],
+    [citation, locale, search, selectedKey, status, t, type],
   );
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedItem) return;
     let active = true;
-    void requestApi<ApiEnvelope<KnowledgeDetail>>(`/api/knowledge/${selectedId}`, { cache: "no-store" })
+    const detailPath = selectedItem.sourceKind === "repository_wiki"
+      ? `/api/knowledge/repositories/${selectedItem.id}`
+      : `/api/knowledge/${selectedItem.id}`;
+    void requestApi<ApiEnvelope<KnowledgeDetail>>(detailPath, { cache: "no-store" })
       .then(({ response, payload }) => {
         if (!active) return;
-        if (response.ok && payload.data) setDetail(payload.data);
+        if (response.ok && payload.data) {
+          const loadedDetail = payload.data;
+          setDetail(loadedDetail);
+          if (loadedDetail.sourceKind === "repository_wiki" && loadedDetail.dossier.pages[0]) {
+            const firstPage = loadedDetail.dossier.pages[0];
+            setSelectedWikiPages((current) => ({
+              ...current,
+              [loadedDetail.repository.id]: current[loadedDetail.repository.id] ?? firstPage.path,
+            }));
+          }
+        }
         else {
-          setSelectedId(null);
+          setSelectedKey(null);
           setDetail(null);
           setFeedback(t("knowledge.detailFailed"));
         }
       })
       .catch((error) => {
         if (!active) return;
-        setSelectedId(null);
+        setSelectedKey(null);
         setDetail(null);
         setFeedback(requestFailureMessage(error, t("knowledge.action.detail"), locale));
       });
     return () => {
       active = false;
     };
-  }, [locale, selectedId, t]);
+  }, [locale, selectedItem, t]);
 
   async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!detail) return;
+    if (!detail || detail.sourceKind !== "knowledge_item") return;
     const form = new FormData(event.currentTarget);
     try {
       const { response } = await requestApi<ApiEnvelope>(`/api/knowledge/${detail.id}`, {
@@ -152,7 +212,7 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
       setEditing(false);
       setFeedback(null);
       await loadList(knowledge.page);
-      const refreshed = await requestApi<ApiEnvelope<KnowledgeDetail>>(`/api/knowledge/${detail.id}`, { cache: "no-store" });
+      const refreshed = await requestApi<ApiEnvelope<KnowledgeItemDetail>>(`/api/knowledge/${detail.id}`, { cache: "no-store" });
       if (!refreshed.response.ok || !refreshed.payload.data) throw new ApiClientError("invalid_response");
       setDetail(refreshed.payload.data);
     } catch (error) {
@@ -165,6 +225,9 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
     const start = Math.max(1, Math.min(knowledge.page - 2, knowledge.totalPages - 4));
     return Array.from({ length: Math.min(5, knowledge.totalPages) }, (_, index) => start + index);
   }, [knowledge.page, knowledge.totalPages]);
+  const activeRepositoryPage = detail?.sourceKind === "repository_wiki"
+    ? detail.dossier.pages.find((page) => page.path === selectedWikiPages[detail.repository.id]) ?? detail.dossier.pages[0] ?? null
+    : null;
 
   return (
     <div className="candidate-page knowledge-page">
@@ -219,11 +282,11 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
             <div className="knowledge-table" role="table" aria-label={t("knowledge.table.label")}>
               <div className="knowledge-table-header" role="row"><span>{t("knowledge.table.title")}</span><span>{t("knowledge.table.type")}</span><span>{t("knowledge.table.sources")}</span><span>{t("knowledge.table.confidence")}</span><span>{t("knowledge.table.updated")}</span><span>{t("knowledge.table.visibility")}</span></div>
               {knowledge.items.map((item) => (
-                <button className={selectedId === item.id ? "knowledge-row selected" : "knowledge-row"} type="button" role="row" key={item.id} onClick={() => { setSelectedId(item.id); setEditing(false); }}>
-                  <span className="knowledge-title"><i><FileText size={17} /></i><span><strong>{item.title}</strong><small>{item.summary}</small></span></span>
+                <button className={selectedKey === knowledgeItemKey(item) ? "knowledge-row selected" : "knowledge-row"} type="button" role="row" key={knowledgeItemKey(item)} onClick={() => { setSelectedKey(knowledgeItemKey(item)); setEditing(false); }}>
+                  <span className="knowledge-title"><i>{item.sourceKind === "repository_wiki" ? <Github size={17} /> : <FileText size={17} />}</i><span><strong>{item.title}</strong><small>{item.summary}</small></span></span>
                   <span><em className={`type-pill ${item.type}`}>{typeLabel(item.type, locale)}</em></span>
                   <span data-label={t("knowledge.table.sources")}>{item.sourceCount}</span>
-                  <span data-label={t("knowledge.table.confidence")}><em className="confidence-pill">{confidenceLabel(item.confidence)}</em> {Math.round(item.confidence * 100)}%</span>
+                  <span data-label={t("knowledge.table.confidence")}>{item.sourceKind === "repository_wiki" ? <><em className="confidence-pill">{t("knowledge.repository.approved")}</em> {t("knowledge.repository.pageCount", { count: item.wikiPageCount ?? 0 })}</> : <><em className="confidence-pill">{confidenceLabel(item.confidence ?? 0)}</em> {Math.round((item.confidence ?? 0) * 100)}%</>}</span>
                   <span data-label={t("knowledge.table.updated")}>{formatDate(item.updatedAt, locale)}</span>
                   <span data-label={t("knowledge.table.visibility")}>{item.citationReady ? <><ShieldCheck size={14} /> {t("knowledge.citationReady")}</> : <><LockKeyhole size={14} /> {t("knowledge.private")}</>}</span>
                 </button>
@@ -231,7 +294,7 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
             </div>
           ) : (
             <div className="knowledge-grid">
-              {knowledge.items.map((item) => <button type="button" key={item.id} className={selectedId === item.id ? "selected" : ""} onClick={() => setSelectedId(item.id)}><span><em className={`type-pill ${item.type}`}>{typeLabel(item.type, locale)}</em><small>{Math.round(item.confidence * 100)}%</small></span><strong>{item.title}</strong><p>{item.summary}</p><small>{t("knowledge.sourceCount", { count: item.sourceCount })}</small></button>)}
+              {knowledge.items.map((item) => <button type="button" key={knowledgeItemKey(item)} className={selectedKey === knowledgeItemKey(item) ? "selected" : ""} onClick={() => setSelectedKey(knowledgeItemKey(item))}><span><em className={`type-pill ${item.type}`}>{typeLabel(item.type, locale)}</em><small>{item.sourceKind === "repository_wiki" ? t("knowledge.repository.approved") : `${Math.round((item.confidence ?? 0) * 100)}%`}</small></span><strong>{item.title}</strong><p>{item.summary}</p><small>{item.sourceKind === "repository_wiki" ? t("knowledge.repository.pageCount", { count: item.wikiPageCount ?? 0 }) : t("knowledge.sourceCount", { count: item.sourceCount })}</small></button>)}
             </div>
           )}
 
@@ -239,7 +302,17 @@ export function KnowledgeClient({ initialKnowledge, initialSearch, locale }: { i
         </section>
 
         <aside className="knowledge-detail" aria-live="polite">
-          {detailLoading ? <div className="loading-state"><LoaderCircle className="spin" size={24} /> {t("knowledge.detail.loading")}</div> : !detail ? <div className="empty-state large"><BookOpen size={32} /><p>{t("knowledge.detail.select")}</p></div> : editing ? (
+          {detailLoading ? <div className="loading-state"><LoaderCircle className="spin" size={24} /> {t("knowledge.detail.loading")}</div> : !detail ? <div className="empty-state large"><BookOpen size={32} /><p>{t("knowledge.detail.select")}</p></div> : detail.sourceKind === "repository_wiki" ? (
+            <>
+              <div className="detail-heading"><em className="type-pill repository">{t("knowledge.repository.approved")}</em><h2>{detail.dossier.title}</h2><p><Github size={14} /> {detail.repository.displayName} · {t(repositoryVisibilityKeys[detail.repository.visibility])}</p></div>
+              <div className="detail-tabs"><span className="active">{t("knowledge.detail.overview")}</span><span>{t("knowledge.repository.pageCount", { count: detail.dossier.pages.length })}</span></div>
+              <section className="detail-section"><h3>{t("knowledge.detail.summary")} <Sparkles size={15} /></h3><p>{detail.dossier.summary}</p></section>
+              <section className="detail-section repository-knowledge-meta"><h3>{t("knowledge.repository.revision")}</h3><code>{detail.dossier.commitSha}</code><h3>{t("knowledge.repository.coverage")}</h3><p>{t("knowledge.repository.coverageValue", { examined: detail.dossier.coverage.examinedFileCount ?? 0, eligible: detail.dossier.coverage.eligibleFileCount ?? 0 })}</p>{detail.dossier.outdatedReason ? <p className="repository-knowledge-outdated">{t("knowledge.repository.outdated")}</p> : null}</section>
+              <section className="detail-section"><h3>{t("knowledge.repository.pages")} <span>{detail.dossier.pages.length}</span></h3><nav className="repository-knowledge-pages" aria-label={t("knowledge.repository.pages")}>{detail.dossier.pages.map((page) => <button type="button" className={activeRepositoryPage?.id === page.id ? "active" : ""} key={page.id} onClick={() => setSelectedWikiPages((current) => ({ ...current, [detail.repository.id]: page.path }))}><strong>{page.title}</strong><small>{page.path}</small></button>)}</nav></section>
+              {activeRepositoryPage ? <section className="repository-knowledge-page"><MarkdownContent className="wiki-markdown-preview" content={activeRepositoryPage.editedMarkdown ?? activeRepositoryPage.generatedMarkdown} /><div className="repository-knowledge-citations"><h3>{t("knowledge.repository.citations", { count: activeRepositoryPage.citations.length })}</h3><ul>{activeRepositoryPage.citations.map((source) => <li key={`${source.marker}:${source.path}:${source.lineStart}`}><strong>[{source.marker}]</strong><code>{source.path}:{source.lineStart}-{source.lineEnd}</code></li>)}</ul></div></section> : null}
+              <p className="repository-knowledge-readonly"><LockKeyhole size={14} /> {t("knowledge.repository.readOnly")}</p>
+            </>
+          ) : editing ? (
             <form className="knowledge-edit-form" onSubmit={saveEdit}>
               <div className="section-heading"><h2>{t("knowledge.edit.title")}</h2><button className="icon-button" type="button" onClick={() => setEditing(false)} aria-label={t("knowledge.edit.close")}><X size={17} /></button></div>
               <label htmlFor="edit-title">{t("knowledge.edit.fieldTitle")}</label><input id="edit-title" name="title" defaultValue={detail.title} required maxLength={300} />

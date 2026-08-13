@@ -73,6 +73,7 @@ V1 只支持一个 Web 实例。该实例持有一条 PostgreSQL `LISTEN` 连接
 | 组件 | 单一职责 |
 | --- | --- |
 | Candidate Repository UI | 以 Repository 卡片目录呈现已添加仓库；唯一新增入口打开受焦点约束的模态同步表单，卡片继续拥有该仓库的同步、可见性、分析与 Wiki 审核动作 |
+| Candidate Knowledge UI | 通过统一知识只读投影同时浏览资料派生 Knowledge Item 与 current active Approved Repository Wiki；Repository 条目复用 Wiki 详情但不拥有编辑或批准动作 |
 | Repository Source Viewer | Candidate/Public Citation 在当前页面请求 owner/session 授权的结构化 source API，再把 Repository、完整 SHA、path/range 与源码代码块投影为安全 Markdown 弹窗；API JSON 不作为用户导航页面 |
 | Repository Service | owner 授权、Repository CRUD、visibility、同步请求、active Revision/Wiki 投影 |
 | GitHub Sync Adapter | 校验 GitHub.com URL/ref，使用请求内 Token 解析 SHA、下载 archive，随后立即丢弃 Token |
@@ -136,6 +137,10 @@ src/
 Approved Wiki 检索不持久化第二份 section 索引。EvidenceProvider 读取 active projection 的每个 `edited_markdown ?? generated_markdown`，确定性按页面与 Markdown H2/H3 切分，在当前请求中以关键词命中和标题权重选择少量 section；每个 section 只携带正文 marker 实际引用的结构化 Citation。个人知识库规模与 1,000,000-token Profile 足以支撑这一直接加载方式，避免把源码或 Wiki 再复制为 Chunk。
 
 `UnifiedEvidenceProvider` 并行调用现有 `DocumentEvidenceProvider` 与 `ApprovedWikiEvidenceProvider`，合并后按 score 截断为同一 evidence packet；因此审核通过是 Wiki 加入长期知识库的唯一激活事务，而不是另建一套“代码问答”入口。Candidate Preview 与 Public Chat 复用同一 DTO、answer generator、消息提交和即时权限复核；Material evidence 以 chunk id 复核，Wiki evidence 以 active projection + page id + marker + source hash 复核。Repository visibility 降权或 active projection 切换后，两类消费者都在写最终消息前重新查询权限，不能依赖生成答案时的旧快照。
+
+职业知识库使用独立的 `UnifiedKnowledgeReadModel`，但不创建新持久表。`/api/knowledge` 在既有 Knowledge Item 行之外按当前请求读取 active Repository、Approved Projection、Dossier 与 Wiki pages，返回带 `sourceKind=knowledge_item|repository_wiki` 的统一列表；Repository 行的稳定 id 使用 Repository id，每个 Repository 只返回一行，Wiki 页面留在详情中。服务端分别应用 owner、status、type、search、citation readiness 与 active/visibility 约束，再按统一 sort 合并分页并汇总分类计数；因此页面结果不依赖浏览器拼接两个不一致的总数。
+
+详情继续复用领域 owner：`sourceKind=knowledge_item` 读取现有 Knowledge detail API 并允许既有字段编辑；`sourceKind=repository_wiki` 读取专用的 Candidate active Repository knowledge detail API，该查询必须从 `repositories.active_projection_id` 出发，只返回 current active Approved Projection 的有效 Markdown、完整 SHA、coverage、visibility 与 Citation，不能复用“最新待审核 Dossier”语义。Knowledge UI 根据 discriminator 选择详情，不把 Repository id 送入 Knowledge Item 更新接口，也不在 Knowledge 服务中复制 Wiki Markdown。Repository 同步、分析和审核失败不会污染统一读模型；active pointer 原子切换后下一次无缓存请求立即看到新 Wiki，回滚只需恢复旧应用版本，因为持久数据模型不变。
 
 ### 5.3 Analysis Run 与消息
 

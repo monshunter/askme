@@ -23,6 +23,8 @@ describe("retrieveUnifiedEvidence", () => {
       { marker: "S1", path: "src/runner.ts", lineStart: 1, lineEnd: 4, contentHash: "b".repeat(64) },
       { marker: "S2", path: "src/sandbox.ts", lineStart: 8, lineEnd: 12, contentHash: "c".repeat(64) },
     ]);
+    expect(String(query.mock.calls[1]?.[0])).toContain("repository.active_projection_id");
+    expect(String(query.mock.calls[1]?.[0])).toContain("projection.state='approved'");
   });
 
   it("uses only public Repository visibilities for public evidence", async () => {

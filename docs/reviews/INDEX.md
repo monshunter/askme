@@ -78,4 +78,9 @@
 | REVIEW-073 | REVIEW-073：DESIGN-005 Sandbox Wiki Copy-out 与统一知识检索 Review | [REVIEW-073.md](REVIEW-073.md) |
 | REVIEW-074 | REVIEW-074：PLAN-014 多页 Wiki 与知识库修订 Plan Review | [REVIEW-074.md](REVIEW-074.md) |
 | REVIEW-075 | REVIEW-075：PLAN-014 Repository Wiki 与全站回归 Change Review | [REVIEW-075.md](REVIEW-075.md) |
+| REVIEW-076 | REVIEW-076：PLAN-015 Plan Review | [REVIEW-076.md](REVIEW-076.md) |
+| REVIEW-077 | REVIEW-077：SPEC-002 统一知识浏览增量 Spec Review | [REVIEW-077.md](REVIEW-077.md) |
+| REVIEW-078 | REVIEW-078：DESIGN-005 统一知识只读投影 Design Review | [REVIEW-078.md](REVIEW-078.md) |
+| REVIEW-079 | REVIEW-079：PLAN-015 统一知识投影 Change Review | [REVIEW-079.md](REVIEW-079.md) |
+| REVIEW-080 | REVIEW-080：PLAN-015 统一知识投影 Reconcile Change Review | [REVIEW-080.md](REVIEW-080.md) |
 <!-- AGENT-HARNESS:END INDEX -->

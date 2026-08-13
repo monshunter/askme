@@ -480,6 +480,23 @@ details > summary::-webkit-details-marker { display: none; }
 .detail-section h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 10px; }
 .detail-section h3 span { margin-left: auto; color: #6b7471; font-size: 9px; }
 .detail-section > p { margin: 0; color: #596361; font-size: 10px; line-height: 1.6; }
+.repository-knowledge-meta code { display: block; max-width: 100%; margin-bottom: 13px; overflow: hidden; color: #65706c; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.repository-knowledge-outdated { margin-top: 9px !important; padding: 8px 9px; border-radius: 6px; color: #7a5c2b !important; background: #faf2dd; }
+.repository-knowledge-pages { display: grid; gap: 5px; }
+.repository-knowledge-pages button { display: grid; gap: 3px; width: 100%; padding: 8px 9px; border: 1px solid #e3ddd4; border-radius: 6px; background: #fff; color: #4f5854; text-align: left; }
+.repository-knowledge-pages button:hover, .repository-knowledge-pages button.active { border-color: #acd1c3; color: #155f58; background: #eef6f1; }
+.repository-knowledge-pages strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.repository-knowledge-pages small { overflow: hidden; color: #858b87; font: 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; text-overflow: ellipsis; white-space: nowrap; }
+.repository-knowledge-page { min-width: 0; margin-top: 13px; overflow: hidden; border: 1px solid #e3ddd4; border-radius: 7px; background: #fff; }
+.repository-knowledge-page .wiki-markdown-preview { max-height: 560px; padding: 15px; overflow: auto; overflow-wrap: anywhere; }
+.repository-knowledge-page .wiki-markdown-preview pre { max-width: 100%; overflow-x: auto; }
+.repository-knowledge-citations { padding: 12px 14px; border-top: 1px solid #e7e1d8; background: #f8f6f1; }
+.repository-knowledge-citations h3 { margin: 0 0 7px; font-size: 10px; }
+.repository-knowledge-citations ul { display: grid; gap: 5px; margin: 0; padding-left: 17px; }
+.repository-knowledge-citations li { min-width: 0; color: #596361; font-size: 9px; }
+.repository-knowledge-citations code { margin-left: 5px; overflow-wrap: anywhere; color: #68716e; font-size: 8px; }
+.repository-knowledge-readonly { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; color: #6a7470; font-size: 9px; line-height: 1.5; }
+.repository-knowledge-readonly svg { flex: 0 0 auto; }
 .highlight-list, .source-list { list-style: none; margin: 0; padding: 0; }
 .highlight-list li { display: flex; align-items: flex-start; gap: 7px; margin: 6px 0; color: #5d6764; font-size: 9px; line-height: 1.35; }
 .highlight-list svg { flex: 0 0 auto; color: #2f8b6a; border-radius: 50%; background: #e3f0e8; }

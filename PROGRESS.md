@@ -103,3 +103,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-014：交付代码仓库知识与深度分析 V1](docs/plans/PLAN-014.md)
 ---
+
+---
+ID: OBJ-010
+Objective: 修复 Repository Wiki 与职业知识库的统一浏览和问答联系
+Status: 已完成
+Plans:
+- [x] [PLAN-015：统一 Approved Repository Wiki 的知识浏览与问答证据](docs/plans/PLAN-015.md)
+---

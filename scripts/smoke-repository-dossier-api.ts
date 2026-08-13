@@ -78,8 +78,25 @@ if (!terminal.payload.data?.dossier?.isActive || terminalPage?.editedMarkdown !=
   throw new Error("Approved Wiki projection was not returned as active knowledge");
 }
 
+type KnowledgeListItem = { id: string; sourceKind: string; type: string; wikiPageCount: number | null };
+const knowledge = await request<{ items: KnowledgeListItem[]; counts: Record<string, number> }>("/api/knowledge?type=repository&status=active");
+const repositoryKnowledge = knowledge.payload.data?.items.find((item) => item.id === repository.id && item.sourceKind === "repository_wiki");
+if (knowledge.response.status !== 200 || !repositoryKnowledge || repositoryKnowledge.type !== "repository" || !repositoryKnowledge.wikiPageCount || (knowledge.payload.data?.counts.repository ?? 0) < 1) {
+  throw new Error("Approved Repository Wiki did not appear in Candidate Knowledge");
+}
+
+const activeKnowledge = await request<{ sourceKind: string; repository: { id: string }; dossier: { id: string; pages: WikiPage[] } }>(`/api/knowledge/repositories/${repository.id}`);
+const activeKnowledgePage = activeKnowledge.payload.data?.dossier.pages.find((candidate) => candidate.id === wikiPage.id);
+if (activeKnowledge.response.status !== 200 || activeKnowledge.payload.data?.sourceKind !== "repository_wiki" || activeKnowledge.payload.data.repository.id !== repository.id || activeKnowledge.payload.data.dossier.id !== dossier.id || activeKnowledgePage?.editedMarkdown !== approvedMarkdown) {
+  throw new Error("Candidate Knowledge detail did not follow the active approved Wiki projection");
+}
+
 const lowered = await request<{ visibility: string }>(`/api/repositories/${repository.id}`, { method: "PATCH", body: JSON.stringify({ visibility: "private" }) });
 if (lowered.response.status !== 200 || lowered.payload.data?.visibility !== "private") throw new Error("Repository visibility lowering failed");
+const hiddenKnowledge = await request<{ items: KnowledgeListItem[] }>("/api/knowledge?type=repository&status=active");
+if (hiddenKnowledge.payload.data?.items.some((item) => item.id === repository.id && item.sourceKind === "repository_wiki")) throw new Error("Private Repository remained visible in Candidate Knowledge");
+const hiddenDetail = await request<unknown>(`/api/knowledge/repositories/${repository.id}`);
+if (hiddenDetail.response.status !== 404 || hiddenDetail.payload.error?.code !== "REPOSITORY_KNOWLEDGE_NOT_FOUND") throw new Error("Private Repository knowledge detail remained readable");
 const deniedApproval = await request<unknown>(`/api/repositories/${repository.id}/dossier/approve`, { method: "POST", body: JSON.stringify({ dossierId: dossier.id }) });
 if (deniedApproval.response.status !== 409 || deniedApproval.payload.error?.code !== "DOSSIER_REPOSITORY_PRIVATE") throw new Error("Private Repository allowed Wiki approval");
 
@@ -92,5 +109,7 @@ console.info(JSON.stringify({
   activePreservedDuringDraftEdit: true,
   invalidPageRejected: true,
   approvalActivatedKnowledge: true,
+  candidateKnowledgeProjected: true,
+  candidateKnowledgeActiveDetail: true,
   visibilityLoweringImmediate: true,
 }));

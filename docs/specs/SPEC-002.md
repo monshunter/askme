@@ -102,6 +102,10 @@ Generated Version 不可编辑，保存 Agent 原始页面文件、导航 manife
 
 Candidate 批准 Approved Projection 后，该 Wiki 与状态为 `indexed` 的上传文件、Website、Notion 资料处于同一知识来源层：统一 EvidenceProvider 可以同时检索两者，Candidate Preview 与已发布 Public Chat 都从同一授权 evidence packet 回答并持久化 Citation。区别只在来源投影：资料 Citation 指向 Material/Chunk，Wiki Citation 指向 Approved Wiki section 及其不可变 Repository source range。未审核的 Generated Wiki、原始源码正文和实时 Deep Analysis 结果都不得进入这条长期知识检索链路。
 
+职业知识库页面必须投影同一个长期知识来源层，不能只展示 `knowledge_items`。每个具有 current active Revision 与 Approved Projection 的 Repository 在“代码仓库”分类中显示为一条只读知识条目，条目详情在同一 Repository 下展示其 1–N 个 Wiki 页面、当前完整 SHA、visibility、coverage 与源码 Citation；分类和“全部”计数按 Repository 条目计数，不按 Wiki 页面数膨胀。搜索必须覆盖 Repository 名称、Wiki 标题、摘要、页面标题和 Approved Markdown。pending、仅 Generated、superseded、disabled、private 或 active pointer 不完整的 Wiki 不得进入列表、计数、搜索或详情；新分析在批准前继续显示旧 active Wiki。
+
+统一知识列表必须显式区分资料派生 Knowledge Item 与 Repository Wiki。Candidate 可以继续编辑 Knowledge Item，但 Repository Wiki 在职业知识库中保持只读，任何编辑都只能从 Repository 审核页写 Approved Projection，且不能修改 Generated Version 或源码 Citation。现有 `type=repository` Knowledge Item 仍表示由文档资料整理出的仓库类职业知识，不得被误当作 Repository 聚合或覆盖；同一分类可以同时包含这类 Knowledge Item 和 active Repository Wiki，并由来源类型清楚区分。
+
 Candidate 或授权 Public Visitor 点击可预览的 Repository Citation 时，当前页面必须打开来源阅读弹窗，以 Markdown 结构显示 Repository、固定完整 SHA、文件、行号和源码代码块；不得把 JSON API 地址作为新窗口导航目标。来源 API 仍返回结构化授权数据，UI 在每次打开时重新请求并接受即时权限复核；关闭弹窗后焦点返回原 Citation。
 
 生成后的 Wiki 可以在 Candidate 中以导航树 + Markdown 阅读/编辑/预览方式显示 `pending review`；单页 Wiki 不显示多余层级，不再把每个 Claim 渲染成独立表单卡片。公共 Agent 只使用 Candidate 已批准的 Approved Projection。新 Revision 必须重新分析、重新审核；在新投影批准前，旧 active Revision 的 Approved Wiki 继续服务问答。
@@ -201,6 +205,7 @@ Repository Analysis Run 与 Deep Analysis Run 使用同一隔离运行时，但�
 - [x] `AC-WIKI-001` 每个可分析新 Revision 在 sandbox 隔离输出目录生成 1–N 个结构化、可阅读和可导出的 Wiki Markdown；Host 在 cleanup 前安全 copy-out，并验证导航、架构/流程 Mermaid、模块与工作流说明、源码 Citation 和诚实 coverage，不创建源码 Chunk、embedding、AST 或向量索引。
 - [x] `AC-WIKI-002` Generated Version 不可编辑；Candidate 以导航树和逐页 Markdown 阅读、编辑和预览 Approved Projection，危险内容、越界链接、无效 Citation 或新增无证据引用不可批准，UI 不再呈现 Claim 卡片编辑器。
 - [x] `AC-WIKI-003` Approved Wiki 与已索引上传资料进入同一统一知识检索链路，供 Candidate Preview 和授权 Public Chat 使用；未审核 Wiki 不可检索，新 Revision 未批准时继续使用旧 active Revision，运行版本变化只标记 `analysis_outdated`。
+- [x] `AC-KB-003` 职业知识库的列表、代码仓库分类、计数、搜索和详情统一投影当前 active Approved Repository Wiki；每个 Repository 只计一条、详情可读 1–N 个 Wiki 页面且保持只读，未审核或未授权 Wiki 不可见，同时 Candidate Preview 与授权 Public Chat 能在后续问题中使用同一 Wiki 与源码 Citation。
 - [x] `AC-ROUTE-001` 确定性门禁先于 Router，Router 只能在 `rag`、`deep`、`refuse` 中选择且不能扩大 repository 或 visibility 权限。
 - [x] `AC-ROUTE-002` 普通文档/Wiki 问题不启动 sandbox；需要原始代码的问题在证据不足时升级为一个 Revision 的 Deep Analysis Run。
 - [x] `AC-ROUTE-003` 多 Repository 歧义要求用户选择，证据不足、拒绝和失败不伪装成成功回答或无提示 RAG fallback。

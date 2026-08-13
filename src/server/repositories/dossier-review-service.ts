@@ -53,6 +53,22 @@ export type CandidateRepositoryDossier = {
   dossier: (WikiSummary & { isActive: boolean; pages: WikiPage[] }) | null;
 };
 
+type ActiveRepositoryKnowledgeRow = {
+  repositoryId: string;
+  displayName: string;
+  visibility: RepositoryVisibility;
+  dossierId: string;
+  revisionId: string;
+  commitSha: string;
+  generatedVersion: number;
+  title: string;
+  summary: string;
+  coverage: Record<string, unknown>;
+  outdatedReason: string | null;
+  updatedAt: Date;
+  projectionId: string;
+};
+
 async function requireCandidateRepository(queryable: Queryable, ownerId: string, repositoryId: string) {
   const result = await queryable.query<CandidateRepositoryDossier["repository"]>(
     `SELECT repository.id,repository.display_name AS "displayName",repository.visibility,repository.active_revision_id AS "activeRevisionId",
@@ -85,7 +101,57 @@ async function wikiPages(queryable: Queryable, dossierId: string, projectionId: 
   )).rows;
 }
 
-export async function getCandidateRepositoryDossier(pool: Pool, ownerId: string, repositoryId: string): Promise<CandidateRepositoryDossier> {
+export async function getCandidateActiveRepositoryKnowledge(pool: Queryable, ownerId: string, repositoryId: string) {
+  const result = await pool.query<ActiveRepositoryKnowledgeRow>(
+    `SELECT repository.id AS "repositoryId",repository.display_name AS "displayName",repository.visibility,
+            dossier.id AS "dossierId",dossier.revision_id AS "revisionId",revision.commit_sha AS "commitSha",
+            dossier.generated_version AS "generatedVersion",dossier.wiki_title AS title,dossier.wiki_summary AS summary,
+            dossier.coverage,dossier.outdated_reason AS "outdatedReason",greatest(repository.updated_at,projection.updated_at) AS "updatedAt",
+            projection.id AS "projectionId"
+     FROM repositories repository
+     JOIN repository_revisions revision ON revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
+     JOIN repository_dossier_projections projection ON projection.id=repository.active_projection_id AND projection.state='approved'
+     JOIN repository_dossiers dossier ON dossier.id=projection.dossier_id AND dossier.repository_id=repository.id
+       AND dossier.revision_id=revision.id AND dossier.owner_id=repository.owner_id AND dossier.wiki_manifest IS NOT NULL
+     WHERE repository.id=$1 AND repository.owner_id=$2 AND repository.disabled_at IS NULL AND repository.visibility<>'private'
+       AND EXISTS (
+         SELECT 1 FROM repository_wiki_pages ready_page
+         JOIN repository_wiki_projection_pages ready_projected
+           ON ready_projected.page_id=ready_page.id AND ready_projected.dossier_id=ready_page.dossier_id AND ready_projected.projection_id=projection.id
+         WHERE ready_page.dossier_id=dossier.id
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM repository_wiki_pages expected_page
+         WHERE expected_page.dossier_id=dossier.id
+           AND NOT EXISTS (
+             SELECT 1 FROM repository_wiki_projection_pages expected_projected
+             WHERE expected_projected.page_id=expected_page.id AND expected_projected.dossier_id=expected_page.dossier_id
+               AND expected_projected.projection_id=projection.id
+           )
+       )`,
+    [repositoryId, ownerId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new AppError("REPOSITORY_KNOWLEDGE_NOT_FOUND", "The active Repository knowledge was not found.", 404);
+  return {
+    sourceKind: "repository_wiki" as const,
+    repository: { id: row.repositoryId, displayName: row.displayName, visibility: row.visibility },
+    dossier: {
+      id: row.dossierId,
+      revisionId: row.revisionId,
+      commitSha: row.commitSha,
+      generatedVersion: row.generatedVersion,
+      title: row.title,
+      summary: row.summary,
+      coverage: row.coverage,
+      outdatedReason: row.outdatedReason,
+      updatedAt: row.updatedAt,
+      pages: await wikiPages(pool, row.dossierId, row.projectionId),
+    },
+  };
+}
+
+export async function getCandidateRepositoryDossier(pool: Queryable, ownerId: string, repositoryId: string): Promise<CandidateRepositoryDossier> {
   const repository = await requireCandidateRepository(pool, ownerId, repositoryId);
   const dossierResult = await pool.query<WikiSummary>(
     `SELECT dossier.id,dossier.revision_id AS "revisionId",revision.commit_sha AS "commitSha",dossier.generated_version AS "generatedVersion",
@@ -318,7 +384,7 @@ export async function approveCandidateRepositoryDossier(input: {
   }
 }
 
-export async function markRepositoryDossiersOutdated(pool: Pool, provenance: { imageDigest: string; skillHash: string; promptVersion: string; profileFingerprint: string }) {
+export async function markRepositoryDossiersOutdated(pool: Queryable, provenance: { imageDigest: string; skillHash: string; promptVersion: string; profileFingerprint: string }) {
   const result = await pool.query<{ id: string }>(
     `UPDATE repository_dossiers dossier SET outdated_reason='runtime_provenance_changed',updated_at=now()
      FROM repositories repository,repository_dossier_projections projection
