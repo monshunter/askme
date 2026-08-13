@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 
-import { DeepSeekClient } from "@/server/ai/deepseek";
+import { OpenAiChatClient } from "@/server/ai/openai-compatible";
 import type { RuntimeConfig } from "@/server/config";
 import { chunkMaterialText } from "@/server/knowledge/chunking";
 import { organizeMaterialKnowledge, type OrganizationClient } from "@/server/knowledge/organizer";
@@ -15,11 +15,15 @@ export async function processIngestionLease(pool: Pool, lease: IngestionLease, c
   const text = await extractStoredMaterialText(lease.material, config.uploadRoot);
   const chunks = chunkMaterialText(text);
   await renewIngestionLease(pool, lease, 120_000);
-  const organizerClient = dependencies.organizerClient ?? new DeepSeekClient(config.deepseek, { timeoutMs: 60_000 });
+  const organizerClient = dependencies.organizerClient ?? new OpenAiChatClient({
+    apiKey: config.ai.apiKey,
+    baseUrl: config.ai.baseUrl,
+    profile: config.ai.profiles.rag,
+  });
   const { organization, usage } = await organizeMaterialKnowledge(
     { title: lease.material.title, kind: lease.material.kind, chunks },
     organizerClient,
   );
   await renewIngestionLease(pool, lease, 120_000);
-  return persistIngestionResult(pool, lease, chunks, organization, usage, config.deepseek.model);
+  return persistIngestionResult(pool, lease, chunks, organization, usage, config.ai.profiles.rag.model);
 }

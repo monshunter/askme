@@ -4,17 +4,44 @@ import { allowedVisibilities, type MaterialVisibility, type VisibilityConsumer }
 
 import { buildEvidenceSearchQuery, parseEvidenceQuery, type EvidenceQuery } from "./retrieval-input";
 
-export type RetrievedEvidence = {
+export type RetrievedDocumentEvidence = {
   chunkId: string;
   materialId: string;
   materialTitle: string;
-  materialKind: "file" | "github" | "notion" | "website";
+  materialKind: "file" | "notion" | "website";
   externalUrl: string | null;
   visibility: MaterialVisibility;
   position: number;
   content: string;
   score: number;
 };
+
+export type RetrievedRepositoryEvidence = {
+  repositoryWikiPageId: string;
+  repositoryId: string;
+  repositoryTitle: string;
+  wikiPagePath: string;
+  wikiPageTitle: string;
+  sectionHeading: string;
+  revisionId: string;
+  commitSha: string;
+  visibility: MaterialVisibility;
+  content: string;
+  score: number;
+  sourceCitations: Array<{
+    marker: string;
+    path: string;
+    lineStart: number;
+    lineEnd: number;
+    contentHash: string;
+  }>;
+};
+
+export type RetrievedEvidence = RetrievedDocumentEvidence | RetrievedRepositoryEvidence;
+
+export function isRepositoryEvidence(evidence: RetrievedEvidence): evidence is RetrievedRepositoryEvidence {
+  return "repositoryWikiPageId" in evidence;
+}
 
 function escapeLikePattern(value: string) {
   return `%${value.replace(/[\\%_]/g, "\\$&")}%`;
@@ -25,10 +52,10 @@ export async function searchEvidence(
   ownerId: string,
   consumer: VisibilityConsumer,
   input: EvidenceQuery,
-): Promise<RetrievedEvidence[]> {
+): Promise<RetrievedDocumentEvidence[]> {
   const query = parseEvidenceQuery(input);
   const searchQuery = buildEvidenceSearchQuery(query.query);
-  const result = await pool.query<RetrievedEvidence>(
+  const result = await pool.query<RetrievedDocumentEvidence>(
     `SELECT c.id AS "chunkId",c.material_id AS "materialId",m.title AS "materialTitle",m.kind AS "materialKind",
             m.external_url AS "externalUrl",m.visibility,c.position,c.content,
             greatest(

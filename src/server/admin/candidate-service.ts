@@ -2,6 +2,7 @@ import "server-only";
 
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
+import { requestOwnerAnalysisCancellation } from "@/server/code-agent/analysis-cancellation";
 
 import { candidateStatusTransition } from "./admin-state";
 import type { CandidateStatusInput } from "./admin-input";
@@ -61,6 +62,7 @@ export async function changeCandidateStatus(actorId: string, candidateId: string
       await client.query("UPDATE users SET status=$2::account_status,updated_at=now() WHERE id=$1 AND role='candidate'", [candidateId, transition.next]);
       if (transition.next === "suspended") {
         await client.query("UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [candidateId]);
+        await requestOwnerAnalysisCancellation(client, candidateId, "candidate_suspended");
       }
     }
     await client.query(

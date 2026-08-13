@@ -7,15 +7,12 @@ import { assertSafeRemoteUrl, pinnedPublicFetch, systemHostLookup, type HostLook
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const NOTION_VERSION = "2026-03-11";
-const GITHUB_VERSION = "2026-03-10";
 const NOTION_API = "https://api.notion.com/v1";
-const GITHUB_API = "https://api.github.com";
 
 export type ExternalFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type ExternalSourceInput =
   | { kind: "website"; url: string }
-  | { kind: "github"; url: string; token?: string }
   | { kind: "notion"; url: string; targetType: "page" | "database"; token?: string };
 
 export type ExternalSnapshot = {
@@ -55,7 +52,7 @@ async function boundedText(response: Response, limit = MAX_RESPONSE_BYTES) {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
-async function request(fetcher: ExternalFetch, url: string, init: RequestInit, provider: "website" | "github" | "notion") {
+async function request(fetcher: ExternalFetch, url: string, init: RequestInit, provider: "website" | "notion") {
   try {
     return await fetcher(url, { ...init, signal: AbortSignal.timeout(15_000) });
   } catch (error) {
@@ -64,7 +61,7 @@ async function request(fetcher: ExternalFetch, url: string, init: RequestInit, p
   }
 }
 
-async function jsonResponse(response: Response, provider: "github" | "notion") {
+async function jsonResponse(response: Response, provider: "notion") {
   const text = await boundedText(response);
   if (!response.ok) {
     const code = response.status === 401 || response.status === 403 || response.status === 404 ? "SOURCE_ACCESS_DENIED" : "SOURCE_UPSTREAM_ERROR";
@@ -116,71 +113,6 @@ async function websiteSnapshot(input: Extract<ExternalSourceInput, { kind: "webs
     externalUrl: current.toString(),
     content,
     sourceMeta: { provider: "website", finalUrl: current.toString(), fetchedAt: new Date().toISOString() },
-  };
-}
-
-function githubRepository(url: URL) {
-  if (!(url.hostname === "github.com" || url.hostname === "www.github.com")) {
-    throw new AppError("INVALID_GITHUB_URL", "Enter a GitHub repository URL.", 400);
-  }
-  const segments = url.pathname.split("/").filter(Boolean);
-  if (segments.length !== 2) throw new AppError("INVALID_GITHUB_URL", "Enter a GitHub repository URL in the form github.com/owner/repository.", 400);
-  const owner = segments[0];
-  const repository = segments[1]?.replace(/\.git$/i, "");
-  if (!owner || !repository || !/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repository)) {
-    throw new AppError("INVALID_GITHUB_URL", "Enter a valid GitHub repository URL.", 400);
-  }
-  return { owner, repository };
-}
-
-async function githubSnapshot(input: Extract<ExternalSourceInput, { kind: "github" }>, dependencies: Required<SnapshotDependencies>): Promise<ExternalSnapshot> {
-  const sourceUrl = await assertSafeRemoteUrl(input.url, dependencies.lookup);
-  const { owner, repository } = githubRepository(sourceUrl);
-  const headers = new Headers({ accept: "application/vnd.github+json", "user-agent": "askme-local", "x-github-api-version": GITHUB_VERSION });
-  if (input.token?.trim()) headers.set("authorization", `Bearer ${input.token.trim()}`);
-
-  const repoResponse = await request(dependencies.fetcher, `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`, { headers }, "github");
-  const repo = await jsonResponse(repoResponse, "github");
-  const fullName = typeof repo.full_name === "string" ? repo.full_name : `${owner}/${repository}`;
-  const canonicalUrl = typeof repo.html_url === "string" ? repo.html_url : `https://github.com/${owner}/${repository}`;
-  const description = typeof repo.description === "string" ? repo.description : "";
-  const defaultBranch = typeof repo.default_branch === "string" ? repo.default_branch : null;
-  const topics = Array.isArray(repo.topics) ? repo.topics.filter((value): value is string => typeof value === "string").slice(0, 50) : [];
-  const metadata = [
-    `Repository: ${fullName}`,
-    description && `Description: ${description}`,
-    typeof repo.language === "string" && `Primary language: ${repo.language}`,
-    topics.length > 0 && `Topics: ${topics.join(", ")}`,
-    defaultBranch && `Default branch: ${defaultBranch}`,
-  ].filter(Boolean);
-
-  const readmeResponse = await request(
-    dependencies.fetcher,
-    `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/readme`,
-    { headers: new Headers({ ...Object.fromEntries(headers), accept: "application/vnd.github.raw+json" }) },
-    "github",
-  );
-  if (readmeResponse.ok) {
-    const readme = normalizeWhitespace(await boundedText(readmeResponse, 3 * 1024 * 1024));
-    if (readme) metadata.push("\nREADME\n", readme);
-  } else if (readmeResponse.status !== 404) {
-    await jsonResponse(readmeResponse, "github");
-  }
-
-  return {
-    kind: "github",
-    title: fullName.slice(0, 300),
-    externalUrl: canonicalUrl,
-    content: metadata.join("\n"),
-    sourceMeta: {
-      provider: "github",
-      repository: fullName,
-      defaultBranch,
-      language: typeof repo.language === "string" ? repo.language : null,
-      visibility: typeof repo.visibility === "string" ? repo.visibility : null,
-      topics,
-      fetchedAt: new Date().toISOString(),
-    },
   };
 }
 
@@ -303,6 +235,5 @@ async function notionSnapshot(input: Extract<ExternalSourceInput, { kind: "notio
 export async function createExternalSnapshot(input: ExternalSourceInput, dependencies: SnapshotDependencies = {}) {
   const resolved: Required<SnapshotDependencies> = { fetcher: dependencies.fetcher ?? pinnedPublicFetch, lookup: dependencies.lookup ?? systemHostLookup };
   if (input.kind === "website") return websiteSnapshot(input, resolved);
-  if (input.kind === "github") return githubSnapshot(input, resolved);
   return notionSnapshot(input, resolved);
 }

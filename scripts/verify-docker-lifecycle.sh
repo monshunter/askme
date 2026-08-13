@@ -113,14 +113,14 @@ curl -fsS "http://${acceptance_endpoint}/api/health/ready" | grep -Fq '"status":
 acceptance_logs="$("${compose_command[@]}" logs --no-color)"
 grep -Fq '"event":"worker.material.indexed"' <<<"${acceptance_logs}"
 grep -Fq '"jobId"' <<<"${acceptance_logs}"
-deepseek_secret="$(docker inspect "${acceptance_project}-web-1" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^DEEPSEEK_API_KEY=//p')"
+ai_secret="$(docker inspect "${acceptance_project}-web-1" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^ASKME_AI_API_KEY=//p')"
 for forbidden_log_value in \
   "${acceptance_secret_sentinel}" \
   "${acceptance_database_secret}" \
   "${ASKME_CANDIDATE_PASSWORD}" \
   "${ASKME_ADMIN_PASSWORD}" \
   "ASKME_PRIVATE_TEXT_${acceptance_project}" \
-  "${deepseek_secret}"; do
+  "${ai_secret}"; do
   if [[ -n "${forbidden_log_value}" ]] && grep -Fq "${forbidden_log_value}" <<<"${acceptance_logs}"; then
     echo "A Secret or private-text sentinel appeared in application logs" >&2
     exit 1

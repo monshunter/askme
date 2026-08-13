@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { projectPublicCitations } from "./public-citation";
 
-const base = {
+  const base = {
+    kind: "document" as const,
   chunkId: "11111111-1111-4111-8111-111111111111",
   rank: 1,
   materialId: "22222222-2222-4222-8222-222222222222",
@@ -10,9 +11,30 @@ const base = {
   materialKind: "file" as const,
   mimeType: "text/markdown",
   externalUrl: null,
-};
+  };
 
 describe("public Citation projection", () => {
+  it("reprojects Repository citations from current visibility", () => {
+    const repository = {
+      kind: "repository" as const,
+      messageId: "11111111-1111-4111-8111-111111111111",
+      rank: 1,
+      repositoryId: "22222222-2222-4222-8222-222222222222",
+      repositoryTitle: "Askme",
+      revisionId: "33333333-3333-4333-8333-333333333333",
+      commitSha: "a".repeat(40),
+      path: "src/agent.ts",
+      lineStart: 3,
+      lineEnd: 8,
+      visibility: "citation_allowed" as const,
+    };
+    expect(projectPublicCitations("candidate-agent", [repository])).toEqual([{ materialTitle: "Askme", access: null }]);
+    expect(projectPublicCitations("candidate-agent", [{ ...repository, visibility: "public_preview" }])[0]).toMatchObject({
+      materialTitle: "Askme · src/agent.ts:3-8",
+      access: { mode: "repository" },
+    });
+  });
+
   it("shows a citation_allowed source name without any access address or content", () => {
     const [citation] = projectPublicCitations("candidate-agent", [{ ...base, visibility: "citation_allowed" }]);
     expect(citation).toEqual({

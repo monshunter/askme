@@ -18,5 +18,11 @@ describe("resource identifiers", () => {
     expect(() => requireResourceId("bad", "message")).toThrowError(
       expect.objectContaining({ code: "MESSAGE_NOT_FOUND", status: 404 }) as Partial<AppError>,
     );
+    expect(() => requireResourceId("bad", "repository")).toThrowError(
+      expect.objectContaining({ code: "REPOSITORY_NOT_FOUND", status: 404 }) as Partial<AppError>,
+    );
+    expect(() => requireResourceId("bad", "analysis_run")).toThrowError(
+      expect.objectContaining({ code: "ANALYSIS_RUN_NOT_FOUND", status: 404 }) as Partial<AppError>,
+    );
   });
 });

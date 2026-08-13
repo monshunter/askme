@@ -37,7 +37,7 @@ export async function getCandidateDashboard(ownerId: string) {
     ),
   ]);
   const row = factsResult.rows[0]!;
-  const facts: DashboardFacts = { ...row, aiConfigured: Boolean(getRuntimeConfig().deepseek.apiKey) };
+  const facts: DashboardFacts = { ...row, aiConfigured: Boolean(getRuntimeConfig().ai.apiKey) };
   return {
     metrics: {
       sourceMaterials: facts.materialTotal,
@@ -47,7 +47,7 @@ export async function getCandidateDashboard(ownerId: string) {
       processing: { queued: facts.queuedCount, processing: facts.processingCount, indexed: facts.indexedCount, failed: facts.failedCount },
     },
     ...deriveDashboardState(facts),
-    ai: { configured: facts.aiConfigured, model: getRuntimeConfig().deepseek.model },
+    ai: { configured: facts.aiConfigured, model: getRuntimeConfig().ai.profiles.rag.model },
     worker: { status: facts.workerFresh ? "healthy" : "stale", lastSeenAt: row.workerLastSeenAt },
     recentMaterials: recentResult.rows,
   };

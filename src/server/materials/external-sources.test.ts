@@ -27,32 +27,6 @@ describe("external material snapshots", () => {
     expect(snapshot.content).not.toContain("secret()");
   });
 
-  it("maps a GitHub repository and README without retaining a supplied token", async () => {
-    const token = "github-private-token-sentinel";
-    const fetcher = vi.fn<ExternalFetch>(async (url, init) => {
-      expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${token}`);
-      if (url.endsWith("/readme")) {
-        return new Response("# Askme\nA personal career knowledge base.", { status: 200, headers: { "content-type": "text/plain" } });
-      }
-      return Response.json({
-        full_name: "openai/askme",
-        description: "Career knowledge base",
-        html_url: "https://github.com/openai/askme",
-        default_branch: "main",
-        language: "TypeScript",
-        topics: ["career"],
-        visibility: "public",
-      });
-    });
-
-    const snapshot = await createExternalSnapshot({ kind: "github", url: "https://github.com/openai/askme", token }, { fetcher, lookup: publicLookup });
-
-    expect(snapshot.title).toBe("openai/askme");
-    expect(snapshot.content).toContain("personal career knowledge base");
-    expect(JSON.stringify(snapshot)).not.toContain(token);
-    expect(snapshot.sourceMeta).toMatchObject({ repository: "openai/askme", defaultBranch: "main" });
-  });
-
   it("requires a Notion token and recursively snapshots a page through the official API", async () => {
     const url = "https://www.notion.so/Career-Notes-11111111111141118111111111111111";
     await expect(createExternalSnapshot({ kind: "notion", url, targetType: "page" }, { fetcher: vi.fn(), lookup: publicLookup })).rejects.toMatchObject({

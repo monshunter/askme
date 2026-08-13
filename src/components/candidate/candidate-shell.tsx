@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BookOpen, ChevronDown, House, Menu, Monitor, ShieldCheck, UploadCloud } from "lucide-react";
+import { Bell, BookOpen, ChevronDown, Github, House, Menu, Monitor, ShieldCheck, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
@@ -16,6 +16,7 @@ type CandidateShellProps = {
 const navigation = [
   { href: "/workspace", labelKey: "candidate.nav.dashboard" as TranslationKey, icon: House },
   { href: "/workspace/materials", labelKey: "candidate.nav.materials" as TranslationKey, icon: UploadCloud },
+  { href: "/workspace/repositories", labelKey: "candidate.nav.repositories" as TranslationKey, icon: Github },
   { href: "/workspace/knowledge", labelKey: "candidate.nav.knowledge" as TranslationKey, icon: BookOpen },
   { href: "/workspace/privacy", labelKey: "candidate.nav.privacy" as TranslationKey, icon: ShieldCheck },
   { href: "/workspace/agent", labelKey: "candidate.nav.agent" as TranslationKey, icon: Monitor },

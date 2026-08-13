@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowRight, BookOpen, Check, FileArchive, FileCode2, FileText, Github, Link2, LoaderCircle, NotebookTabs, RefreshCw, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
+import { AlertCircle, ArrowRight, BookOpen, Check, FileArchive, FileText, Link2, LoaderCircle, NotebookTabs, RefreshCw, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,7 +15,7 @@ type Material = {
   id: string;
   title: string;
   originalName: string | null;
-  kind: "file" | "github" | "notion" | "website";
+  kind: "file" | "notion" | "website";
   mimeType: string | null;
   sizeBytes: number | null;
   externalUrl: string | null;
@@ -28,7 +28,7 @@ type Material = {
 };
 
 type MaterialPage = { items: Material[]; page: number; pageSize: number; total: number; totalPages: number };
-type Provider = "github" | "notion" | "website";
+type Provider = "notion" | "website";
 type ApiEnvelope<T = unknown> = { data?: T; error?: { message?: string } | null };
 
 function formatBytes(bytes: number | null, locale: Locale) {
@@ -151,7 +151,7 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
       }
       formElement.reset();
       setProvider(null);
-      setFeedback({ tone: "success", message: t("materials.snapshotQueued", { provider: activeProvider === "website" ? t("materials.connect.website.title") : activeProvider === "github" ? "GitHub" : "Notion" }) });
+      setFeedback({ tone: "success", message: t("materials.snapshotQueued", { provider: activeProvider === "website" ? t("materials.connect.website.title") : "Notion" }) });
       await refresh();
     } catch (error) {
       setFeedback({ tone: "error", message: requestFailureMessage(error, t("materials.action.external"), locale) });
@@ -230,10 +230,8 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
               {[
                 [t("materials.type.resume"), "PDF, DOCX", FileText],
                 [t("materials.type.project"), "PDF, DOCX, PPTX", FileArchive],
-                [t("materials.type.github"), t("materials.type.publicPrivate"), Github],
                 [t("materials.type.articles"), "PDF, URL", NotebookTabs],
                 [t("materials.type.architecture"), "PDF, DOCX", BookOpen],
-                [t("materials.type.openSource"), t("materials.type.repositories"), FileCode2],
                 [t("materials.type.notes"), "MD, TXT", FileText],
               ].map(([title, copy, Icon]) => (
                 <article key={String(title)}><Icon size={27} /><strong>{String(title)}</strong><small>{String(copy)}</small></article>
@@ -246,7 +244,6 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
             <p>{t("materials.connect.copy")}</p>
             <div className="connector-grid">
               {[
-                { id: "github" as const, title: "GitHub", copy: t("materials.connect.github.copy"), icon: Github, action: t("materials.connect.github.action") },
                 { id: "notion" as const, title: "Notion", copy: t("materials.connect.notion.copy"), icon: NotebookTabs, action: t("materials.connect.notion.action") },
                 { id: "website" as const, title: t("materials.connect.website.title"), copy: t("materials.connect.website.copy"), icon: Link2, action: t("materials.connect.website.action") },
               ].map(({ id, title, copy, icon: Icon, action }) => (
@@ -258,8 +255,8 @@ export function MaterialsClient({ initialMaterials, locale }: { initialMaterials
             </div>
             {provider ? (
               <form className="connector-form" onSubmit={connectSource}>
-                <div><label htmlFor="source-url">{provider === "github" ? t("materials.connect.repositoryUrl") : provider === "notion" ? t("materials.connect.notionUrl") : t("materials.connect.websiteUrl")}</label><input id="source-url" name="url" type="url" required placeholder={provider === "github" ? "https://github.com/owner/repository" : provider === "notion" ? "https://www.notion.so/..." : "https://example.com/article"} /></div>
-                {provider !== "website" ? <div><label htmlFor="source-token">{provider === "github" ? t("materials.connect.tokenOptional") : t("materials.connect.tokenRequired")}</label><input id="source-token" name="token" type="password" required={provider === "notion"} autoComplete="off" /></div> : null}
+                <div><label htmlFor="source-url">{provider === "notion" ? t("materials.connect.notionUrl") : t("materials.connect.websiteUrl")}</label><input id="source-url" name="url" type="url" required placeholder={provider === "notion" ? "https://www.notion.so/..." : "https://example.com/article"} /></div>
+                {provider === "notion" ? <div><label htmlFor="source-token">{t("materials.connect.tokenRequired")}</label><input id="source-token" name="token" type="password" required autoComplete="off" /></div> : null}
                 {provider === "notion" ? <div><label htmlFor="target-type">{t("materials.connect.notionTarget")}</label><select id="target-type" name="targetType"><option value="page">{t("materials.connect.page")}</option><option value="database">{t("materials.connect.database")}</option></select></div> : null}
                 <button className="primary-button" disabled={connecting} type="submit">{connecting ? <LoaderCircle className="spin" size={17} /> : <Link2 size={17} />} {connecting ? t("materials.connect.connecting") : t("materials.connect.create")}</button>
               </form>

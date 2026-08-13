@@ -2,7 +2,7 @@
 
 import { AlertCircle, Bot, BookOpen, Check, Clock3, FileText, Globe2, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, Share2, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiClientError, requestApi } from "@/components/candidate/api-client";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -10,7 +10,7 @@ import { SourceLink, type SourceOpenMode } from "@/components/source-viewer";
 import { createTranslator, type Locale } from "@/i18n/core";
 
 type Citation = { materialTitle: string; access: { href: string; mode: SourceOpenMode } | null };
-type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[] };
+type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[]; analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null };
 type Thread = { conversation: { id: string; expiresAt: string }; messages: PublicMessage[]; idempotent?: boolean; pending?: boolean };
 type PublicProjection = {
   profile: { displayName: string; headline: string; location: string | null; bio: string | null; avatarUrl: string | null };
@@ -49,8 +49,9 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const initialized = useRef(false);
   const threadEnd = useRef<HTMLDivElement>(null);
+  const runEvents = useRef(new Map<string, EventSource>());
 
-  async function loadThread() {
+  const loadThread = useCallback(async () => {
     const { response, payload } = await requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, { cache: "no-store" });
     if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") {
       setAgentUnavailable(true);
@@ -60,7 +61,38 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
     if (!payload.data) throw new ApiClientError("invalid_response");
     setThread(payload.data);
     return payload.data;
-  }
+  }, [slug, t]);
+
+  const watchAnalysisRun = useCallback((runId: string) => {
+    if (runEvents.current.has(runId)) return;
+    const source = new EventSource(`/api/public/agents/${slug}/analysis-runs/${runId}/events`);
+    runEvents.current.set(runId, source);
+    const settle = () => {
+      source.close();
+      runEvents.current.delete(runId);
+      void loadThread().catch(() => setNotice({ tone: "error", message: t("public.threadLoadFailed") }));
+    };
+    source.addEventListener("run", (event) => {
+      try {
+        const snapshot = JSON.parse((event as MessageEvent<string>).data) as { completed?: unknown };
+        if (snapshot.completed === true) settle();
+      } catch { settle(); }
+    });
+    source.addEventListener("invalidated", settle);
+  }, [loadThread, slug, t]);
+
+  useEffect(() => {
+    for (const message of thread?.messages ?? []) {
+      if (message.status === "pending" && !message.errorCode && message.analysisRun && (message.analysisRun.state === "pending" || message.analysisRun.state === "running")) {
+        watchAnalysisRun(message.analysisRun.id);
+      }
+    }
+  }, [thread?.messages, watchAnalysisRun]);
+
+  useEffect(() => () => {
+    for (const source of runEvents.current.values()) source.close();
+    runEvents.current.clear();
+  }, []);
 
   async function initializeSession() {
     setSessionState("starting");

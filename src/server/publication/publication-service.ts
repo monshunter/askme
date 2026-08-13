@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
+import { requestPublicationAnalysisCancellation } from "@/server/code-agent/analysis-cancellation";
 
 import { createPublicSlug, evaluatePublishReadiness, type PublishReadinessFacts } from "./publication-policy";
 
@@ -160,6 +161,7 @@ export async function revokeAgent(ownerId: string, requestId?: string) {
     );
     const publication = updated.rows[0]!;
     await client.query("UPDATE agent_settings SET public_mode=false,updated_at=now() WHERE owner_id=$1", [ownerId]);
+    await requestPublicationAnalysisCancellation(client, publication.id, "publication_revoked");
     await auditPublication(client, ownerId, publication, "publication.revoke", "revoked", requestId);
     await client.query("COMMIT");
     return { publication, changed: true };

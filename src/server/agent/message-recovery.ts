@@ -4,7 +4,11 @@ export async function recoverStaleAnswers(conversationId: string, ownerId: strin
   const result = await pool.query(
     `UPDATE messages SET status='failed',content='The answer was interrupted before it completed. Retry the question.',error_code='REQUEST_INTERRUPTED'
      WHERE conversation_id=$1 AND owner_id=$2 AND role='assistant' AND status='pending'
-       AND created_at<now()-interval '2 minutes'`,
+       AND created_at<now()-interval '2 minutes'
+       AND NOT EXISTS (
+         SELECT 1 FROM analysis_runs run
+         WHERE run.assistant_message_id=messages.id AND run.owner_id=messages.owner_id AND run.state IN ('pending','running')
+       )`,
     [conversationId, ownerId],
   );
   return result.rowCount ?? 0;

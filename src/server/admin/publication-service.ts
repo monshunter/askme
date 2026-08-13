@@ -2,6 +2,7 @@ import "server-only";
 
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
+import { requestPublicationAnalysisCancellation } from "@/server/code-agent/analysis-cancellation";
 
 import { publicationStatusTransition } from "./admin-state";
 import type { PublicationActionInput } from "./admin-input";
@@ -89,6 +90,7 @@ export async function governPublication(actorId: string, publicationId: string, 
             [publicationId],
           );
       if (updated.rowCount !== 1) throw new AppError("AGENT_STATE_CONFLICT", "The Agent state changed before the action completed.", 409);
+      if (input.action === "pause") await requestPublicationAnalysisCancellation(client, publicationId, "publication_paused");
     }
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)

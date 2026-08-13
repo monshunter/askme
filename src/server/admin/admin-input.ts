@@ -62,6 +62,15 @@ const publicationActionInput = z.object({
   reason: reasonSchema,
 }).strict();
 
+const repositoryActionInput = z.object({
+  action: z.enum(["disable", "enable"]),
+  reason: reasonSchema,
+}).strict();
+
+const analysisRunActionInput = z.object({
+  reason: reasonSchema,
+}).strict();
+
 const contentReviewInput = z.object({
   action: z.enum(["review", "resolve", "dismiss"]),
   note: reasonSchema,
@@ -86,6 +95,8 @@ const invitationAcceptance = z.object({
 
 export type CandidateStatusInput = z.infer<typeof candidateStatusInput>;
 export type PublicationActionInput = z.infer<typeof publicationActionInput>;
+export type RepositoryActionInput = z.infer<typeof repositoryActionInput>;
+export type AnalysisRunActionInput = z.infer<typeof analysisRunActionInput>;
 export type ContentReviewInput = z.infer<typeof contentReviewInput>;
 export type SettingsInput = z.infer<typeof settingsInput>;
 export type InvitationInput = z.infer<typeof invitationInput>;
@@ -97,6 +108,14 @@ export function parseCandidateStatusInput(value: unknown) {
 
 export function parsePublicationActionInput(value: unknown) {
   return parseInput(publicationActionInput, value, "INVALID_AGENT_ACTION", "Choose a valid Agent action and reason.");
+}
+
+export function parseRepositoryActionInput(value: unknown) {
+  return parseInput(repositoryActionInput, value, "INVALID_REPOSITORY_ACTION", "Choose a valid Repository action and reason.");
+}
+
+export function parseAnalysisRunActionInput(value: unknown) {
+  return parseInput(analysisRunActionInput, value, "INVALID_ANALYSIS_RUN_ACTION", "Enter a reason for cancelling the analysis run.");
 }
 
 export function parseContentReviewInput(value: unknown) {

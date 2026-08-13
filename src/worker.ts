@@ -39,7 +39,7 @@ async function main() {
     const safeError = toAppError(error);
     console.error(JSON.stringify({ event: "worker.pool.error", workerId, errorCode: safeError.code }));
   });
-  console.info(JSON.stringify({ event: "worker.started", workerId, model: config.deepseek.model }));
+  console.info(JSON.stringify({ event: "worker.started", workerId, model: config.ai.profiles.rag.model }));
   const stopHeartbeat = await startWorkerHeartbeat(() => heartbeat(pool), {
     intervalMs: HEARTBEAT_INTERVAL_MS,
     onError: (error) => {
@@ -72,7 +72,7 @@ async function main() {
         } catch (error) {
           const safeError = toAppError(error);
           try {
-            const decision = await failIngestionJob(pool, lease, safeError, config.deepseek.model);
+            const decision = await failIngestionJob(pool, lease, safeError, config.ai.profiles.rag.model);
             console.warn(
               JSON.stringify({ event: "worker.material.failed", workerId, jobId: lease.jobId, materialId: lease.material.id, attempt: lease.attempt, errorCode: decision.code, outcome: decision.outcome }),
             );

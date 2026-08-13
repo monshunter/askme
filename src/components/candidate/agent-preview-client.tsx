@@ -19,27 +19,42 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createTranslator, type Locale } from "@/i18n/core";
 import { MarkdownContent } from "@/components/markdown-content";
-import { CandidateSourceLink } from "@/components/source-viewer";
+import { CandidateSourceLink, SourceLink } from "@/components/source-viewer";
 
 import { ApiClientError, requestApi } from "./api-client";
 import { AgentPublicationControls, type PublicationOverview } from "./agent-publication-controls";
 
 type Visibility = "private" | "agent_only" | "citation_allowed" | "public_preview";
-type Citation = {
+type DocumentCitation = {
+  kind?: "document";
   chunkId: string;
   rank: number;
   excerpt: string;
   materialId: string;
   materialTitle: string;
-  materialKind: "file" | "github" | "notion" | "website";
+  materialKind: "file" | "notion" | "website";
   mimeType: string | null;
   externalUrl: string | null;
   visibility: Visibility;
 };
+type RepositoryCitation = {
+  kind: "repository";
+  messageId: string;
+  rank: number;
+  repositoryId: string;
+  repositoryTitle: string;
+  revisionId: string;
+  commitSha: string;
+  path: string;
+  lineStart: number;
+  lineEnd: number;
+  visibility: Visibility;
+};
+type Citation = DocumentCitation | RepositoryCitation;
 type AgentMessage = {
   id: string;
   role: "user" | "assistant";
@@ -51,6 +66,7 @@ type AgentMessage = {
   createdAt: string;
   feedback: "up" | "down" | null;
   citations: Citation[];
+  analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null;
 };
 type PreviewThread = {
   conversation: { id: string; createdAt: string; lastActivityAt: string } | null;
@@ -98,6 +114,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
   const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const runEvents = useRef(new Map<string, EventSource>());
 
   const assistantMessages = useMemo(() => thread.messages.filter((message) => message.role === "assistant"), [thread.messages]);
   const activeAnswer = useMemo(
@@ -105,13 +122,44 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     [assistantMessages, selectedAnswerId],
   );
 
-  async function refreshThread() {
+  const refreshThread = useCallback(async () => {
     const { response, payload } = await requestApi<ApiEnvelope<PreviewThread>>("/api/agent/preview", { cache: "no-store" });
     if (!response.ok) throw new Error(t("agent.refreshFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setThread(payload.data);
     return payload.data;
-  }
+  }, [t]);
+
+  const watchAnalysisRun = useCallback((runId: string) => {
+    if (runEvents.current.has(runId)) return;
+    const source = new EventSource(`/api/agent/analysis-runs/${runId}/events`);
+    runEvents.current.set(runId, source);
+    const settle = () => {
+      source.close();
+      runEvents.current.delete(runId);
+      void refreshThread().catch(() => setNotice({ tone: "error", message: t("agent.refreshFailed") }));
+    };
+    source.addEventListener("run", (event) => {
+      try {
+        const snapshot = JSON.parse((event as MessageEvent<string>).data) as { completed?: unknown };
+        if (snapshot.completed === true) settle();
+      } catch { settle(); }
+    });
+    source.addEventListener("invalidated", settle);
+  }, [refreshThread, t]);
+
+  useEffect(() => {
+    for (const message of thread.messages) {
+      if (message.status === "pending" && !message.errorCode && message.analysisRun && (message.analysisRun.state === "pending" || message.analysisRun.state === "running")) {
+        watchAnalysisRun(message.analysisRun.id);
+      }
+    }
+  }, [thread.messages, watchAnalysisRun]);
+
+  useEffect(() => () => {
+    for (const source of runEvents.current.values()) source.close();
+    runEvents.current.clear();
+  }, []);
 
   async function sendQuestion(value: string) {
     const normalized = value.trim();
@@ -270,7 +318,11 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
         <aside className="paper-card citations-card" aria-label={t("agent.citations.label")}>
           <header><span><h2>{t("agent.citations.title")}</h2><small>{activeAnswer ? t("agent.citations.used") : t("agent.citations.select")}</small></span><strong>{t("agent.citations.count", { count: activeAnswer?.citations.length ?? 0 })}</strong></header>
           {!activeAnswer || activeAnswer.citations.length === 0 ? <div className="empty-state citations-empty"><FileText size={26} /><p>{t("agent.citations.empty")}</p><small>{t("agent.citations.copy")}</small></div> : (
-            <ol className="citation-list">{activeAnswer.citations.map((citation) => <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><CandidateSourceLink materialId={citation.materialId} title={citation.materialTitle} kind={citation.materialKind} mimeType={citation.mimeType} externalUrl={citation.externalUrl} locale={locale} /><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p></div></li>)}</ol>
+            <ol className="citation-list">{activeAnswer.citations.map((citation) => citation.kind === "repository" ? (
+              <li key={`${citation.messageId}:${citation.rank}`}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><SourceLink title={`${citation.repositoryTitle} · ${citation.path}:${citation.lineStart}-${citation.lineEnd}`} href={`/api/repositories/${citation.repositoryId}/source?${new URLSearchParams({ messageId: citation.messageId, revisionId: citation.revisionId, path: citation.path, lineStart: String(citation.lineStart), lineEnd: String(citation.lineEnd) }).toString()}`} mode="repository" locale={locale} /><small>REPOSITORY · {visibilityLabel(citation.visibility, locale)} · {citation.commitSha.slice(0, 12)}</small></div></li>
+            ) : (
+              <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><CandidateSourceLink materialId={citation.materialId} title={citation.materialTitle} kind={citation.materialKind} mimeType={citation.mimeType} externalUrl={citation.externalUrl} locale={locale} /><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p></div></li>
+            ))}</ol>
           )}
           <Link className="knowledge-deep-link" href="/workspace/knowledge"><FileText size={17} /> {t("agent.citations.viewAll")} <ChevronRight size={17} /></Link>
         </aside>

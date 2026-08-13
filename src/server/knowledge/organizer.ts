@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ChatMessage, CompletionOptions } from "@/server/ai/deepseek";
+import type { ChatMessage, CompletionOptions } from "@/server/ai/openai-compatible";
 import { AppError } from "@/server/errors";
 
 import { organizationContext, type EvidenceChunk } from "./chunking";
@@ -41,7 +41,7 @@ export function parseKnowledgeOrganization(content: string): KnowledgeOrganizati
 }
 
 export async function organizeMaterialKnowledge(
-  input: { title: string; kind: "file" | "github" | "notion" | "website"; chunks: EvidenceChunk[] },
+  input: { title: string; kind: "file" | "notion" | "website"; chunks: EvidenceChunk[] },
   client: OrganizationClient,
 ) {
   const evidence = organizationContext(input.chunks);

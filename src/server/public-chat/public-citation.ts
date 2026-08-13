@@ -1,7 +1,8 @@
 import { safeExternalHref, sourceOpenMode, type MaterialKind, type SourceOpenMode } from "@/components/source-viewer-policy";
 import type { MaterialVisibility } from "@/server/privacy/visibility-policy";
 
-export type RawPublicCitation = {
+export type RawPublicDocumentCitation = {
+  kind?: "document";
   chunkId: string;
   rank: number;
   materialId: string;
@@ -12,16 +13,55 @@ export type RawPublicCitation = {
   visibility: MaterialVisibility;
 };
 
+export type RawPublicRepositoryCitation = {
+  kind: "repository";
+  messageId: string;
+  rank: number;
+  repositoryId: string;
+  repositoryTitle: string;
+  revisionId: string;
+  commitSha: string;
+  path: string;
+  lineStart: number;
+  lineEnd: number;
+  visibility: MaterialVisibility;
+};
+
+export type RawPublicCitation = RawPublicDocumentCitation | RawPublicRepositoryCitation;
+
 export type PublicCitation = {
   materialTitle: string;
   access: { href: string; mode: SourceOpenMode } | null;
 };
 
 export function projectPublicCitations(slug: string, citations: RawPublicCitation[]): PublicCitation[] {
-  const seenMaterialIds = new Set<string>();
+  const seen = new Set<string>();
   return citations.flatMap((citation) => {
-    if (seenMaterialIds.has(citation.materialId)) return [];
-    seenMaterialIds.add(citation.materialId);
+    if (citation.kind === "repository") {
+      const key = `${citation.repositoryId}:${citation.revisionId}:${citation.path}:${citation.lineStart}:${citation.lineEnd}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      const access = citation.visibility === "public_preview"
+        ? {
+            href: `/api/public/agents/${encodeURIComponent(slug)}/repositories/${citation.repositoryId}/source?${new URLSearchParams({
+              messageId: citation.messageId,
+              revisionId: citation.revisionId,
+              path: citation.path,
+              lineStart: String(citation.lineStart),
+              lineEnd: String(citation.lineEnd),
+            }).toString()}`,
+            mode: "repository" as const,
+          }
+        : null;
+      return [{
+        materialTitle: citation.visibility === "public_preview"
+          ? `${citation.repositoryTitle} · ${citation.path}:${citation.lineStart}-${citation.lineEnd}`
+          : citation.repositoryTitle,
+        access,
+      }];
+    }
+    if (seen.has(citation.materialId)) return [];
+    seen.add(citation.materialId);
     let access: PublicCitation["access"] = null;
     if (citation.visibility === "public_preview") {
       const href = citation.materialKind === "file"

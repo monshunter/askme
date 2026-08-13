@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
     } catch {
       throw new AppError("INVALID_JSON", "Send a valid JSON chat request.", 400);
     }
-    return apiData(await chatPreview(user.id, parseChatInput(body), id), id);
+    const result = await chatPreview(user.id, parseChatInput(body), id);
+    return apiData(result, id, "analysisRun" in result ? { status: 202 } : undefined);
   } catch (error) {
     return apiFailure(error, id);
   }

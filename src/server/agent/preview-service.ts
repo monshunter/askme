@@ -4,22 +4,36 @@ import { performance } from "node:perf_hooks";
 
 import type { PoolClient } from "pg";
 
-import { DeepSeekClient } from "@/server/ai/deepseek";
+import { OpenAiChatClient } from "@/server/ai/openai-compatible";
+import { queueConversationAnalysisRun } from "@/server/code-agent/analysis-runs";
 import { getRuntimeConfig } from "@/server/config";
 import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
 
 import { generateGroundedAnswer } from "./answer-generator";
+import { recordSuccessfulAiUsage } from "./ai-usage";
+import { retrieveUnifiedEvidence } from "./evidence-provider";
+import { answerCitationCount, persistAnswerCitations, validateAnswerEvidence } from "./message-evidence";
 import type { ChatInput, FeedbackInput } from "./agent-input";
 import { recoverStaleAnswers } from "./message-recovery";
 import { assessAgentQuestion } from "./question-policy";
-import { retrieveEvidence } from "./retrieval-service";
+import { isRepositoryEvidence } from "./retrieval";
+import { loadQuestionRepositories } from "./question-context";
+import { routeQuestion } from "./question-router";
 
 type ExchangeRow = {
   conversationId: string;
   userMessageId: string;
   assistantMessageId: string | null;
   assistantStatus: "pending" | "completed" | "failed" | null;
+};
+
+type PreviewAnswerResult = Awaited<ReturnType<typeof generateGroundedAnswer>> | {
+  outcome: "refused";
+  answer: string;
+  refusalCode: string;
+  citations: [];
+  usage: { inputTokens: number | null; outputTokens: number | null };
 };
 
 async function existingExchange(ownerId: string, clientMessageId: string) {
@@ -106,24 +120,65 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
   const actorKey = `candidate:${ownerId}`;
   const messages = await pool.query(
     `SELECT message.id,message.role,message.status,
-            CASE WHEN message.source_invalidated_at IS NOT NULL OR coalesce(bool_or(citation.chunk_id IS NOT NULL AND (material.id IS NULL OR material.status<>'indexed' OR material.visibility='private')),false)
+            CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR EXISTS (
+                     SELECT 1 FROM message_citations document_citation
+                     LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
+                     LEFT JOIN materials document_material ON document_material.id=document_chunk.material_id AND document_material.owner_id=document_chunk.owner_id
+                     WHERE document_citation.message_id=message.id AND (document_material.id IS NULL OR document_material.status<>'indexed' OR document_material.visibility='private')
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM repository_message_citations source
+                     LEFT JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id
+                     LEFT JOIN repository_revisions revision ON revision.id=source.revision_id AND revision.owner_id=source.owner_id
+                     WHERE source.message_id=message.id AND (repository.id IS NULL OR repository.disabled_at IS NOT NULL OR repository.visibility='private' OR revision.id IS NULL)
+                   )
                  THEN 'This answer is no longer available because its source permissions changed.' ELSE message.content END AS content,
             message.model,
-            CASE WHEN message.source_invalidated_at IS NOT NULL OR coalesce(bool_or(citation.chunk_id IS NOT NULL AND (material.id IS NULL OR material.status<>'indexed' OR material.visibility='private')),false)
+            CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR EXISTS (
+                     SELECT 1 FROM message_citations document_citation
+                     LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
+                     LEFT JOIN materials document_material ON document_material.id=document_chunk.material_id AND document_material.owner_id=document_chunk.owner_id
+                     WHERE document_citation.message_id=message.id AND (document_material.id IS NULL OR document_material.status<>'indexed' OR document_material.visibility='private')
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM repository_message_citations source
+                     LEFT JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id
+                     LEFT JOIN repository_revisions revision ON revision.id=source.revision_id AND revision.owner_id=source.owner_id
+                     WHERE source.message_id=message.id AND (repository.id IS NULL OR repository.disabled_at IS NOT NULL OR repository.visibility='private' OR revision.id IS NULL)
+                   )
                  THEN 'SOURCE_PERMISSION_CHANGED' ELSE message.error_code END AS "errorCode",
             message.reply_to_message_id AS "replyToMessageId",message.created_at AS "createdAt",
             (SELECT value FROM answer_feedback WHERE message_id=message.id AND actor_key=$3) AS feedback,
-            coalesce(jsonb_agg(jsonb_build_object(
-              'chunkId',citation.chunk_id,'rank',citation.rank,'excerpt',citation.excerpt,
-              'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
-              'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
-            ) ORDER BY citation.rank) FILTER (WHERE citation.chunk_id IS NOT NULL AND material.status='indexed' AND material.visibility<>'private'),'[]'::jsonb) AS citations
+            (SELECT jsonb_build_object('id',run.id,'version',run.version,'state',run.state,'phase',run.phase)
+             FROM analysis_runs run WHERE run.assistant_message_id=message.id AND run.owner_id=message.owner_id
+             ORDER BY run.created_at DESC,run.id DESC LIMIT 1) AS "analysisRun",
+            coalesce((
+              SELECT jsonb_agg(item.payload ORDER BY item.rank) FROM (
+                SELECT citation.rank,jsonb_build_object(
+                  'kind','document','chunkId',citation.chunk_id,'rank',citation.rank,'excerpt',citation.excerpt,
+                  'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
+                  'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
+                ) AS payload
+                FROM message_citations citation
+                JOIN chunks chunk ON chunk.id=citation.chunk_id AND chunk.owner_id=citation.owner_id
+                JOIN materials material ON material.id=chunk.material_id AND material.owner_id=chunk.owner_id
+                WHERE citation.message_id=message.id AND material.status='indexed' AND material.visibility<>'private'
+                UNION ALL
+                SELECT source.rank,jsonb_build_object(
+                  'kind','repository','messageId',source.message_id,'rank',source.rank,'repositoryId',repository.id,
+                  'repositoryTitle',repository.display_name,'revisionId',revision.id,'commitSha',revision.commit_sha,
+                  'path',source.path,'lineStart',source.line_start,'lineEnd',source.line_end,'visibility',repository.visibility
+                ) AS payload
+                FROM repository_message_citations source
+                JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id AND repository.disabled_at IS NULL
+                JOIN repository_revisions revision ON revision.id=source.revision_id AND revision.owner_id=source.owner_id
+                WHERE source.message_id=message.id AND repository.visibility<>'private'
+              ) item
+            ),'[]'::jsonb) AS citations
      FROM messages message
-     LEFT JOIN message_citations citation ON citation.message_id=message.id AND citation.owner_id=message.owner_id
-     LEFT JOIN chunks chunk ON chunk.id=citation.chunk_id AND chunk.owner_id=citation.owner_id
-     LEFT JOIN materials material ON material.id=chunk.material_id AND material.owner_id=chunk.owner_id
      WHERE message.conversation_id=$1 AND message.owner_id=$2
-     GROUP BY message.id
      ORDER BY message.created_at ASC,CASE WHEN message.role='user' THEN 0 ELSE 1 END,message.id ASC`,
     [thread.id, ownerId, actorKey],
   );
@@ -133,7 +188,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
 async function persistAnswer(
   ownerId: string,
   exchange: Extract<Awaited<ReturnType<typeof beginExchange>>, { created: true }>,
-  result: Awaited<ReturnType<typeof generateGroundedAnswer>>,
+  result: PreviewAnswerResult,
   model: string,
   latencyMs: number,
   requestId?: string,
@@ -141,19 +196,14 @@ async function persistAnswer(
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    if (result.outcome === "answered") await validateAnswerEvidence(client, ownerId, "candidate_preview", result.citations);
     const updated = await client.query(
       `UPDATE messages SET status='completed',content=$3,model=$4,latency_ms=$5,error_code=$6
        WHERE id=$1 AND owner_id=$2 AND status='pending'`,
       [exchange.assistantMessageId, ownerId, result.answer, result.outcome === "answered" ? model : null, latencyMs, result.outcome === "answered" ? null : result.outcome.toUpperCase()],
     );
     if (updated.rowCount !== 1) throw new AppError("ANSWER_ALREADY_SETTLED", "The answer request was already settled.", 409);
-    for (const [index, citation] of result.citations.entries()) {
-      await client.query(
-        `INSERT INTO message_citations(message_id,chunk_id,owner_id,rank,excerpt)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [exchange.assistantMessageId, citation.chunkId, ownerId, index + 1, citation.content.slice(0, 500)],
-      );
-    }
+    await persistAnswerCitations(client, ownerId, exchange.assistantMessageId, result.citations);
     if (result.outcome === "answered") {
       await client.query(
         `INSERT INTO ai_usage(owner_id,purpose,model,input_tokens,output_tokens,latency_ms,outcome)
@@ -165,7 +215,7 @@ async function persistAnswer(
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
        VALUES ($1,'candidate','agent.preview.answer','message',$2,$3,$4,$5::jsonb)`,
-      [ownerId, exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ conversationId: exchange.conversationId, citationCount: result.citations.length })],
+      [ownerId, exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ conversationId: exchange.conversationId, citationCount: answerCitationCount(result.citations) })],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -183,7 +233,7 @@ async function persistAnswerFailure(
   model: string,
   latencyMs: number,
   requestId?: string,
-) {
+): Promise<never> {
   const safeError = toAppError(error);
   const client = await getPool().connect();
   try {
@@ -222,27 +272,72 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: true, pending: exchange.assistantStatus === "pending" };
   }
 
-  const config = getRuntimeConfig();
-  const settingsResult = await getPool().query<{ answerTone: "professional" | "concise" | "conversational"; privacySafeMode: boolean }>(
-    `SELECT answer_tone AS "answerTone",privacy_safe_mode AS "privacySafeMode" FROM agent_settings WHERE owner_id=$1`,
-    [ownerId],
-  );
-  const settings = settingsResult.rows[0] ?? { answerTone: "professional" as const, privacySafeMode: true };
-  const assessment = assessAgentQuestion(input.question);
-  const evidence = assessment.allowed ? await retrieveEvidence(ownerId, "candidate_preview", { query: assessment.question, limit: 8 }) : [];
   const startedAt = performance.now();
+  let failureModel = "unconfigured";
   try {
+    const config = getRuntimeConfig();
+    failureModel = config.ai.profiles.router.model;
+    const settingsResult = await getPool().query<{ answerTone: "professional" | "concise" | "conversational"; privacySafeMode: boolean }>(
+      `SELECT answer_tone AS "answerTone",privacy_safe_mode AS "privacySafeMode" FROM agent_settings WHERE owner_id=$1`,
+      [ownerId],
+    );
+    const settings = settingsResult.rows[0] ?? { answerTone: "professional" as const, privacySafeMode: true };
+    const assessment = assessAgentQuestion(input.question);
+    const evidence = assessment.allowed ? await retrieveUnifiedEvidence(getPool(), ownerId, "candidate_preview", { query: assessment.question, limit: 8 }) : [];
+    if (assessment.allowed) {
+      const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
+      const routerStartedAt = performance.now();
+      const decision = await routeQuestion({
+        question: assessment.question,
+        evidenceSummaries: evidence.map((item) => isRepositoryEvidence(item) ? `${item.repositoryTitle}: ${item.content}` : `${item.materialTitle}: ${item.content}`),
+        repositories,
+      }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
+      await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
+      const selected = decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null;
+      const shouldDeep = decision.route === "deep" && decision.confidence >= 0.65;
+      if (shouldDeep && selected?.deepAllowed) {
+        const run = await queueConversationAnalysisRun({
+          pool: getPool(), config, ownerId, repositoryId: selected.id, conversationId: exchange.conversationId,
+          assistantMessageId: exchange.assistantMessageId, clientMessageId: input.clientMessageId, actorRole: "candidate", requestId,
+        });
+        return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: true, analysisRun: run };
+      }
+      if (decision.route === "refuse") {
+        const result: PreviewAnswerResult = {
+          outcome: "refused" as const,
+          answer: decision.reason === "deep_analysis_not_allowed"
+            ? "Deep Repository analysis is not available for that source. I can still answer from its approved evidence when available."
+            : "I cannot answer that request within the authorized career evidence boundary.",
+          refusalCode: decision.reason === "deep_analysis_not_allowed" ? "DEEP_ANALYSIS_NOT_ALLOWED" : "QUESTION_OUT_OF_SCOPE",
+          citations: [],
+          usage: decision.usage,
+        };
+        await persistAnswer(ownerId, exchange, result, config.ai.profiles.router.model, Math.round(performance.now() - startedAt), requestId);
+        return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: false };
+      }
+    }
+    failureModel = config.ai.profiles.rag.model;
     const result = await generateGroundedAnswer(
       input.question,
       evidence,
       settings,
-      new DeepSeekClient(config.deepseek, { timeoutMs: 45_000 }),
+      new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
     );
+    if (result.outcome === "insufficient_evidence" && assessment.allowed) {
+      const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
+      if (repositories.length === 1 && repositories[0]!.deepAllowed) {
+        const run = await queueConversationAnalysisRun({
+          pool: getPool(), config, ownerId, repositoryId: repositories[0]!.id, conversationId: exchange.conversationId,
+          assistantMessageId: exchange.assistantMessageId, clientMessageId: input.clientMessageId, actorRole: "candidate", requestId,
+        });
+        return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: true, analysisRun: run };
+      }
+    }
     const latencyMs = Math.round(performance.now() - startedAt);
-    await persistAnswer(ownerId, exchange, result, config.deepseek.model, latencyMs, requestId);
+    await persistAnswer(ownerId, exchange, result, config.ai.profiles.rag.model, latencyMs, requestId);
     return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: false };
   } catch (error) {
-    return persistAnswerFailure(ownerId, exchange, error, config.deepseek.model, Math.round(performance.now() - startedAt), requestId);
+    return persistAnswerFailure(ownerId, exchange, error, failureModel, Math.round(performance.now() - startedAt), requestId);
   }
 }
 

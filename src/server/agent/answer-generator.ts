@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-import type { ChatMessage, CompletionOptions } from "@/server/ai/deepseek";
+import type { ChatMessage, CompletionOptions } from "@/server/ai/openai-compatible";
 import { AppError } from "@/server/errors";
 
 import { assessAgentQuestion } from "./question-policy";
-import type { RetrievedEvidence } from "./retrieval";
+import { isRepositoryEvidence, type RetrievedEvidence } from "./retrieval";
 
 const answerSchema = z.object({
   answer: z.string().trim().min(1).max(8_000),
@@ -47,7 +47,9 @@ function parseAnswer(content: string, evidenceCount: number) {
 
 function evidencePacket(evidence: RetrievedEvidence[]) {
   return evidence
-    .map((item, index) => `[Evidence ${index + 1}]\nSource: ${item.materialTitle}\nType: ${item.materialKind}\nVisibility: ${item.visibility}\nExcerpt:\n${item.content.slice(0, 3_500)}`)
+    .map((item, index) => isRepositoryEvidence(item)
+      ? `[Evidence ${index + 1}]\nSource: ${item.repositoryTitle} / ${item.wikiPageTitle}\nType: approved_repository_wiki\nCommit: ${item.commitSha}\nVisibility: ${item.visibility}\nApproved Wiki section:\n${item.content.slice(0, 3_500)}`
+      : `[Evidence ${index + 1}]\nSource: ${item.materialTitle}\nType: ${item.materialKind}\nVisibility: ${item.visibility}\nExcerpt:\n${item.content.slice(0, 3_500)}`)
     .join("\n\n--- next evidence ---\n\n")
     .slice(0, 28_000);
 }

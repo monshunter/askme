@@ -6,7 +6,7 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   status: z.enum(["queued", "processing", "indexed", "failed"]).optional(),
-  kind: z.enum(["file", "github", "notion", "website"]).optional(),
+  kind: z.enum(["file", "notion", "website"]).optional(),
   search: z.string().trim().max(200).optional(),
   sort: z.enum(["newest", "oldest"]).default("newest"),
 });

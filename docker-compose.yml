@@ -6,9 +6,22 @@ x-database-environment: &database-environment
 x-runtime-environment: &runtime-environment
   <<: *database-environment
   UPLOAD_ROOT: /data/uploads
-  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+  ASKME_REPOSITORY_ARTIFACT_ROOT: /data/repository-artifacts
+  ASKME_AI_API_KEY: ${ASKME_AI_API_KEY:-}
+  ASKME_AI_BASE_URL: ${ASKME_AI_BASE_URL:-https://api.deepseek.com/v1}
+  ASKME_AI_ROUTER_MODEL: ${ASKME_AI_ROUTER_MODEL:-deepseek-v4-flash}
+  ASKME_AI_ROUTER_THINKING: ${ASKME_AI_ROUTER_THINKING:-off}
+  ASKME_AI_RAG_MODEL: ${ASKME_AI_RAG_MODEL:-deepseek-v4-flash}
+  ASKME_AI_RAG_THINKING: ${ASKME_AI_RAG_THINKING:-off}
+  ASKME_AI_CODE_MODEL: ${ASKME_AI_CODE_MODEL:-deepseek-v4-pro}
+  ASKME_AI_CODE_THINKING: ${ASKME_AI_CODE_THINKING:-high}
+  ASKME_AI_CODE_CONTEXT_WINDOW: ${ASKME_AI_CODE_CONTEXT_WINDOW:-1000000}
+  ASKME_AI_CODE_MAX_TOKENS: ${ASKME_AI_CODE_MAX_TOKENS:-200000}
+  ASKME_CODE_AGENT_IMAGE_DIGEST: ${ASKME_CODE_AGENT_IMAGE_DIGEST:-}
+  ASKME_CODE_AGENT_MAX_ROUNDS: ${ASKME_CODE_AGENT_MAX_ROUNDS:-50}
+  ASKME_CODE_AGENT_MAX_TOOL_CALLS: ${ASKME_CODE_AGENT_MAX_TOOL_CALLS:-80}
+  ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA: ${ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA:-10}
+  ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS: ${ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS:-1200000}
   ASKME_SMTP_HOST: ${ASKME_SMTP_HOST:-}
   ASKME_SMTP_PORT: ${ASKME_SMTP_PORT:-587}
   ASKME_SMTP_SECURE: ${ASKME_SMTP_SECURE:-false}
@@ -59,6 +72,7 @@ services:
       - "127.0.0.1:${ASKME_WEB_PORT:-3000}:3000"
     volumes:
       - askme_uploads:/data/uploads
+      - ${ASKME_REPOSITORY_ARTIFACT_HOST_ROOT:-./data/repository-artifacts}:/data/repository-artifacts
     depends_on:
       db:
         condition: service_healthy
@@ -77,6 +91,7 @@ services:
     environment: *runtime-environment
     volumes:
       - askme_uploads:/data/uploads
+      - ${ASKME_REPOSITORY_ARTIFACT_HOST_ROOT:-./data/repository-artifacts}:/data/repository-artifacts
     depends_on:
       db:
         condition: service_healthy

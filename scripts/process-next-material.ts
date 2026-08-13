@@ -19,7 +19,7 @@ try {
       attempt: lease.attempt,
       chunkCount: result.chunkCount,
       knowledgeItemCount: result.knowledgeItemIds.length,
-      model: config.deepseek.model,
+      model: config.ai.profiles.rag.model,
     }),
   );
 } finally {

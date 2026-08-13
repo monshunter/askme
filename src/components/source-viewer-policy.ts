@@ -1,5 +1,5 @@
-export type MaterialKind = "file" | "github" | "notion" | "website";
-export type SourceOpenMode = "markdown" | "pdf" | "new_tab";
+export type MaterialKind = "file" | "notion" | "website";
+export type SourceOpenMode = "markdown" | "repository" | "pdf" | "new_tab";
 
 export function sourceOpenMode(source: { kind: MaterialKind; title: string; mimeType: string | null }): SourceOpenMode {
   if (source.kind !== "file") return "new_tab";

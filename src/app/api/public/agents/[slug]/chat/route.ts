@@ -28,7 +28,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
     } catch {
       throw new AppError("INVALID_JSON", "Send a valid JSON chat request.", 400);
     }
-    return apiData(await chatPublicAgent(slug, request.cookies.get(visitorCookieName(slug))?.value, parsePublicChatInput(body), id), id);
+    const result = await chatPublicAgent(slug, request.cookies.get(visitorCookieName(slug))?.value, parsePublicChatInput(body), id);
+    return apiData(result, id, "analysisRun" in result ? { status: 202 } : undefined);
   } catch (error) {
     return apiFailure(error, id);
   }

@@ -60,4 +60,22 @@
 | REVIEW-055 | REVIEW-055：DESIGN-005 Design Review（复审） | [REVIEW-055.md](REVIEW-055.md) |
 | REVIEW-056 | REVIEW-056：DESIGN-005 幂等模型增量 Design Review | [REVIEW-056.md](REVIEW-056.md) |
 | REVIEW-057 | REVIEW-057：PLAN-013 Change Review | [REVIEW-057.md](REVIEW-057.md) |
+| REVIEW-058 | REVIEW-058：PLAN-014 Plan Review | [REVIEW-058.md](REVIEW-058.md) |
+| REVIEW-059 | REVIEW-059：PLAN-014 Askme 全站回归范围调整 Plan Review | [REVIEW-059.md](REVIEW-059.md) |
+| REVIEW-060 | REVIEW-060：PLAN-014 Phase 2 Candidate Repository 交付增量 Change Review | [REVIEW-060.md](REVIEW-060.md) |
+| REVIEW-061 | REVIEW-061：PLAN-014 Repository Dossier 与 Runner 依赖调整 Plan Review | [REVIEW-061.md](REVIEW-061.md) |
+| REVIEW-062 | REVIEW-062：PLAN-014 Phase 3 Repository Dossier 增量 Change Review | [REVIEW-062.md](REVIEW-062.md) |
+| REVIEW-063 | REVIEW-063：PLAN-014 Phase 4 隔离 Code Agent Runner 增量 Change Review | [REVIEW-063.md](REVIEW-063.md) |
+| REVIEW-064 | REVIEW-064：PLAN-014 Phase 5 问答路由与权限投影增量 Change Review | [REVIEW-064.md](REVIEW-064.md) |
+| REVIEW-065 | REVIEW-065：PLAN-014 Phase 6 异步事件、治理与运行反馈增量 Change Review | [REVIEW-065.md](REVIEW-065.md) |
+| REVIEW-066 | REVIEW-066：PLAN-014 Phase 7 非破坏性全站回归增量 Change Review | [REVIEW-066.md](REVIEW-066.md) |
+| REVIEW-067 | REVIEW-067：SPEC-002 Code Agent 默认轮次增量 Spec Review | [REVIEW-067.md](REVIEW-067.md) |
+| REVIEW-068 | REVIEW-068：SPEC-002 Code Agent 模型窗口增量 Spec Review | [REVIEW-068.md](REVIEW-068.md) |
+| REVIEW-069 | REVIEW-069：SPEC-002 Repository Wiki 语义修订 Spec Review | [REVIEW-069.md](REVIEW-069.md) |
+| REVIEW-070 | REVIEW-070：DESIGN-005 Repository Wiki 设计修订 Review | [REVIEW-070.md](REVIEW-070.md) |
+| REVIEW-071 | REVIEW-071：PLAN-014 Repository Wiki 修订 Plan Review | [REVIEW-071.md](REVIEW-071.md) |
+| REVIEW-072 | REVIEW-072：SPEC-002 多页 Repository Wiki 与知识库语义 Review | [REVIEW-072.md](REVIEW-072.md) |
+| REVIEW-073 | REVIEW-073：DESIGN-005 Sandbox Wiki Copy-out 与统一知识检索 Review | [REVIEW-073.md](REVIEW-073.md) |
+| REVIEW-074 | REVIEW-074：PLAN-014 多页 Wiki 与知识库修订 Plan Review | [REVIEW-074.md](REVIEW-074.md) |
+| REVIEW-075 | REVIEW-075：PLAN-014 Repository Wiki 与全站回归 Change Review | [REVIEW-075.md](REVIEW-075.md) |
 <!-- AGENT-HARNESS:END INDEX -->

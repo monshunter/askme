@@ -164,7 +164,7 @@ try {
   const pageHtml = await page.text();
   if (
     !page.ok ||
-    !pageHtml.includes("Agent Preview") ||
+    !pageHtml.includes("Candidate Agent") ||
     !pageHtml.includes("Atlas Career Agent case study") ||
     !pageHtml.includes("Answer Tone") ||
     !pageHtml.includes("Privacy-Safe Mode") ||
@@ -196,7 +196,7 @@ try {
   console.log(
     JSON.stringify({
       event: "smoke.agent-preview.completed",
-      deepSeek: true,
+      aiAnswer: true,
       idempotent: true,
       injectionRefused: true,
       insufficientEvidence: true,

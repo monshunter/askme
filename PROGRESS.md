@@ -95,3 +95,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-013：定义代码仓库知识与深度分析 V1](docs/plans/PLAN-013.md)
 ---
+
+---
+ID: OBJ-009
+Objective: 完整交付并验收 SPEC-002 定义的代码仓库知识与深度分析 V1，并端到端回归全部页面、功能、API 与场景
+Status: 已完成
+Plans:
+- [x] [PLAN-014：交付代码仓库知识与深度分析 V1](docs/plans/PLAN-014.md)
+---

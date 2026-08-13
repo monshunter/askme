@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BookOpen, Check, ChevronDown, Eye, FileText, Github, Globe2, Link2, LoaderCircle, LockKeyhole, Plus, Quote, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { AlertCircle, BookOpen, Check, ChevronDown, Eye, FileText, Globe2, Link2, LoaderCircle, LockKeyhole, Plus, Quote, RefreshCw, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
@@ -13,7 +13,7 @@ type Visibility = "private" | "agent_only" | "citation_allowed" | "public_previe
 type Material = {
   id: string;
   title: string;
-  kind: "file" | "github" | "notion" | "website";
+  kind: "file" | "notion" | "website";
   mimeType: string | null;
   externalUrl: string | null;
   status: "queued" | "processing" | "indexed" | "failed";
@@ -46,7 +46,6 @@ const permissionRows = [
 ];
 
 function sourceIcon(kind: Material["kind"]) {
-  if (kind === "github") return Github;
   if (kind === "notion") return BookOpen;
   if (kind === "website") return Link2;
   return FileText;

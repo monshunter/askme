@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, Bot, ChevronDown, House, Menu, Settings, ShieldCheck, UserRoundPlus, UsersRound } from "lucide-react";
+import { BarChart3, Bell, Bot, ChevronDown, Github, House, Menu, Settings, ShieldCheck, UserRoundPlus, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useState } from "react";
@@ -11,6 +11,7 @@ const navigation = [
   { href: "/admin", labelKey: "admin.nav.overview" as TranslationKey, icon: House },
   { href: "/admin/candidates", labelKey: "admin.nav.candidates" as TranslationKey, icon: UsersRound },
   { href: "/admin/agents", labelKey: "admin.nav.agents" as TranslationKey, icon: Bot },
+  { href: "/admin/repositories", labelKey: "admin.nav.repositories" as TranslationKey, icon: Github },
   { href: "/admin/reports", labelKey: "admin.nav.reports" as TranslationKey, icon: BarChart3 },
   { href: "/admin/reviews", labelKey: "admin.nav.reviews" as TranslationKey, icon: ShieldCheck },
   { href: "/admin/settings", labelKey: "admin.nav.settings" as TranslationKey, icon: Settings },

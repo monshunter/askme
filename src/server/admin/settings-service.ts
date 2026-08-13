@@ -14,7 +14,7 @@ const PLATFORM_POLICY_KEYS = [
   "public_chat_daily_limit",
   "negative_feedback_auto_flag",
 ] as const;
-const CURRENT_MIGRATION = "0011_admin_governance.sql";
+const CURRENT_MIGRATION = "0016_analysis_runner_health.sql";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -28,7 +28,7 @@ export async function loadPlatformPolicies(queryable: Queryable = getPool()) {
 
 export async function loadAdminSettings() {
   const config = getRuntimeConfig();
-  const [policies, migrationResult, workerResult, aiUsageResult] = await Promise.all([
+  const [policies, migrationResult, workerResult, runnerResult, aiUsageResult, analysisUsageResult] = await Promise.all([
     loadPlatformPolicies(),
     getPool().query<{ migrationCount: number; currentApplied: boolean }>(
       `SELECT count(*)::int AS "migrationCount",bool_or(version=$1) AS "currentApplied" FROM schema_migrations`,
@@ -38,24 +38,41 @@ export async function loadAdminSettings() {
       `SELECT worker_id AS "workerId",version,last_seen_at AS "lastSeenAt",last_seen_at>now()-interval '30 seconds' AS fresh
        FROM worker_heartbeats ORDER BY last_seen_at DESC LIMIT 1`,
     ),
+    getPool().query<{ runnerId: string; version: string; imageDigest: string | null; artifactReady: boolean; boxliteReady: boolean; safeErrorCode: string | null; lastSeenAt: Date; fresh: boolean }>(
+      `SELECT runner_id AS "runnerId",version,image_digest AS "imageDigest",artifact_ready AS "artifactReady",
+              boxlite_ready AS "boxliteReady",safe_error_code AS "safeErrorCode",last_seen_at AS "lastSeenAt",
+              last_seen_at>now()-interval '30 seconds' AS fresh
+       FROM analysis_runner_heartbeats ORDER BY last_seen_at DESC LIMIT 1`,
+    ),
     getPool().query<{ outcome: string; errorCode: string | null; createdAt: Date }>(
       `SELECT outcome,error_code AS "errorCode",created_at AS "createdAt"
        FROM ai_usage ORDER BY created_at DESC,id DESC LIMIT 1`,
     ),
+    getPool().query<{ runs: number; completed: number; failed: number; cancelled: number; toolCalls: number }>(
+      `SELECT count(*)::int AS runs,count(*) FILTER (WHERE state='completed')::int AS completed,
+              count(*) FILTER (WHERE state='failed')::int AS failed,count(*) FILTER (WHERE state='cancelled')::int AS cancelled,
+              coalesce(sum((usage->>'toolCalls')::int),0)::int AS "toolCalls"
+       FROM analysis_runs WHERE created_at>=date_trunc('day',now())`,
+    ),
   ]);
   const migration = migrationResult.rows[0];
   const worker = workerResult.rows[0];
+  const runner = runnerResult.rows[0];
   const lastAiUsage = aiUsageResult.rows[0] ?? null;
-  let aiBaseUrl = config.deepseek.baseUrl;
-  try { aiBaseUrl = new URL(config.deepseek.baseUrl).origin; } catch { /* Config validation is represented by the configured status. */ }
+  let aiBaseUrl = config.ai.baseUrl;
+  try { aiBaseUrl = new URL(config.ai.baseUrl).origin; } catch { /* Config validation is represented by the configured status. */ }
   return {
     health: {
       database: { status: "ready" as const },
       migration: { status: migration?.currentApplied ? "ready" as const : "outdated" as const, count: migration?.migrationCount ?? 0, expected: CURRENT_MIGRATION },
       worker: worker ? { status: worker.fresh ? "ready" as const : "stale" as const, workerId: worker.workerId, version: worker.version, lastSeenAt: worker.lastSeenAt } : { status: "missing" as const, workerId: null, version: null, lastSeenAt: null },
-      ai: { status: config.deepseek.apiKey ? "configured" as const : "not_configured" as const, model: config.deepseek.model, baseUrl: aiBaseUrl, lastUsage: lastAiUsage },
+      runner: runner ? { status: runner.fresh ? "ready" as const : "stale" as const, ...runner } : { status: "missing" as const, runnerId: null, version: null, imageDigest: null, artifactReady: false, boxliteReady: false, safeErrorCode: null, lastSeenAt: null },
+      artifact: { status: runner?.fresh && runner.artifactReady ? "ready" as const : "degraded" as const },
+      boxlite: { status: runner?.fresh && runner.boxliteReady ? "ready" as const : "degraded" as const },
+      ai: { status: config.ai.apiKey ? "configured" as const : "not_configured" as const, model: config.ai.profiles.rag.model, baseUrl: aiBaseUrl, lastUsage: lastAiUsage },
       mail: { status: config.mail.status, host: config.mail.host, port: config.mail.port, secure: config.mail.secure, from: config.mail.from },
     },
+    analysisUsage: analysisUsageResult.rows[0] ?? { runs: 0, completed: 0, failed: 0, cancelled: 0, toolCalls: 0 },
     policies,
   };
 }

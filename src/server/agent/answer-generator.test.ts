@@ -6,7 +6,7 @@ import { generateGroundedAnswer } from "./answer-generator";
 import type { RetrievedEvidence } from "./retrieval";
 
 const evidence: RetrievedEvidence[] = [
-  { chunkId: "11111111-1111-4111-8111-111111111111", materialId: "22222222-2222-4222-8222-222222222222", materialTitle: "Askme README", materialKind: "github", externalUrl: "https://github.com/example/askme", visibility: "citation_allowed", position: 0, content: "Askme uses owner-isolated evidence and citations.", score: 0.9 },
+  { chunkId: "11111111-1111-4111-8111-111111111111", materialId: "22222222-2222-4222-8222-222222222222", materialTitle: "Askme Overview", materialKind: "website", externalUrl: "https://example.com/askme", visibility: "citation_allowed", position: 0, content: "Askme uses owner-isolated evidence and citations.", score: 0.9 },
   { chunkId: "33333333-3333-4333-8333-333333333333", materialId: "44444444-4444-4444-8444-444444444444", materialTitle: "Private architecture", materialKind: "file", externalUrl: null, visibility: "agent_only", position: 2, content: "The worker uses recoverable leases.", score: 0.7 },
 ];
 

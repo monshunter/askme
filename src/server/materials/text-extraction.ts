@@ -142,7 +142,7 @@ export type StoredMaterial = {
   id: string;
   ownerId: string;
   title: string;
-  kind: "file" | "github" | "notion" | "website";
+  kind: "file" | "notion" | "website";
   originalName: string | null;
   storagePath: string | null;
 };

@@ -8,5 +8,6 @@ describe("recoverStaleAnswers", () => {
     await expect(recoverStaleAnswers("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", { query })).resolves.toBe(1);
     expect(query.mock.calls[0]?.[0]).toContain("status='pending'");
     expect(query.mock.calls[0]?.[0]).toContain("interval '2 minutes'");
+    expect(query.mock.calls[0]?.[0]).toContain("run.state IN ('pending','running')");
   });
 });

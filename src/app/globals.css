@@ -175,6 +175,118 @@ details > summary::-webkit-details-marker { display: none; }
 .page-hero > p:last-child, .page-hero > p:not(.page-kicker) { margin: 18px 0 0; color: #666e6d; font-size: 15px; line-height: 1.55; }
 .title-seal { transform: translateY(-4px); }
 .paper-card { border: 1px solid #e3ddd4; border-radius: 10px; background: rgba(255,255,255,.74); box-shadow: 0 8px 28px rgba(55,62,57,.035); }
+.repositories-page { display: grid; align-content: start; gap: 20px; }
+.repository-hero { max-width: none; }
+.repository-directory { display: grid; gap: 13px; }
+.repository-directory-heading { min-height: 44px; }
+.repository-directory-heading > h2 { font: 650 17px/1.3 inherit; }
+.repository-card { padding: 22px; }
+.repository-sync-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 18px; }
+.repository-sync-form label, .repository-resync-form label, .repository-card-actions label { display: grid; gap: 6px; font-size: 11px; font-weight: 650; }
+.repository-sync-form input, .repository-sync-form select, .repository-sync-form textarea, .repository-resync-form input, .repository-resync-form textarea, .repository-card-actions select { width: 100%; border: 1px solid #d9d2c8; border-radius: 7px; padding: 10px 11px; background: #fff; color: #2c3431; font: inherit; }
+.repository-sync-form small { color: #777c78; font-weight: 450; }
+.repository-excludes { grid-column: 1/-1; }
+.repository-sync-form .primary-button { justify-self: start; }
+.repository-list { display: grid; gap: 14px; }
+.repository-list > .empty-state { min-height: 190px; }
+.repository-list > .empty-state .primary-button { margin-top: 5px; }
+.repository-dialog-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(18,27,26,.58); backdrop-filter: blur(4px); }
+.repository-dialog { width: min(880px,calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid #d8d1c8; border-radius: 13px; background: #fffdf9; box-shadow: 0 24px 80px rgba(9,25,23,.28); }
+.repository-dialog > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: start; gap: 13px; padding: 20px 22px; border-bottom: 1px solid #e4ded5; background: #fbfaf6; }
+.repository-dialog > header > span { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #145a55; background: #e8f0e9; }
+.repository-dialog > header h2 { margin: 0; font-size: 17px; }
+.repository-dialog > header p:not(.page-kicker) { margin: 6px 0 0; color: #68706e; font-size: 10px; line-height: 1.5; }
+.repository-dialog > header button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #40504d; background: transparent; }
+.repository-dialog > header button:hover { background: #ebece7; }
+.repository-dialog .repository-sync-form { margin: 0; padding: 22px; }
+.repository-dialog .repository-sync-form footer { grid-column: 1/-1; display: flex; justify-content: flex-end; gap: 9px; padding-top: 2px; }
+.repository-dialog-error { grid-column: 1/-1; display: flex; align-items: center; gap: 8px; margin: 0; color: #98372f; font-size: 10px; }
+.repository-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px; }
+.repository-card h2 { margin: 0; }
+.repository-card header a { color: #6f7571; font-size: 10px; word-break: break-all; }
+.repository-card dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 18px 0; }
+.repository-card dl > div { min-width: 0; padding: 12px; border-radius: 8px; background: #f7f4ef; }
+.repository-card dt { margin-bottom: 7px; color: #767b77; font-size: 10px; }
+.repository-card dd { display: grid; gap: 5px; margin: 0; }
+.repository-card code { overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+.repository-card small { color: #737975; font-size: 10px; }
+.repository-card-actions { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+.repository-card-actions label { width: min(260px,100%); }
+.repository-card-actions .repository-public-deep { grid-template-columns: auto minmax(0,1fr); align-items: center; width: min(360px,100%); }
+.repository-public-deep input { width: 18px; height: 18px; }
+.repository-public-deep strong, .repository-public-deep small { display: block; }
+.repository-public-deep small { margin-top: 3px; font-weight: 450; line-height: 1.4; }
+.repository-card-actions details { position: relative; }
+.repository-card-actions summary { cursor: pointer; list-style: none; }
+.repository-resync-form { position: absolute; z-index: 4; right: 0; top: calc(100% + 8px); width: min(360px,calc(100vw - 40px)); display: grid; gap: 10px; padding: 14px; border: 1px solid #ddd5cb; border-radius: 9px; background: #fff; box-shadow: 0 18px 45px rgba(38,45,41,.14); }
+.repository-card .privacy-note { margin: 15px 0 0; }
+.repository-dossier-review { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e7e0d7; }
+.repository-dossier-review > .secondary-button { justify-self: start; }
+.repository-analysis-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 8px; background: #f7f4ef; }
+.repository-analysis-status > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.repository-analysis-status small { color: #737975; }
+.dossier-empty { margin: 0; color: #747a76; font-size: 12px; }
+.dossier-panel { display: grid; gap: 14px; padding: 16px; border: 1px solid #ddd6cc; border-radius: 9px; background: #fbfaf7; }
+.dossier-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.dossier-heading h3 { margin: 4px 0 0; }
+.dossier-heading code { display: block; max-width: min(520px,70vw); overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+.dossier-coverage { display: grid; gap: 5px; padding: 12px; border-radius: 7px; background: #f1eee8; font-size: 11px; }
+.dossier-coverage small { color: #717773; }
+.dossier-claims { display: grid; gap: 12px; }
+.dossier-claim { display: grid; gap: 10px; padding: 13px; border: 1px solid #e2dbd1; border-radius: 8px; background: #fff; }
+.dossier-claim > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.dossier-claim h4 { margin: 3px 0 0; font-size: 13px; }
+.dossier-claim header div > span { color: #717974; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.dossier-claim > p { margin: 0; color: #4f5753; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.dossier-claim > label, .dossier-claim-controls > label { display: grid; gap: 6px; color: #555e59; font-size: 10px; font-weight: 650; }
+.dossier-claim textarea, .dossier-claim select { width: 100%; border: 1px solid #d9d2c8; border-radius: 7px; padding: 9px 10px; background: #fff; color: #2c3431; font: inherit; }
+.dossier-claim-controls { display: grid; grid-template-columns: minmax(150px,220px) minmax(140px,1fr) auto; align-items: end; gap: 12px; }
+.dossier-claim-controls .checkbox-label { display: flex; align-items: center; min-height: 36px; }
+.dossier-citations summary { cursor: pointer; color: #526c68; font-size: 10px; }
+.dossier-citations ul { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 18px; }
+.dossier-citations code { font-size: 9px; }
+.wiki-panel .dossier-heading > div > p:not(.page-kicker) { max-width: 720px; margin: 5px 0; color: #626a66; font-size: 11px; line-height: 1.5; }
+.wiki-workspace { display: grid; grid-template-columns: minmax(180px,230px) minmax(0,1fr); min-height: 480px; overflow: hidden; border: 1px solid #ddd6cc; border-radius: 9px; background: #fff; }
+.wiki-page-nav { display: flex; flex-direction: column; gap: 5px; padding: 12px; border-right: 1px solid #e4ddd3; background: #f4f1eb; }
+.wiki-page-nav > strong { margin: 0 7px 5px; color: #6a726e; font-size: 9px; letter-spacing: .09em; text-transform: uppercase; }
+.wiki-page-nav button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 9px; border: 0; border-radius: 6px; background: transparent; color: #4f5854; text-align: left; cursor: pointer; }
+.wiki-page-nav button:hover, .wiki-page-nav button.active { background: #fff; color: #155f58; box-shadow: 0 0 0 1px #d9d3ca; }
+.wiki-page-nav button span { display: grid; min-width: 0; gap: 2px; font-size: 11px; font-weight: 700; }
+.wiki-page-nav button small { overflow: hidden; color: #858b87; font: 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-page-review { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.wiki-page-review > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid #e7e1d8; }
+.wiki-page-review h4 { margin: 0 0 3px; font-size: 13px; }
+.wiki-page-review header code { color: #858b87; font-size: 8px; }
+.wiki-mode-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 7px; background: #efede8; }
+.wiki-mode-tabs button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 0; border-radius: 5px; background: transparent; color: #66706b; font-size: 9px; cursor: pointer; }
+.wiki-mode-tabs button.active { background: #fff; color: #155f58; box-shadow: 0 1px 3px #00000012; }
+.wiki-markdown-preview { min-width: 0; padding: 18px 22px; overflow: auto; color: #39413e; font-size: 12px; line-height: 1.65; }
+.wiki-page-editor { display: grid; grid-template-rows: 1fr auto; gap: 10px; padding: 14px; }
+.wiki-page-editor textarea { min-height: 390px; width: 100%; resize: vertical; border: 1px solid #d9d2c8; border-radius: 7px; padding: 12px; background: #fcfbf8; color: #2c3431; font: 11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; }
+.wiki-page-editor .secondary-button { justify-self: end; }
+.wiki-page-review > .dossier-citations { margin: 0 16px 14px; }
+@media (max-width: 700px) {
+  .repository-directory-heading { align-items: flex-start; }
+  .repository-sync-form, .repository-card dl { grid-template-columns: 1fr; }
+  .repository-excludes { grid-column: auto; }
+  .repository-card-actions { align-items: stretch; flex-direction: column; }
+  .repository-analysis-status { align-items: stretch; flex-direction: column; }
+  .repository-card-actions details, .repository-card-actions summary { width: 100%; }
+  .repository-resync-form { position: static; width: 100%; margin-top: 8px; }
+  .dossier-heading { align-items: start; flex-direction: column; }
+  .dossier-claim-controls { grid-template-columns: 1fr; align-items: stretch; }
+  .dossier-claim-controls .secondary-button { width: 100%; }
+  .wiki-workspace { grid-template-columns: 1fr; }
+  .wiki-page-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #e4ddd3; }
+  .wiki-page-nav > strong { display: none; }
+  .wiki-page-nav button { min-width: 160px; }
+  .wiki-page-review > header { align-items: flex-start; flex-direction: column; }
+  .repository-dialog-backdrop { align-items: end; padding: 0; }
+  .repository-dialog { width: 100%; max-height: calc(100vh - 18px); border-radius: 15px 15px 0 0; }
+  .repository-dialog > header { padding: 17px; }
+  .repository-dialog .repository-sync-form { padding: 17px; }
+  .repository-dialog .repository-sync-form footer { position: sticky; bottom: -17px; margin: 0 -17px -17px; padding: 12px 17px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #e5dfd6; background: #fffdf9; }
+}
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .section-heading h2, .paper-card h2 { margin: 0; font: 650 16px/1.3 inherit; }
 .section-heading a, .section-heading > span { color: #526c68; font-size: 12px; text-decoration: none; }
@@ -490,7 +602,6 @@ details > summary::-webkit-details-marker { display: none; }
 .visibility-row { min-height: 69px; padding: 10px; border-bottom: 1px solid #ece6de; grid-template-columns: 38px minmax(0,1fr) 220px; }
 .visibility-header span:first-child { grid-column: 1 / 3; }
 .source-kind { width: 34px; height: 38px; display: grid; place-items: center; border-radius: 5px; color: #fff; background: #b6433b; }
-.source-kind.github { color: #fff; background: #202526; border-radius: 50%; }
 .source-kind.notion { background: #405f9b; }
 .source-kind.website { background: #2d7b5d; }
 .visibility-source { min-width: 0; }

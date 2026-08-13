@@ -25,13 +25,13 @@ describe("knowledge organization", () => {
     expect(context).toContain("Evidence-99");
   });
 
-  it("validates the AI JSON contract and requests DeepSeek JSON mode", async () => {
+  it("validates the AI JSON contract and requests OpenAI-compatible JSON mode", async () => {
     const payload = {
       materialSummary: "A grounded project summary.",
       items: [{ type: "project", title: "Askme", summary: "A candidate career knowledge base.", highlights: ["Owner-isolated evidence"], confidence: 0.94, evidencePositions: [0] }],
     };
     const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({ content: JSON.stringify(payload), inputTokens: 100, outputTokens: 40 });
-    const result = await organizeMaterialKnowledge({ title: "README", kind: "github", chunks: chunkMaterialText("Askme is an owner-isolated career knowledge base.") }, { complete });
+    const result = await organizeMaterialKnowledge({ title: "Askme overview", kind: "website", chunks: chunkMaterialText("Askme is an owner-isolated career knowledge base.") }, { complete });
     expect(result.organization).toEqual(payload);
     expect(complete.mock.calls[0]?.[1]).toEqual({ jsonObject: true, maxTokens: 4_000, temperature: 0.1 });
   });

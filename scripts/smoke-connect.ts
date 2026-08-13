@@ -32,5 +32,4 @@ async function connect(body: Record<string, string>) {
 }
 
 const website = await connect({ kind: "website", url: process.env.ASKME_SMOKE_WEBSITE ?? "https://example.com" });
-const github = await connect({ kind: "github", url: process.env.ASKME_SMOKE_GITHUB ?? "https://github.com/openai/openai-node" });
-console.log(JSON.stringify({ event: "smoke.connect.completed", materials: [website, github] }));
+console.log(JSON.stringify({ event: "smoke.connect.completed", materials: [website] }));

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getPool } from "@/server/db/client";
+import { requestOwnerPublicAnalysisCancellation } from "@/server/code-agent/analysis-cancellation";
 import { allowedVisibilities } from "@/server/privacy/visibility-policy";
 
 import type { AgentSettingsPatch } from "./agent-settings-input";
@@ -70,6 +71,7 @@ export async function updateAgentSettings(ownerId: string, patch: AgentSettingsP
                  suggested_questions AS "suggestedQuestions",updated_at AS "updatedAt"`,
       [ownerId, patch.answerTone ?? null, patch.publicMode ?? null, patch.privacySafeMode ?? null],
     );
+    if (patch.publicMode === false) await requestOwnerPublicAnalysisCancellation(client, ownerId, "public_mode_disabled");
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
        VALUES ($1,'candidate','agent.settings.update','agent_settings',$2,'updated',$3,$4::jsonb)`,

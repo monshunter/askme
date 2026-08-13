@@ -7,10 +7,10 @@ import { parseMaterialListQuery } from "./material-query";
 describe("material list query", () => {
   it("applies stable defaults and accepts owner-safe filters", () => {
     expect(parseMaterialListQuery(new URLSearchParams())).toEqual({ page: 1, pageSize: 20, sort: "newest" });
-    expect(parseMaterialListQuery(new URLSearchParams("page=2&pageSize=50&kind=github&status=failed&search=askme&sort=oldest"))).toEqual({
+    expect(parseMaterialListQuery(new URLSearchParams("page=2&pageSize=50&kind=notion&status=failed&search=askme&sort=oldest"))).toEqual({
       page: 2,
       pageSize: 50,
-      kind: "github",
+      kind: "notion",
       status: "failed",
       search: "askme",
       sort: "oldest",
@@ -22,6 +22,9 @@ describe("material list query", () => {
       expect.objectContaining({ code: "INVALID_MATERIAL_QUERY" }) as Partial<AppError>,
     );
     expect(() => parseMaterialListQuery(new URLSearchParams("status=deleted"))).toThrowError(
+      expect.objectContaining({ code: "INVALID_MATERIAL_QUERY" }) as Partial<AppError>,
+    );
+    expect(() => parseMaterialListQuery(new URLSearchParams("kind=github"))).toThrowError(
       expect.objectContaining({ code: "INVALID_MATERIAL_QUERY" }) as Partial<AppError>,
     );
   });

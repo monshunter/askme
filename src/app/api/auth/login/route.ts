@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { authenticate, createSession, SESSION_COOKIE, sessionCookieOptions } from "@/server/auth/service";
+import { AppError } from "@/server/errors";
 import { apiFailure, requestId, requestOrigin, withRequestId } from "@/server/http";
 
 const credentialsSchema = z.object({
@@ -15,8 +16,15 @@ export async function POST(request: NextRequest) {
   const isJson = request.headers.get("content-type")?.includes("application/json") ?? false;
 
   try {
-    const body = isJson ? await request.json() : Object.fromEntries(await request.formData());
-    const credentials = credentialsSchema.parse(body);
+    let body: unknown;
+    if (isJson) {
+      try { body = await request.json(); } catch { throw new AppError("INVALID_JSON", "Send valid JSON credentials.", 400); }
+    } else {
+      body = Object.fromEntries(await request.formData());
+    }
+    const parsed = credentialsSchema.safeParse(body);
+    if (!parsed.success) throw new AppError("INVALID_CREDENTIALS_INPUT", "Enter a valid email and password.", 400);
+    const credentials = parsed.data;
     const user = await authenticate(credentials.email, credentials.password);
     const session = await createSession(user, id);
     const destination = user.role === "admin" ? "/admin" : "/workspace";

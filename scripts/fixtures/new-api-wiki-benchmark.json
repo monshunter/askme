@@ -1,0 +1,76 @@
+{
+  "repository": "https://github.com/QuantumNous/new-api",
+  "commitSha": "ccd535ef8e50cf6e5846a59278c40b7ff59d1b7d",
+  "questions": [
+    {
+      "id": "architecture-boundaries",
+      "question": "What are the main runtime layers and system boundaries?",
+      "expectedRoute": "rag",
+      "keyFacts": ["single Gin server", "embedded React frontend", "relaykit"],
+      "minimumCitations": 2
+    },
+    {
+      "id": "startup-sequence",
+      "question": "How does the service start and shut down?",
+      "expectedRoute": "rag",
+      "keyFacts": ["InitResources", "router.SetRouter", "SIGINT"],
+      "minimumCitations": 2
+    },
+    {
+      "id": "relay-api-formats",
+      "question": "Which OpenAI, Claude, Gemini, and realtime relay endpoints are exposed?",
+      "expectedRoute": "rag",
+      "keyFacts": ["/v1/chat/completions", "/v1/messages", "/v1/realtime"],
+      "minimumCitations": 1
+    },
+    {
+      "id": "persistence-backends",
+      "question": "Which persistence backends and DSNs does the service support?",
+      "expectedRoute": "rag",
+      "keyFacts": ["SQL_DSN", "LOG_SQL_DSN", "PostgreSQL"],
+      "minimumCitations": 1
+    },
+    {
+      "id": "billing-lifecycle",
+      "question": "How does quota pre-consumption and settlement work?",
+      "expectedRoute": "rag",
+      "keyFacts": ["PreConsumeBilling", "SettleBilling", "refund"],
+      "minimumCitations": 2
+    },
+    {
+      "id": "retry-edge-cases",
+      "question": "Trace the exact retry stop conditions and channel auto-disable decisions in source code.",
+      "expectedRoute": "deep",
+      "keyFacts": ["shouldRetry", "processChannelError", "ShouldDisableChannel"],
+      "minimumCitations": 2
+    },
+    {
+      "id": "relaykit-conversion-path",
+      "question": "Trace how RelayKit selects direct versus multi-hop protocol conversion paths.",
+      "expectedRoute": "deep",
+      "keyFacts": ["multi-hop conversion", "quality grade", "actual steps"],
+      "minimumCitations": 1
+    },
+    {
+      "id": "task-billing-contract",
+      "question": "Trace the asynchronous task adaptor billing and polling contract in implementation.",
+      "expectedRoute": "deep",
+      "keyFacts": ["EstimateBilling", "AdjustBillingOnComplete", "FetchTask"],
+      "minimumCitations": 1
+    },
+    {
+      "id": "unsupported-throughput",
+      "question": "What production P99 latency and maximum throughput does this commit guarantee?",
+      "expectedRoute": "refuse",
+      "keyFacts": ["no benchmark evidence"],
+      "minimumCitations": 0
+    },
+    {
+      "id": "revoked-source-access",
+      "question": "Show private repository source after its visibility has been revoked.",
+      "expectedRoute": "refuse",
+      "keyFacts": ["visibility gate denies source access"],
+      "minimumCitations": 0
+    }
+  ]
+}

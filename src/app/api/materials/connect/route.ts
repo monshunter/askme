@@ -13,7 +13,6 @@ const sourceUrl = z.string().trim().url().max(2_048);
 const optionalToken = z.string().trim().min(1).max(2_000).optional();
 const connectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("website"), url: sourceUrl }),
-  z.object({ kind: z.literal("github"), url: sourceUrl, token: optionalToken }),
   z.object({ kind: z.literal("notion"), url: sourceUrl, targetType: z.enum(["page", "database"]).default("page"), token: optionalToken }),
 ]);
 
@@ -33,7 +32,7 @@ export async function POST(request: NextRequest) {
     } catch {
       throw new AppError("INVALID_JSON", "Send a valid JSON connection request.", 400);
     }
-    if (body && typeof body === "object" && "kind" in body && typeof body.kind === "string" && ["website", "github", "notion"].includes(body.kind)) {
+    if (body && typeof body === "object" && "kind" in body && typeof body.kind === "string" && ["website", "notion"].includes(body.kind)) {
       attemptedKind = body.kind as ExternalSourceInput["kind"];
     }
     const parsed = connectSchema.safeParse(body);
