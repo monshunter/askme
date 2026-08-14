@@ -15,4 +15,12 @@ describe("Public Agent sharing contract", () => {
     expect(publicAgentSource).not.toContain("anchor.download");
     expect(publicAgentSource).not.toContain("public.download");
   });
+
+  it("matches Candidate preview suggestions and keeps only real sidebar content", () => {
+    expect(publicAgentSource).toContain('className="suggestion-section public-suggestion-section"');
+    expect(publicAgentSource).toContain('className="suggestion-grid"');
+    expect(publicAgentSource).toContain('t("public.suggestions.title")');
+    expect(publicAgentSource).not.toContain("public.learn.title");
+    expect(publicAgentSource).not.toContain("public-learn-more");
+  });
 });

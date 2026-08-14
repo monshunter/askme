@@ -48,6 +48,13 @@ describe("Candidate Workspace consolidation contract", () => {
     expect(agentClientSource).toContain("AgentPublicationControls");
   });
 
+  it("requires confirmation before resetting the owner preview conversation", () => {
+    expect(agentClientSource).toContain('requestApi<ApiEnvelope<PreviewThread>>("/api/agent/preview", { method: "DELETE" })');
+    expect(agentClientSource).toContain('t("agent.reset.title")');
+    expect(agentClientSource).toContain('t("agent.reset.confirm")');
+    expect(agentClientSource).toContain("useModalFocus");
+  });
+
   it("synchronizes publication mutations with the Agent public-mode control", () => {
     expect(agentClientSource).toContain("onPublicModeChange");
     expect(publicationControlsSource).toContain("onPublicModeChange(payload.data.publicMode)");

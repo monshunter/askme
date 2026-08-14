@@ -48,7 +48,7 @@ const api: Record<string, ApiSurface> = {
   "/api/admin/settings": { methods: ["GET", "PATCH"], evidence: ["smoke:admin", "smoke:analysis-governance"] },
   "/api/agent/analysis-runs/[runId]/events": { methods: ["GET"], evidence: ["smoke:analysis-sse", "browser:candidate"] },
   "/api/agent/messages/[messageId]/feedback": { methods: ["PUT"], evidence: ["smoke:agent-preview"] },
-  "/api/agent/preview": { methods: ["GET"], evidence: ["smoke:agent-preview", "smoke:agent-runtime-acceptance"] },
+  "/api/agent/preview": { methods: ["GET", "DELETE"], evidence: ["smoke:agent-preview", "smoke:agent-preview-reset", "smoke:agent-runtime-acceptance", "browser:candidate"] },
   "/api/agent/preview/chat": { methods: ["POST"], evidence: ["smoke:agent-preview", "smoke:agent-runtime-acceptance", "smoke:repository-analysis-runner"] },
   "/api/agent/settings": { methods: ["GET", "PATCH"], evidence: ["smoke:agent-preview"] },
   "/api/agent/settings/suggestions/refresh": { methods: ["POST"], evidence: ["smoke:agent-preview"] },
@@ -102,7 +102,7 @@ const api: Record<string, ApiSurface> = {
 
 const requiredEntrypoints = [
   "e2e:admin-fixture", "e2e:fixture", "e2e:public-thread-fixture",
-  "smoke:api-surface", "smoke:auth", "smoke:connect", "smoke:job-lease", "smoke:material-lifecycle", "smoke:agent-preview", "smoke:agent-runtime-acceptance", "smoke:admin",
+  "smoke:api-surface", "smoke:auth", "smoke:connect", "smoke:job-lease", "smoke:material-lifecycle", "smoke:agent-preview", "smoke:agent-preview-reset", "smoke:agent-runtime-acceptance", "smoke:admin",
   "smoke:privacy-api", "smoke:public-chat", "smoke:publication", "smoke:repository-retention", "smoke:repository-api",
   "smoke:repository-dossier", "smoke:repository-dossier-api", "smoke:analysis-scheduler", "smoke:analysis-sse",
   "smoke:analysis-governance", "smoke:code-agent-sandbox", "smoke:repository-analysis-runner", "smoke:fixed-repository-wiki", "smoke:runtime-state",

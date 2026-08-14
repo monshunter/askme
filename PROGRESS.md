@@ -159,3 +159,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-021：闭环 Agent 回答时间与内容质量](docs/plans/PLAN-021.md)
 ---
+
+---
+ID: OBJ-017
+Objective: 统一公开 Agent 与 Candidate 预览的推荐问答体验，并支持安全重置预览会话
+Status: 已完成
+Plans:
+- [x] [PLAN-022：优化公开 Agent 与预览会话体验](docs/plans/PLAN-022.md)
+---

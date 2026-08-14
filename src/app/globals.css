@@ -34,8 +34,9 @@ a { color: inherit; }
 .language-switcher select:disabled { cursor: wait; opacity: .65; }
 .language-switch-error { position: absolute; right: 0; top: calc(100% + 5px); z-index: 50; width: max-content; max-width: 260px; border: 1px solid #e2b8af; border-radius: 7px; padding: 7px 9px; color: #8c2f21; background: #fff7f4; box-shadow: var(--shadow); font-size: 11px; }
 .global-language-control { position: fixed; top: 24px; right: 24px; z-index: 60; }
-.global-language-control .language-switcher { padding: 5px 7px; border: 1px solid #ddd7cd; border-radius: 9px; background: rgba(255,253,249,.96); box-shadow: 0 8px 26px rgba(24,54,50,.1); backdrop-filter: blur(12px); }
-.global-language-control .language-switcher select { border: 0; background: transparent; }
+.global-language-control .language-switcher, .public-language-control .language-switcher { padding: 5px 7px; border: 1px solid #ddd7cd; border-radius: 9px; background: rgba(255,253,249,.96); }
+.global-language-control .language-switcher { box-shadow: 0 8px 26px rgba(24,54,50,.1); backdrop-filter: blur(12px); }
+.global-language-control .language-switcher select, .public-language-control .language-switcher select { border: 0; background: transparent; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -560,7 +561,6 @@ details > summary::-webkit-details-marker { display: none; }
   .global-language-control .language-switcher { min-height: 42px; padding: 3px 5px; }
   .global-language-control .language-switcher select { min-height: 32px; max-width: 92px; padding-inline: 5px 20px; font-size: 11px; }
   .topbar-actions, .admin-topbar-actions { margin-right: 124px; }
-  .public-trust { margin-right: 124px; }
   .candidate-app { display: block; }
   .candidate-sidebar { display: none; }
   .candidate-topbar { height: 72px; gap: 10px; padding: 0 14px; }
@@ -703,6 +703,11 @@ details > summary::-webkit-details-marker { display: none; }
 .agent-evidence-note svg { color: #21805e; }
 .agent-preview-grid { display: grid; grid-template-columns: minmax(0,1.62fr) minmax(320px,.86fr); gap: 16px; align-items: stretch; }
 .agent-chat-card { min-width: 0; overflow: hidden; }
+.agent-chat-toolbar { min-height: 45px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 20px; border-bottom: 1px solid #e8e2d9; background: #fcfbf8; }
+.agent-chat-toolbar strong { color: #34413f; font-size: 11px; }
+.agent-chat-toolbar button { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #d5d0c8; border-radius: 6px; color: #6f4540; background: #fff; font-size: 9px; font-weight: 700; }
+.agent-chat-toolbar button:hover { border-color: #c99c96; background: #fff8f6; }
+.agent-chat-toolbar button:disabled { cursor: not-allowed; opacity: .5; }
 .agent-thread { min-height: 370px; max-height: 590px; overflow-y: auto; display: grid; align-content: start; gap: 14px; padding: 23px 20px 15px; scroll-behavior: smooth; }
 .agent-empty { min-height: 300px; align-content: center; }
 .agent-empty > span { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; color: #175c53; background: #e7f1eb; }
@@ -845,7 +850,7 @@ details > summary::-webkit-details-marker { display: none; }
 .public-agent-topbar { height: 80px; display: flex; align-items: center; gap: 20px; padding: 0 30px; border-bottom: 1px solid #e5e0d8; background: rgba(252,251,247,.94); }
 .public-wordmark { color: #174b4b; text-decoration: none; font: 700 42px/1 Georgia,serif; }
 .public-wordmark span { display: inline-block; padding: 3px 2px; border: 1px solid #c84a41; color: #c84a41; font: 500 9px/1.1 sans-serif; vertical-align: middle; }
-.public-trust { display: flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 168px; padding: 9px 14px; border: 1px solid #e1dbd2; border-radius: 8px; }
+.public-trust { display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 9px 14px; border: 1px solid #e1dbd2; border-radius: 8px; }
 .public-trust svg { color: #176053; }
 .public-trust strong, .public-trust small { display: block; }
 .public-trust strong { font-size: 11px; }
@@ -922,10 +927,7 @@ details > summary::-webkit-details-marker { display: none; }
 .public-chat-composer textarea { min-width: 0; flex: 1; resize: none; border: 0; outline: 0; background: transparent; font-size: 11px; line-height: 1.45; }
 .public-chat-composer button { width: 39px; height: 39px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: #155b54; }
 .public-chat-composer button:disabled { opacity: .4; }
-.public-suggestions { padding-top: 9px; }
-.public-suggestions > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.public-suggestions button { min-height: 33px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid #e0dbd3; border-radius: 7px; color: #3e4c4a; background: #fff; font-size: 8px; }
-.public-suggestions button.refresh-public-suggestions { width: 34px; padding: 0; justify-content: center; color: #155d54; }
+.public-suggestion-section { padding: 10px 0 0; }
 .public-highlights-column { display: flex; flex-direction: column; gap: 12px; padding: 18px; border-left: 1px solid #e3ded6; background: rgba(252,251,247,.72); }
 .public-highlights-column > section { padding: 16px; border: 1px solid #e2ddd5; border-radius: 9px; background: rgba(255,255,255,.78); }
 .public-highlights-column h2 { margin: 0 0 14px; font: 600 15px/1.2 Georgia,serif; }
@@ -934,7 +936,6 @@ details > summary::-webkit-details-marker { display: none; }
 .public-highlights-column article > span { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; color: #176053; background: #e3f0e7; }
 .public-highlights-column article strong { font-size: 9px; }
 .public-highlights-column article p { margin: 4px 0 0; color: #646d6b; font-size: 8px; line-height: 1.45; }
-.public-highlights-column .public-learn-more { margin-top: auto; }
 .public-footer { min-height: 58px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 20px; padding: 0 28px; border-top: 1px solid #e4dfd7; color: #757c7a; font-size: 9px; }
 .public-footer span:last-child { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .public-unavailable { min-height: 100vh; display: flex; flex-direction: column; padding: 28px 34px; background: #fbfaf6 url("/admin_bg_head.png") top right / min(100%,1000px) auto no-repeat; }
@@ -945,7 +946,6 @@ details > summary::-webkit-details-marker { display: none; }
 .public-unavailable p { color: #68706e; font-size: 12px; line-height: 1.6; }
 .public-unavailable section a { color: #155b54; font-weight: 700; }
 @media (max-width: 1050px) {
-  .public-trust { margin-right: 150px; }
   .public-agent-layout { grid-template-columns: 230px minmax(0,1fr); gap: 18px; padding-inline: 16px; }
   .public-chat-shell { grid-template-columns: 1fr; }
   .public-highlights-column { border-top: 1px solid #e3ded6; border-left: 0; }
@@ -954,10 +954,11 @@ details > summary::-webkit-details-marker { display: none; }
   .public-candidate-facts { margin-top: 36px; }
 }
 @media (max-width: 760px) {
-  .public-agent-topbar { height: 68px; padding-inline: 16px; }
+  .public-agent-topbar { height: 68px; gap: 8px; padding-inline: 12px; }
   .public-wordmark { font-size: 34px; }
-  .public-trust { margin-right: 124px; }
   .public-trust small { display: none; }
+  .public-language-control .language-switcher { padding: 3px 5px; }
+  .public-language-control .language-switcher select { max-width: 92px; padding-inline: 5px 20px; font-size: 11px; }
   .public-agent-layout { grid-template-columns: 1fr; padding: 12px; }
   .public-candidate-sidebar { display: grid; grid-template-columns: minmax(0,1fr) minmax(220px,.72fr); align-items: start; }
   .public-candidate-card { min-height: 0; padding: 20px; }
@@ -972,9 +973,10 @@ details > summary::-webkit-details-marker { display: none; }
 @media (max-width: 520px) {
   .global-language-control .language-switcher select { max-width: 82px; }
   .topbar-actions, .admin-topbar-actions { margin-right: 114px; }
-  .public-trust { display: none; }
   .public-trust { padding: 7px 9px; }
+  .public-trust svg { display: none; }
   .public-trust strong { font-size: 9px; }
+  .public-language-control .language-switcher select { max-width: 82px; }
   .public-agent-layout { overflow-x: clip; }
   .public-candidate-sidebar { grid-template-columns: 1fr; }
   .public-candidate-card { grid-row: auto; }

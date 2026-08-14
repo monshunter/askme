@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   RefreshCw,
+  RotateCcw,
   Send,
   ShieldCheck,
   Sparkles,
@@ -24,6 +25,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { createTranslator, type Locale } from "@/i18n/core";
 import { MarkdownContent } from "@/components/markdown-content";
 import { CandidateSourceLink, SourceLink } from "@/components/source-viewer";
+import { useModalFocus } from "@/components/use-modal-focus";
 
 import { ApiClientError, requestApi } from "./api-client";
 import { AgentPublicationControls, type PublicationOverview } from "./agent-publication-controls";
@@ -127,10 +129,13 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
   const [savingSetting, setSavingSetting] = useState<keyof Pick<AgentSettings, "answerTone" | "publicMode" | "privacySafeMode"> | null>(null);
   const [feedbackSaving, setFeedbackSaving] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [pendingReset, setPendingReset] = useState(false);
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
   const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const runEvents = useRef(new Map<string, EventSource>());
+  const resetDialogRef = useModalFocus(pendingReset, () => setPendingReset(false), resetting);
 
   const assistantMessages = useMemo(() => thread.messages.filter((message) => message.role === "assistant"), [thread.messages]);
   const activeAnswer = useMemo(
@@ -172,10 +177,12 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     }
   }, [thread.messages, watchAnalysisRun]);
 
-  useEffect(() => () => {
+  const closeRunEvents = useCallback(() => {
     for (const source of runEvents.current.values()) source.close();
     runEvents.current.clear();
   }, []);
+
+  useEffect(() => closeRunEvents, [closeRunEvents]);
 
   async function sendQuestion(value: string) {
     const normalized = value.trim();
@@ -283,6 +290,31 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     }
   }
 
+  async function resetPreview() {
+    if (resetting || sending) return;
+    setResetting(true);
+    setNotice(null);
+    try {
+      const { response, payload } = await requestApi<ApiEnvelope<PreviewThread>>("/api/agent/preview", { method: "DELETE" });
+      if (!response.ok) {
+        setNotice({ tone: "error", message: payload.error?.code === "PREVIEW_SESSION_BUSY" ? t("agent.reset.busy") : t("agent.reset.failed") });
+        return;
+      }
+      if (!payload.data) throw new ApiClientError("invalid_response");
+      closeRunEvents();
+      setThread(payload.data);
+      setQuestion("");
+      setSelectedAnswerId(null);
+      setRetryQuestion(null);
+      setPendingReset(false);
+      setNotice({ tone: "success", message: t("agent.reset.success") });
+    } catch (error) {
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.reset"), locale) });
+    } finally {
+      setResetting(false);
+    }
+  }
+
   return (
     <div className="candidate-page agent-preview-page">
       <section className="page-hero compact-hero agent-hero">
@@ -296,6 +328,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
 
       <div className="agent-preview-grid">
         <section className="paper-card agent-chat-card" aria-label={t("agent.conversation")}>
+          <header className="agent-chat-toolbar"><strong>{t("agent.conversation")}</strong><button type="button" disabled={sending || resetting} onClick={() => setPendingReset(true)}><RotateCcw size={15} /> {t("agent.reset.button")}</button></header>
           <div className="agent-thread" aria-live="polite">
             {thread.messages.length === 0 ? (
               <div className="empty-state agent-empty"><span><Bot size={28} /></span><h2>{t("agent.empty.title")}</h2><p>{t("agent.empty.copy")}</p></div>
@@ -358,6 +391,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
         onPublicModeChange={(publicMode) => setSettings((current) => current.publicMode === publicMode ? current : { ...current, publicMode })}
       />
       <footer className="candidate-footer"><span>{t("shared.footerRights")}</span><span>{t("shared.footerLinks")}</span></footer>
+      {pendingReset ? <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !resetting) setPendingReset(false); }}><section ref={resetDialogRef} className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="agent-reset-title" aria-describedby="agent-reset-description" tabIndex={-1}><span className="confirm-icon"><RotateCcw size={25} /></span><h2 id="agent-reset-title">{t("agent.reset.title")}</h2><p id="agent-reset-description">{t("agent.reset.copy")}</p><div><button className="secondary-button" type="button" data-autofocus disabled={resetting} onClick={() => setPendingReset(false)}>{t("agent.reset.cancel")}</button><button className="danger-button" type="button" disabled={resetting} onClick={() => void resetPreview()}>{resetting ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />} {t("agent.reset.confirm")}</button></div></section></div> : null}
     </div>
   );
 }

@@ -13,15 +13,27 @@ function tsxFiles(directory: string): string[] {
 }
 
 describe("global language-switcher placement", () => {
-  it("renders one shared switcher from the root layout and nowhere else", () => {
+  it("keeps one global switcher outside public Agent pages and embeds the public switcher beside trust", () => {
     const renderers = tsxFiles(srcRoot)
       .filter((file) => !file.endsWith(".test.tsx"))
       .filter((file) => readFileSync(file, "utf8").includes("<LanguageSwitcher"))
       .map((file) => path.relative(srcRoot, file));
 
-    expect(renderers).toEqual([path.join("app", "layout.tsx")]);
+    expect(renderers).toEqual([
+      path.join("components", "global-language-control.tsx"),
+      path.join("components", "public", "public-agent-client.tsx"),
+    ]);
     const rootLayout = readFileSync(path.join(srcRoot, "app", "layout.tsx"), "utf8");
-    expect(rootLayout.match(/<LanguageSwitcher/g)).toHaveLength(1);
-    expect(rootLayout).toContain("global-language-control");
+    expect(rootLayout).toContain("<GlobalLanguageControl");
+
+    const globalControl = readFileSync(path.join(srcRoot, "components", "global-language-control.tsx"), "utf8");
+    expect(globalControl).toContain("usePathname");
+    expect(globalControl).toContain('pathname.startsWith("/a/")');
+
+    const publicAgent = readFileSync(path.join(srcRoot, "components", "public", "public-agent-client.tsx"), "utf8");
+    expect(publicAgent.indexOf('className="public-trust"')).toBeLessThan(publicAgent.indexOf("<LanguageSwitcher"));
+
+    const css = readFileSync(path.join(srcRoot, "app", "globals.css"), "utf8");
+    expect(css).not.toContain(".public-trust { margin-right:");
   });
 });

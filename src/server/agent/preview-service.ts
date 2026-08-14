@@ -147,6 +147,7 @@ async function beginExchange(ownerId: string, input: ChatInput) {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`preview:${ownerId}`]);
     const conversationId = await ensurePreviewConversation(client, ownerId, input.conversationId);
     const userMessage = await client.query<{ id: string }>(
       `INSERT INTO messages(conversation_id,owner_id,role,status,client_message_id,content)
@@ -198,6 +199,60 @@ async function ensureLatestPreviewConversation(ownerId: string) {
     );
     await client.query("COMMIT");
     return created.rows[0]!;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function resetPreviewConversations(ownerId: string, requestId?: string) {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`preview:${ownerId}`]);
+    await client.query<{ id: string }>(
+      "SELECT id FROM conversations WHERE owner_id=$1 AND mode='preview' ORDER BY id FOR UPDATE",
+      [ownerId],
+    );
+    const activeRun = await client.query<{ id: string }>(
+      `SELECT run.id FROM analysis_runs run
+       JOIN conversations conversation ON conversation.id=run.conversation_id AND conversation.owner_id=run.owner_id
+       WHERE conversation.owner_id=$1 AND conversation.mode='preview' AND run.state IN ('pending','running')
+       LIMIT 1 FOR UPDATE OF run`,
+      [ownerId],
+    );
+    if (activeRun.rows[0]) {
+      throw new AppError("PREVIEW_SESSION_BUSY", "Wait for the current deep analysis to finish before resetting the preview conversation.", 409);
+    }
+    const pendingAnswer = await client.query<{ id: string }>(
+      `SELECT message.id FROM messages message
+       JOIN conversations conversation ON conversation.id=message.conversation_id AND conversation.owner_id=message.owner_id
+       WHERE conversation.owner_id=$1 AND conversation.mode='preview' AND message.role='assistant' AND message.status='pending'
+       LIMIT 1 FOR UPDATE OF message`,
+      [ownerId],
+    );
+    if (pendingAnswer.rows[0]) {
+      throw new AppError("PREVIEW_SESSION_BUSY", "Wait for the current answer to finish before resetting the preview conversation.", 409);
+    }
+    const deleted = await client.query<{ id: string }>(
+      "DELETE FROM conversations WHERE owner_id=$1 AND mode='preview' RETURNING id",
+      [ownerId],
+    );
+    const created = await client.query<{ id: string }>(
+      "INSERT INTO conversations(owner_id,mode) VALUES ($1,'preview') RETURNING id",
+      [ownerId],
+    );
+    const conversationId = created.rows[0]?.id;
+    if (!conversationId) throw new AppError("CONVERSATION_CREATE_FAILED", "The preview conversation could not be created.", 500);
+    await client.query(
+      `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
+       VALUES ($1,'candidate','agent.preview.reset','conversation',$2,'reset',$3,$4::jsonb)`,
+      [ownerId, conversationId, requestId ?? null, JSON.stringify({ resetCount: deleted.rows.length })],
+    );
+    await client.query("COMMIT");
+    return { conversationId, resetCount: deleted.rows.length };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;

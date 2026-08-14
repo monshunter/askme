@@ -112,4 +112,7 @@
 | REVIEW-107 | REVIEW-107：DESIGN-005 回答质量 Design Review | [REVIEW-107.md](REVIEW-107.md) |
 | REVIEW-108 | REVIEW-108：DESIGN-005 Host 年限派生 Design Review | [REVIEW-108.md](REVIEW-108.md) |
 | REVIEW-109 | REVIEW-109：PLAN-021 Agent 回答质量 Change Review | [REVIEW-109.md](REVIEW-109.md) |
+| REVIEW-110 | REVIEW-110：PLAN-022 公开 Agent 与预览会话体验 Plan Review | [REVIEW-110.md](REVIEW-110.md) |
+| REVIEW-111 | REVIEW-111：SPEC-001 公开 Agent 与预览重置增量 Spec Review | [REVIEW-111.md](REVIEW-111.md) |
+| REVIEW-112 | REVIEW-112：PLAN-022 公开 Agent 与预览会话体验 Change Review | [REVIEW-112.md](REVIEW-112.md) |
 <!-- AGENT-HARNESS:END INDEX -->

@@ -101,7 +101,8 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 2. Agent 先检索 owner 范围内允许使用的证据，再调用 DeepSeek 生成简洁回答；每个事实性回答返回实际支撑它的 Citation，不能生成不存在的来源；用户问题与 Agent 回答按安全 Markdown 渲染。
 3. 没有充分证据时 Agent 明确说明资料不足，并给出可补充资料或可回答问题；AI 不可用、超时或返回无效内容时提供可重试错误，不返回伪造答案。
 4. 页面提供可刷新的推荐问题、回答反馈、Answer Tone、Public Mode 和 Privacy-Safe Mode 控件；控件改变后续回答行为并持久化 Candidate 设置。
-5. Candidate Workspace 只提供一个英文 `Agent`、中文 `智能体` 的一级入口；该页面同时承载 Candidate 预览问答、设置和发布生命周期管理，不再提供独立的 Publish Agent / 发布 Agent 一级入口或页面。
+5. Candidate 可在明确确认后重置预览会话。重置删除当前 owner 的 preview Conversation 及其级联问答记录，并原子建立新的空白 preview Conversation；回答生成或 Deep Analysis 进行中时明确拒绝重置。知识库、Agent 设置、发布状态、AI 用量和审计记录不受影响。
+6. Candidate Workspace 只提供一个英文 `Agent`、中文 `智能体` 的一级入口；该页面同时承载 Candidate 预览问答、设置和发布生命周期管理，不再提供独立的 Publish Agent / 发布 Agent 一级入口或页面。
 
 ### 3.7 发布与撤销
 
@@ -113,7 +114,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 ### 3.8 Interviewer 公共 Agent
 
-1. 公共页面呈现 Candidate 授权的头像/姓名/头衔/地点/简介、Agent 状态、知识和 Citation 概况、公开亮点、推荐问题与 Chat-first 主区域。
+1. 公共页面呈现 Candidate 授权的头像/姓名/头衔/地点/简介、Agent 状态、知识和 Citation 概况、公开亮点、推荐问题与 Chat-first 主区域。右侧栏只保留公开亮点，不显示无实际操作的“还想了解更多”模块；推荐问题与 Candidate 预览使用一致的标题、双列卡片布局、点击提问、刷新和禁用反馈。
 2. Interviewer 首次进入任一公开 Agent 时获得由 localStorage 持有的 Browser Visitor Identity；同一浏览器再次访问时复用该身份，两个不同浏览器或浏览器 profile 必须得到不同身份。服务端只保存凭证 hash，不信任客户端声明的 owner、conversation 或 publication。
 3. 同一游客可在每个 publication 下拥有多个独立 Conversation，并在左侧会话栏新增、删除和切换；会话列表按最近活动排序，标题来自该会话首条问题，空会话显示稳定的双语默认标题。切换后只加载所选 Conversation 的消息与推荐问题，刷新页面恢复最近活动会话。
 4. 所有 Conversation 读写都同时验证当前 publication、Browser Visitor Identity 与 conversation id；不同游客、不同 publication 或伪造 conversation/message/run/source id 均不能读取、修改、监听、删除或反馈其他会话。删除一个 Conversation 级联删除其聊天内容且不影响该游客的其他会话；存在进行中 Deep Analysis 时明确拒绝删除，最后一个会话删除后客户端建立新的空会话。
@@ -140,7 +141,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 3. Chrome DevTools 使用 `iPhone 14 Pro Max` 设备配置（430 × 932）时不产生横向溢出，导航可访问，主要操作与对话输入保持可用；桌面表格在移动端转为可读布局。
 4. 键盘可完成注册、登录、忘记/重置/变更密码、导航、上传选择、筛选、隐私设置和对话；焦点可见，表单控件具有关联 label，状态不只依赖颜色表达。
 5. 默认语言为 English，并提供 English / 简体中文切换；语言选择持久化，核心页面和错误反馈不得混用未翻译的界面字符串。
-6. 全站无论是否登录、无论进入 Candidate、公共 Agent、Platform Admin、登录或邀请页面，都只在右上角显示同一个全局语言切换控件；页面、footer 与账号菜单不得再持有第二个语言入口。
+6. 全站无论是否登录都只显示一个 English / 简体中文切换控件；Candidate、Platform Admin、登录和邀请页面继续使用右上角全局入口，公共 Agent 则将入口放在页眉“可信且公开”右侧并随页面正常滚动，不得固定或浮动在视口右上角。页面、footer 与账号菜单不得再持有第二个语言入口。
 7. Candidate Shell 不显示与一级导航重复的 Quick Action / 快捷操作，也不显示与 Agent 页面发布能力重复的 Invite Interviewers / 邀请面试官卡片。
 8. 产品英文名保持 `Askme`，唯一中文名为“职问”；登录、Candidate、公共 Agent、Platform Admin、邀请与不可用页面中的品牌文字和印章不得再显示旧名“问候”。
 9. Candidate Workspace 与 Platform Admin 页眉不显示搜索或快捷操作；通知、身份、语言和移动导航继续可用，Knowledge/Admin 领域页面自己的搜索能力不受影响。
@@ -183,10 +184,12 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-AGENT-003` 推荐问题、Answer Tone、Public Mode、Privacy-Safe Mode 与回答反馈可交互并持久化。
 - [x] `AC-AGENT-004` Candidate Workspace 只保留 Agent / 智能体一级入口，预览问答、设置、直接发布、发布后访问和撤销在该页面形成闭环，独立链接模块、链接生成 API、发布页面与专用 Candidate 公共预览 API 不再存在。
 - [x] `AC-AGENT-005` Candidate 预览的用户问题和 Agent 回答安全渲染 Markdown，且 Citation 中的来源文件名可按 owner 权限查看。
+- [x] `AC-AGENT-006` Candidate 确认后可重置 owner 范围内的全部 preview 会话并获得新的空白会话；进行中的回答或 Deep Analysis 阻止重置，知识库、设置、发布、AI 用量和审计记录保持不变。
 - [x] `AC-PUB-001` 发布前置条件、发布时生成的不可推断链接、历史 draft 兼容、持久发布状态、撤销与再发布行为通过集成测试。
 - [x] `AC-PUB-002` Candidate 公共预览与匿名 Interviewer 使用完全相同的公开权限。
 - [x] `AC-PUB-003` 公共 Agent 页的“分享 Agent 链接”复制当前页面 URL、反馈成功或失败且不下载文件。
 - [x] `AC-PUB-004` 缺少职业头衔的现有 Candidate 与新注册 Candidate 都可从发布阻塞项直达公开资料编辑，只能更新当前账号，补齐后返回 Agent 页面并成功发布；已有完整身份的 Candidate 不受影响。
+- [x] `AC-PUB-005` 公共 Agent 页右侧栏只保留公开亮点，推荐问题与 Candidate 预览使用一致的标题、双列卡片、点击提问、刷新和禁用反馈。
 - [x] `AC-CHAT-001` 匿名访客可在已发布 Agent 上进行持久多轮对话，并获得真实 Citation。
 - [x] `AC-CHAT-002` 私有数据、跨 owner 数据、未公开原文件访问、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
@@ -200,7 +203,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-UI-002` Chrome DevTools `iPhone 14 Pro Max`（430 × 932）下无横向溢出，导航、表单、隐私控制与 Chat 可完成真实操作。
 - [x] `AC-UI-003` 关键流程可键盘操作并具有可见焦点、label 和非颜色状态表达。
 - [x] `AC-UI-004` Candidate Shell 不再显示重复语言切换、Quick Action / 快捷操作、Invite Interviewers / 邀请面试官或 Publish Agent / 发布 Agent 入口。
-- [x] `AC-UI-005` 登录前后全部产品页面只在右上角显示一个全局 English / 简体中文切换控件，切换后同一 locale cookie 驱动当前页面重新渲染，页面、footer 与账号菜单没有第二入口。
+- [x] `AC-UI-005` 每个产品页面只显示一个 English / 简体中文切换控件；公共 Agent 的入口位于“可信且公开”右侧并随页面滚动，其他页面保留右上角全局入口；切换后同一 locale cookie 驱动当前页面重新渲染，页面、footer 与账号菜单没有第二入口。
 - [x] `AC-UI-006` 全部产品页面的中文品牌文字与印章统一显示“职问”，代码和渲染结果均不再将“问候”作为 Askme 中文品牌名。
 - [x] `AC-UI-007` Candidate 与 Platform Admin 页眉不再显示搜索或快捷操作，其他页眉功能、移动导航和领域页面搜索保持可用。
 - [x] `AC-I18N-001` English / 简体中文切换持久化并覆盖核心页面、操作反馈和错误状态。

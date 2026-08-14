@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiClientError, requestApi } from "@/components/candidate/api-client";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { MarkdownContent } from "@/components/markdown-content";
 import { SourceLink, type SourceOpenMode } from "@/components/source-viewer";
 import { useModalFocus } from "@/components/use-modal-focus";
@@ -353,7 +354,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
   return (
     <div className="public-agent-page">
       <a className="skip-link" href="#public-main">{t("shared.skip")}</a>
-      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">职问</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>{t("public.trust.title")}</strong><small>{t("public.trust.copy")}</small></span></div></header>
+      <header className="public-agent-topbar"><Link className="public-wordmark" href="/">Askme <span aria-hidden="true">职问</span></Link><div className="public-trust"><ShieldCheck size={20} /><span><strong>{t("public.trust.title")}</strong><small>{t("public.trust.copy")}</small></span></div><div className="public-language-control"><LanguageSwitcher locale={locale} /></div></header>
       <div className="public-agent-layout">
         <aside className="public-candidate-sidebar">
           <section className="public-candidate-card">
@@ -395,10 +396,10 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
                 <div ref={threadEnd} />
               </div>
               <form className="public-chat-composer" onSubmit={submit}><label className="sr-only" htmlFor="public-agent-question">{t("public.question.label")}</label><textarea id="public-agent-question" value={question} maxLength={500} rows={2} disabled={sending || sessionState !== "ready"} onChange={(event) => setQuestion(event.target.value)} placeholder={t("public.question.placeholder", { name: initialProjection.profile.displayName })} /><button type="submit" disabled={sending || sessionState !== "ready" || !question.trim()} aria-label={t("public.question.send")}>{sending ? <LoaderCircle className="spin" size={20} /> : <Send size={20} />}</button></form>
-              <div className="public-suggestions"><div>{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending || sessionState !== "ready"} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={14} /> {suggestion}</button>)}<button className="refresh-public-suggestions" type="button" disabled={refreshing || sessionState !== "ready"} onClick={() => void refreshSuggestions()} aria-label={t("public.question.refresh")}>{refreshing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}</button></div></div>
+              <section className="suggestion-section public-suggestion-section" aria-labelledby="public-suggestion-title"><div><h2 id="public-suggestion-title">{t("public.suggestions.title")}</h2><button type="button" disabled={refreshing || sessionState !== "ready"} onClick={() => void refreshSuggestions()}>{refreshing ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {t("public.suggestions.refresh")}</button></div><div className="suggestion-grid">{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending || sessionState !== "ready"} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={16} />{suggestion}</button>)}</div></section>
             </section>
 
-            <aside className="public-highlights-column"><section><h2>{t("public.highlights.title")}</h2>{initialProjection.highlights.length === 0 ? <p>{t("public.highlights.empty")}</p> : initialProjection.highlights.map((highlight) => <article key={highlight.id}><span><Sparkles size={17} /></span><div><strong>{highlight.title}</strong><p>{highlight.summary}</p></div></article>)}</section><section className="public-learn-more"><h2>{t("public.learn.title")}</h2><p>{t("public.learn.copy")}</p></section></aside>
+            <aside className="public-highlights-column"><section><h2>{t("public.highlights.title")}</h2>{initialProjection.highlights.length === 0 ? <p>{t("public.highlights.empty")}</p> : initialProjection.highlights.map((highlight) => <article key={highlight.id}><span><Sparkles size={17} /></span><div><strong>{highlight.title}</strong><p>{highlight.summary}</p></div></article>)}</section></aside>
           </div>
         </main>
       </div>
