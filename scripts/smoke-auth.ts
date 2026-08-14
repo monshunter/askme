@@ -51,21 +51,24 @@ async function currentUser(cookie: string) {
   return { response, payload };
 }
 
-async function waitForResetToken(email: string) {
+async function waitForResetToken(email: string, publicBaseUrl: string) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const response = await fetch(`${mailpitUrl}/api/v1/message/latest`);
     if (response.ok) {
       const message = await response.json() as { To?: Array<{ Address?: string }>; Text?: string };
       const addressedToCandidate = message.To?.some((address) => address.Address?.toLowerCase() === email) ?? false;
       const token = addressedToCandidate ? /\/reset-password\/([A-Za-z0-9_-]{43})/.exec(message.Text ?? "")?.[1] : undefined;
-      if (token) return token;
+      if (token) {
+        assert(message.Text?.includes(`${publicBaseUrl}reset-password/${token}`), "Password reset email did not use ASKME_PUBLIC_BASE_URL");
+        return token;
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error("Password reset email was not observed in Mailpit");
 }
 
-async function waitForAdminInvitation(email: string) {
+async function waitForAdminInvitation(email: string, publicBaseUrl: string) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const response = await fetch(`${mailpitUrl}/api/v1/message/latest`);
     if (response.ok) {
@@ -74,14 +77,17 @@ async function waitForAdminInvitation(email: string) {
       const token = addressedToAdmin && message.Subject === "You are invited to administer Askme"
         ? /\/invite\/([A-Za-z0-9_-]{43})/.exec(message.Text ?? "")?.[1]
         : undefined;
-      if (token) return token;
+      if (token) {
+        assert(message.Text?.includes(`${publicBaseUrl}invite/${token}`), "Admin invitation email did not use ASKME_PUBLIC_BASE_URL");
+        return token;
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error("Admin invitation email was not observed in Mailpit");
 }
 
-async function verifyCandidateLifecycle() {
+async function verifyCandidateLifecycle(publicBaseUrl: string) {
   const suffix = randomUUID().slice(0, 8);
   const email = `auth-smoke-${suffix}@askme.local`;
   const initialPassword = `Candidate-initial-${suffix}!`;
@@ -107,7 +113,7 @@ async function verifyCandidateLifecycle() {
     assert(unknownReset.response.status === 200 && knownReset.response.status === 200, "Forgot-password requests were not accepted uniformly");
     assert(unknownReset.payload.data?.accepted === true && knownReset.payload.data?.accepted === true, "Forgot-password responses leaked account existence");
 
-    const resetToken = await waitForResetToken(email);
+    const resetToken = await waitForResetToken(email, publicBaseUrl);
     const reset = await postJson("/api/auth/reset-password", {
       token: resetToken,
       password: resetPassword,
@@ -153,7 +159,7 @@ async function verifyCandidateLifecycle() {
   }
 }
 
-async function verifyAdminInvitationMail(adminCookie: string) {
+async function verifyAdminInvitationMail(adminCookie: string, publicBaseUrl: string) {
   const suffix = randomUUID().slice(0, 8);
   const email = `admin-mail-smoke-${suffix}@askme.local`;
   const db = new Client({ connectionString: databaseUrl });
@@ -163,13 +169,13 @@ async function verifyAdminInvitationMail(adminCookie: string) {
     const invitation = await postJson("/api/admin/invitations", { email, displayName: "SMTP Smoke Admin" }, adminCookie);
     invitationId = typeof invitation.payload.data?.id === "string" ? invitation.payload.data.id : null;
     assert(invitation.response.status === 201 && invitation.payload.data?.status === "sent" && invitationId, `Admin invitation SMTP delivery failed with ${invitation.response.status}`);
-    const token = await waitForAdminInvitation(email);
+    const token = await waitForAdminInvitation(email, publicBaseUrl);
     const persisted = await db.query<{ tokenHash: string; status: string }>(
       "SELECT token_hash AS \"tokenHash\",status FROM admin_invitations WHERE id=$1",
       [invitationId],
     );
     assert(persisted.rows[0]?.status === "sent" && persisted.rows[0].tokenHash !== token, "Admin invitation did not persist only a sent token hash");
-    return { status: invitation.response.status, mailpitObserved: true };
+    return { status: invitation.response.status, mailpitObserved: true, publicBaseUrl };
   } finally {
     if (invitationId) {
       await db.query("DELETE FROM audit_events WHERE target_type='admin_invitation' AND target_id=$1", [invitationId]).catch(() => undefined);
@@ -203,8 +209,8 @@ async function main() {
   const adminMe = await currentUser(admin.cookie);
   assert(adminMe.response.ok && adminMe.payload.data?.user?.role === "admin", "Admin session was not resolved");
 
-  const candidateLifecycle = await verifyCandidateLifecycle();
-  const adminInvitationMail = await verifyAdminInvitationMail(admin.cookie);
+  const candidateLifecycle = await verifyCandidateLifecycle(config.publicBaseUrl);
+  const adminInvitationMail = await verifyAdminInvitationMail(admin.cookie, config.publicBaseUrl);
   console.info(
     JSON.stringify({
       event: "smoke.auth.completed",

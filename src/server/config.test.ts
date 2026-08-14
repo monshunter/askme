@@ -45,6 +45,7 @@ describe("runtime config", () => {
         code: expect.objectContaining({ id: "code", model: "deepseek-v4-pro", thinking: "high", contextWindow: 1_000_000, maxTokens: 200_000 }),
       },
     });
+    expect(config.publicBaseUrl).toBe("https://askme.monshunter.xyz/");
     expect(config.mail).toEqual({
       status: "not_configured",
       host: null,
@@ -119,5 +120,22 @@ describe("runtime config", () => {
 
     const invalid = loadConfigFromSources({ ASKME_SMTP_HOST: "smtp.example.test" }, "");
     expect(invalid.mail.status).toBe("invalid_configuration");
+  });
+
+  it("normalizes an allowlisted public base URL and rejects unsafe or non-root values", () => {
+    expect(parseAllowedEnv("ASKME_PUBLIC_BASE_URL=https://careers.example.test\n")).toEqual({
+      ASKME_PUBLIC_BASE_URL: "https://careers.example.test",
+    });
+    expect(loadConfigFromSources({ ASKME_PUBLIC_BASE_URL: "http://localhost:3000" }, "").publicBaseUrl).toBe("http://localhost:3000/");
+
+    for (const value of [
+      "ftp://careers.example.test/",
+      "https://user:password@careers.example.test/",
+      "https://careers.example.test/app",
+      "https://careers.example.test/?tenant=askme",
+      "https://careers.example.test/#invite",
+    ]) {
+      expect(() => loadConfigFromSources({ ASKME_PUBLIC_BASE_URL: value }, "")).toThrow("ASKME_PUBLIC_BASE_URL");
+    }
   });
 });

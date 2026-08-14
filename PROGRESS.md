@@ -127,3 +127,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-017：闭环认证、游客会话隔离与 Citation 修复](docs/plans/PLAN-017.md)
 ---
+
+---
+ID: OBJ-013
+Objective: 交付可配置邮件公开域名与公开 Agent 游客多会话管理
+Status: 已完成
+Plans:
+- [x] [PLAN-018：闭环邮件公开域名与游客多会话管理](docs/plans/PLAN-018.md)
+---

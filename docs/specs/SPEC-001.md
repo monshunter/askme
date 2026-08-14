@@ -39,7 +39,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 - **Knowledge Item**：系统从一个或多个 Source Material 中组织出的项目、经历、技能、文章、仓库或总结。
 - **Citation**：回答对具体 Source Material 和证据片段的可追溯引用。
 - **Published Agent**：满足发布前置条件、拥有当前公开链接并可被 Interviewer 访问的 Candidate Agent。
-- **Browser Visitor Identity**：由当前 origin 的 localStorage 保存的高熵游客凭证；同一浏览器使用同一游客身份访问不同 Published Agent，但每个 publication 拥有独立 Conversation。
+- **Browser Visitor Identity**：由当前 origin 的 localStorage 保存的高熵游客凭证；同一浏览器使用同一游客身份访问不同 Published Agent，每个 publication 分别拥有该游客自己的 Conversation 集合。
 
 ### 2.3 MVP 非目标
 
@@ -114,14 +114,15 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 1. 公共页面呈现 Candidate 授权的头像/姓名/头衔/地点/简介、Agent 状态、知识和 Citation 概况、公开亮点、推荐问题与 Chat-first 主区域。
 2. Interviewer 首次进入任一公开 Agent 时获得由 localStorage 持有的 Browser Visitor Identity；同一浏览器再次访问时复用该身份，两个不同浏览器或浏览器 profile 必须得到不同身份。服务端只保存凭证 hash，不信任客户端声明的 owner、conversation 或 publication。
-3. 同一游客对每个 publication 只复用自己的一个活动 Conversation，问题、回答和推荐问题只持久化到该 Conversation；不同游客、不同 publication 或伪造 message/run id 均不能读取、修改、监听或反馈其他会话。
-4. 游客凭证通过受控请求同步到同源安全 cookie，以支持 EventSource、来源预览和新标签页；localStorage 是浏览器身份 owner。升级前按 slug 保存的旧 HttpOnly cookie 只允许在 session 初始化时迁移一次，不得让多个游客合并为共享会话。
-5. 公共 Conversation 使用 30 天无活动滚动保留；每次有效访问延长保留时间。localStorage 被清除后下一次初始化创建新游客身份，旧 Conversation 不得自动投影给新身份。
-6. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答中的 Citation 只展示来源名称，不展示类型、正文、摘要或证据片段；`citation_allowed` 不返回访问地址，`public_preview` 名称可打开来源。Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开；任何响应都不得包含内部存储路径。
-7. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
-8. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
-9. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
-10. Interviewer 的问题与 Agent 回答按安全 Markdown 渲染；标题、列表、引用、链接、表格、行内代码和围栏代码块保持可读，原始 HTML、脚本和危险 URL 不得执行。
+3. 同一游客可在每个 publication 下拥有多个独立 Conversation，并在左侧会话栏新增、删除和切换；会话列表按最近活动排序，标题来自该会话首条问题，空会话显示稳定的双语默认标题。切换后只加载所选 Conversation 的消息与推荐问题，刷新页面恢复最近活动会话。
+4. 所有 Conversation 读写都同时验证当前 publication、Browser Visitor Identity 与 conversation id；不同游客、不同 publication 或伪造 conversation/message/run/source id 均不能读取、修改、监听、删除或反馈其他会话。删除一个 Conversation 级联删除其聊天内容且不影响该游客的其他会话；存在进行中 Deep Analysis 时明确拒绝删除，最后一个会话删除后客户端建立新的空会话。
+5. 游客凭证通过受控请求同步到同源安全 cookie，以支持 EventSource、来源预览和新标签页；localStorage 是浏览器身份 owner。升级前按 slug 保存的旧 HttpOnly cookie 只允许在 session 初始化时迁移一次，不得让多个游客合并为共享会话。
+6. 每个公共 Conversation 使用 30 天无活动滚动保留；每次有效访问只延长当前 Conversation 的保留时间。localStorage 被清除后下一次初始化创建新游客身份，旧 Conversation 集合不得自动投影给新身份。
+7. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答中的 Citation 只展示来源名称，不展示类型、正文、摘要或证据片段；`citation_allowed` 不返回访问地址，`public_preview` 名称可打开来源。Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开；任何响应都不得包含内部存储路径。
+8. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
+9. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
+10. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
+11. Interviewer 的问题与 Agent 回答按安全 Markdown 渲染；标题、列表、引用、链接、表格、行内代码和围栏代码块保持可读，原始 HTML、脚本和危险 URL 不得执行。
 
 ### 3.9 Platform Admin
 
@@ -150,6 +151,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 3. 本地正式启动路径使用 Docker Compose，至少包含 Web、后台 worker、PostgreSQL 与可观察真实邮件的 SMTP 测试服务，并使用持久 volume 保存数据库和上传文件；重复启动不得清空数据。
 4. 提供 migration、初始本地账号 bootstrap、健康检查、就绪检查和可恢复的停止/重启路径；仅显式 reset 才能清除本地数据。
 5. 密码重置与 Admin 邀请复用同一服务端 SMTP transport；配置支持无认证或成对 username/password、显式 port/secure/from 和有界连接超时。未配置与发送失败必须返回稳定安全错误或防枚举受理语义，原始凭证、token 和完整邮件正文不得进入日志、审计或业务响应。本地 Compose 默认投递到 Mailpit，生产邮件供应商不属于本 Objective。
+6. 两类邮件中的站内链接统一从 `ASKME_PUBLIC_BASE_URL` 构造，默认值为 `https://askme.monshunter.xyz/`；配置只接受无凭证、query、fragment 的绝对 HTTP(S) 根地址。邮件 URL 不读取请求 `Host` 或 forwarded host，覆盖配置时保留各模板自己的 `/reset-password/<token>` 与 `/invite/<token>` 路径。
 
 ### 3.12 质量与可观测性
 
@@ -163,7 +165,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-AUTH-002` 跨 Candidate 资源访问和错误角色操作被服务端拒绝，且测试证明 owner 隔离。
 - [x] `AC-AUTH-003` Candidate 可完成自助注册、登录、注销、忘记密码邮件、单次重置和登录后改密；Admin 不能由自助入口创建，旧 token 与旧 session 在密码变化后失效。
 - [x] `AC-AUTH-004` 忘记密码不泄露邮箱是否存在，认证入口具有输入边界、滥用防护和安全审计，密码与原始 token 不进入日志、URL query 或业务响应。
-- [x] `AC-MAIL-001` 密码重置与 Admin 邀请通过统一 SMTP transport 真实投递，配置和失败语义受测；本地 Mailpit 可分别观察两类邮件且不引入业务数据 volume。
+- [x] `AC-MAIL-001` 密码重置与 Admin 邀请通过统一 SMTP transport 真实投递，两类链接都使用 `ASKME_PUBLIC_BASE_URL` 且默认域名为 `https://askme.monshunter.xyz/`，请求 Host 不能改变邮件域名；配置和失败语义受测，本地 Mailpit 可分别观察两类邮件且不引入业务数据 volume。
 - [x] `AC-DASH-001` Candidate Dashboard 的指标、最近资料、工作流与下一步全部来自当前数据库状态。
 - [x] `AC-MAT-001` 六类文件的成功上传、50 MiB 边界和无效文件拒绝均有自动化或真实运行 Evidence。
 - [x] `AC-MAT-002` GitHub、Notion 与 Website 至少各完成一次真实导入路径或可控官方 API 测试替身的契约验证。
@@ -187,7 +189,8 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-CHAT-002` 私有数据、跨 owner 数据、未公开原文件访问、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
 - [x] `AC-CHAT-004` 公共问答安全渲染 Markdown；Citation 只展示来源名称，并仅为 `public_preview` 提供按格式打开来源的能力。
-- [x] `AC-CHAT-005` 同一浏览器的 localStorage 游客身份可恢复各 publication 的独立 Conversation；两个浏览器、两个 publication 及伪造 message/run/source 请求均不能互读互改，旧 slug cookie 可一次迁移且不会形成共享会话。
+- [x] `AC-CHAT-005` 同一浏览器的 localStorage 游客身份可恢复各 publication 的独立 Conversation 集合；两个浏览器、两个 publication 及伪造 conversation/message/run/source 请求均不能互读互改，旧 slug cookie 可一次迁移且不会形成共享会话。
+- [x] `AC-CHAT-006` 游客可在公开 Agent 左侧会话栏新增、删除、切换和恢复多个聊天记录；每个会话的消息、推荐问题、反馈与 Deep 状态独立，删除不影响其他会话，桌面与移动端均可完成操作且无横向溢出。
 - [x] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
 - [x] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
 - [x] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。

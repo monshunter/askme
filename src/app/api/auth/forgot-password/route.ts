@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       consumeAuthRateLimit(`forgot:email:${input.email}`, 5, 3_600),
       consumeAuthRateLimit(`forgot:ip:${requestClientAddress(request.headers)}`, 20, 3_600),
     ]);
-    const result = await requestCandidatePasswordReset(input, requestOrigin(request), id);
+    const result = await requestCandidatePasswordReset(input, id);
     return isJson ? apiData(result, id) : withRequestId(NextResponse.redirect(new URL("/forgot-password?sent=1", requestOrigin(request)), 303), id);
   } catch (error) {
     if (isJson) return apiFailure(error, id);

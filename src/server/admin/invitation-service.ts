@@ -8,10 +8,11 @@ import { AppError } from "@/server/errors";
 import type { InvitationAcceptance, InvitationInput } from "./admin-input";
 import { createInvitationCredential, hashInvitationToken } from "./invitation-token";
 import { sendAdminInvitationEmail } from "./smtp-mailer";
+import { publicAppUrl } from "@/server/mail/public-url";
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1_000;
 
-export async function createAdminInvitation(actorId: string, input: InvitationInput, origin: string, requestId?: string) {
+export async function createAdminInvitation(actorId: string, input: InvitationInput, requestId?: string) {
   if (getRuntimeConfig().mail.status !== "configured") {
     throw new AppError("MAIL_NOT_CONFIGURED", "Admin invitations are unavailable until SMTP is configured.", 409);
   }
@@ -63,7 +64,7 @@ export async function createAdminInvitation(actorId: string, input: InvitationIn
     await sendAdminInvitationEmail({
       to: invitation.email,
       displayName: invitation.displayName,
-      invitationUrl: `${origin.replace(/\/$/, "")}/invite/${credential.token}`,
+      invitationUrl: publicAppUrl(`/invite/${credential.token}`),
       expiresAt: invitation.expiresAt,
     });
     await getPool().query(

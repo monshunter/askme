@@ -7,6 +7,7 @@ x-runtime-environment: &runtime-environment
   <<: *database-environment
   UPLOAD_ROOT: /data/uploads
   ASKME_REPOSITORY_ARTIFACT_ROOT: /data/repository-artifacts
+  ASKME_PUBLIC_BASE_URL: ${ASKME_PUBLIC_BASE_URL:-https://askme.monshunter.xyz/}
   ASKME_AI_API_KEY: ${ASKME_AI_API_KEY:-}
   ASKME_AI_BASE_URL: ${ASKME_AI_BASE_URL:-https://api.deepseek.com/v1}
   ASKME_AI_ROUTER_MODEL: ${ASKME_AI_ROUTER_MODEL:-deepseek-v4-flash}

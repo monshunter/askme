@@ -103,8 +103,8 @@ async function priorAllowedQuestions(conversationId: string, currentMessageId: s
     .reverse();
 }
 
-export async function loadPublicThread(slug: string, visitorToken: string | undefined, locale: "en" | "zh-CN" = "en") {
-  const { conversation, token } = await requirePublicConversation(slug, visitorToken);
+export async function loadPublicThread(slug: string, visitorToken: string | undefined, conversationId: string, locale: "en" | "zh-CN" = "en") {
+  const { conversation, token } = await requirePublicConversation(slug, visitorToken, conversationId);
   await recoverStaleAnswers(conversation.id, conversation.ownerId, getPool());
   const actorKey = `visitor:${hashVisitorToken(token)}`;
   const messages = await getPool().query<{ citations: RawPublicCitation[] } & Record<string, unknown>>(
@@ -174,7 +174,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
   const suggestedQuestions = await ensureConversationSuggestions({ conversationId: conversation.id, ownerId: conversation.ownerId, mode: "public", locale });
   return {
     conversation: { id: conversation.id, expiresAt: conversation.expiresAt },
-    messages: messages.rows.map((message) => ({ ...message, citations: projectPublicCitations(slug, message.citations) })),
+    messages: messages.rows.map((message) => ({ ...message, citations: projectPublicCitations(slug, conversation.id, message.citations) })),
     suggestedQuestions,
   };
 }
@@ -275,11 +275,11 @@ async function persistPublicFailure(
 }
 
 export async function chatPublicAgent(slug: string, visitorToken: string | undefined, input: PublicChatInput, requestId?: string) {
-  const { publication, conversation, token } = await requirePublicConversation(slug, visitorToken);
+  const { publication, conversation, token } = await requirePublicConversation(slug, visitorToken, input.conversationId);
   const policies = await loadPlatformPolicies();
   const exchange = await beginPublicExchange(conversation, input, policies);
   if (!exchange.created || !exchange.assistantMessageId) {
-    return { ...(await loadPublicThread(slug, visitorToken)), idempotent: true, pending: exchange.assistantStatus === "pending" };
+    return { ...(await loadPublicThread(slug, visitorToken, conversation.id)), idempotent: true, pending: exchange.assistantStatus === "pending" };
   }
   const createdExchange = { ...exchange, created: true as const, assistantMessageId: exchange.assistantMessageId };
   const startedAt = performance.now();
@@ -332,7 +332,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
           conversationId: conversation.id, assistantMessageId: createdExchange.assistantMessageId,
           clientMessageId: input.clientMessageId, actorRole: "interviewer", requestId,
         });
-        return { ...(await loadPublicThread(slug, token)), idempotent: false, pending: true, analysisRun: run };
+        return { ...(await loadPublicThread(slug, token, conversation.id)), idempotent: false, pending: true, analysisRun: run };
       }
       if (effectiveRoute === "refuse") {
         const result: AnswerResult = {
@@ -345,7 +345,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
           usage: decision.usage,
         };
         await persistPublicAnswer(conversation.ownerId, publication.publicationId, createdExchange, result, config.ai.profiles.router.model, Math.round(performance.now() - startedAt), requestId);
-        return { ...(await loadPublicThread(slug, token)), idempotent: false, pending: false };
+        return { ...(await loadPublicThread(slug, token, conversation.id)), idempotent: false, pending: false };
       }
     }
     failureModel = config.ai.profiles.rag.model;
@@ -374,18 +374,18 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
           conversationId: conversation.id, assistantMessageId: createdExchange.assistantMessageId,
           clientMessageId: input.clientMessageId, actorRole: "interviewer", requestId,
         });
-        return { ...(await loadPublicThread(slug, token)), idempotent: false, pending: true, analysisRun: run };
+        return { ...(await loadPublicThread(slug, token, conversation.id)), idempotent: false, pending: true, analysisRun: run };
       }
     }
     await persistPublicAnswer(conversation.ownerId, publication.publicationId, createdExchange, result, config.ai.profiles.rag.model, Math.round(performance.now() - startedAt), requestId);
-    return { ...(await loadPublicThread(slug, visitorToken)), idempotent: false, pending: false };
+    return { ...(await loadPublicThread(slug, visitorToken, conversation.id)), idempotent: false, pending: false };
   } catch (error) {
     return persistPublicFailure(conversation.ownerId, publication.publicationId, createdExchange, error, failureModel, Math.round(performance.now() - startedAt), requestId);
   }
 }
 
-export async function savePublicFeedback(slug: string, visitorToken: string | undefined, messageId: string, input: PublicFeedbackInput, requestId?: string) {
-  const { publication, conversation, token } = await requirePublicConversation(slug, visitorToken);
+export async function savePublicFeedback(slug: string, visitorToken: string | undefined, conversationId: string, messageId: string, input: PublicFeedbackInput, requestId?: string) {
+  const { publication, conversation, token } = await requirePublicConversation(slug, visitorToken, conversationId);
   const policies = await loadPlatformPolicies();
   await consumePublicRateLimit(`feedback:${conversation.id}`, 30, 60);
   const actorKey = `visitor:${hashVisitorToken(token)}`;

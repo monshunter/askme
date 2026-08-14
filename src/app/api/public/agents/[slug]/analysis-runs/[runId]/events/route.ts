@@ -15,8 +15,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
   try {
     const params = await context.params;
     const slug = parsePublicSlug(params.slug);
+    const conversationId = requireResourceId(request.nextUrl.searchParams.get("conversationId") ?? "", "conversation");
     const runId = requireResourceId(params.runId, "analysis_run");
-    const { publication, conversation } = await requirePublicConversation(slug, requestVisitorToken(request));
+    const { publication, conversation } = await requirePublicConversation(slug, requestVisitorToken(request), conversationId);
     const response = await analysisRunSseResponse({
       request,
       pool: getPool(),

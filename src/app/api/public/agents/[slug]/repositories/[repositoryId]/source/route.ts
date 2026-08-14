@@ -14,11 +14,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
   try {
     const params = await context.params;
     const slug = parsePublicSlug(params.slug);
+    const conversationId = requireResourceId(request.nextUrl.searchParams.get("conversationId") ?? "", "conversation");
     const repositoryId = requireResourceId(params.repositoryId, "repository");
-    const { publication, conversation } = await requirePublicConversation(slug, requestVisitorToken(request));
+    const { publication, conversation } = await requirePublicConversation(slug, requestVisitorToken(request), conversationId);
+    const citationUrl = new URL(request.nextUrl);
+    citationUrl.searchParams.delete("conversationId");
     const response = apiData(await loadRepositorySourcePreview({
       pool: getPool(), artifactRoot: getRuntimeConfig().repositoryArtifactRoot, repositoryId,
-      citation: parseRepositorySourceQuery(request.nextUrl),
+      citation: parseRepositorySourceQuery(citationUrl),
       authorization: { mode: "public", ownerId: conversation.ownerId, conversationId: conversation.id, publicationId: publication.publicationId },
     }), id);
     response.headers.set("Cache-Control", "private, no-store");

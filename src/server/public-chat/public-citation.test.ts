@@ -15,6 +15,8 @@ import { projectPublicCitations } from "./public-citation";
   };
 
 describe("public Citation projection", () => {
+  const conversationId = "55555555-5555-4555-8555-555555555555";
+
   it("reprojects Repository citations from current visibility", () => {
     const repository = {
       kind: "repository" as const,
@@ -29,15 +31,15 @@ describe("public Citation projection", () => {
       lineEnd: 8,
       visibility: "citation_allowed" as const,
     };
-    expect(projectPublicCitations("candidate-agent", [repository])).toEqual([{ materialTitle: "Askme", access: null }]);
-    expect(projectPublicCitations("candidate-agent", [{ ...repository, visibility: "public_preview" }])[0]).toMatchObject({
+    expect(projectPublicCitations("candidate-agent", conversationId, [repository])).toEqual([{ materialTitle: "Askme", access: null }]);
+    expect(projectPublicCitations("candidate-agent", conversationId, [{ ...repository, visibility: "public_preview" }])[0]).toMatchObject({
       materialTitle: "Askme · src/agent.ts:3-8",
       access: { mode: "repository" },
     });
   });
 
   it("shows a citation_allowed source name without any access address or content", () => {
-    const [citation] = projectPublicCitations("candidate-agent", [{ ...base, visibility: "citation_allowed" }]);
+    const [citation] = projectPublicCitations("candidate-agent", conversationId, [{ ...base, visibility: "citation_allowed" }]);
     expect(citation).toEqual({
       materialTitle: "career.md",
       access: null,
@@ -46,19 +48,19 @@ describe("public Citation projection", () => {
   });
 
   it("only gives public_preview sources a format-aware access descriptor", () => {
-    expect(projectPublicCitations("candidate-agent", [{ ...base, visibility: "public_preview" }])[0]?.access).toEqual({
-      href: `/api/public/agents/candidate-agent/materials/${base.materialId}`,
+    expect(projectPublicCitations("candidate-agent", conversationId, [{ ...base, visibility: "public_preview" }])[0]?.access).toEqual({
+      href: `/api/public/agents/candidate-agent/materials/${base.materialId}?conversationId=${conversationId}`,
       mode: "markdown",
     });
-    expect(projectPublicCitations("candidate-agent", [{ ...base, materialTitle: "resume.pdf", mimeType: "application/pdf", visibility: "public_preview" }])[0]?.access?.mode).toBe("pdf");
-    expect(projectPublicCitations("candidate-agent", [{ ...base, materialKind: "website", externalUrl: "https://example.com/source", visibility: "public_preview" }])[0]?.access).toEqual({
+    expect(projectPublicCitations("candidate-agent", conversationId, [{ ...base, materialTitle: "resume.pdf", mimeType: "application/pdf", visibility: "public_preview" }])[0]?.access?.mode).toBe("pdf");
+    expect(projectPublicCitations("candidate-agent", conversationId, [{ ...base, materialKind: "website", externalUrl: "https://example.com/source", visibility: "public_preview" }])[0]?.access).toEqual({
       href: "https://example.com/source",
       mode: "new_tab",
     });
   });
 
   it("lists identical source content once across chunks and duplicate Material rows", () => {
-    expect(projectPublicCitations("candidate-agent", [
+    expect(projectPublicCitations("candidate-agent", conversationId, [
       { ...base, visibility: "citation_allowed" },
       {
         ...base,

@@ -158,21 +158,23 @@ try {
   const visitorAddress = `198.51.100.${Math.floor(Math.random() * 200) + 20}`;
   const visitorHeaders = { "x-forwarded-for": visitorAddress, "accept-language": "zh-CN" };
   const opened = await fetch(`${baseUrl}/api/public/agents/${slug}/session`, { method: "POST", headers: visitorHeaders });
-  const openedPayload = await opened.json() as Envelope<{ visitorToken: string }>;
+  const openedPayload = await opened.json() as Envelope<{ visitorToken: string; conversationId: string }>;
   const visitorToken = openedPayload.data?.visitorToken;
-  if (!opened.ok || !visitorToken) throw new Error(`Public session failed with ${opened.status}`);
+  const publicConversationId = openedPayload.data?.conversationId;
+  if (!opened.ok || !visitorToken || !publicConversationId) throw new Error(`Public session failed with ${opened.status}`);
   const publicCookie = "askme_locale=zh-CN";
   const publicHeaders = { ...visitorHeaders, "x-askme-visitor-token": visitorToken };
-  const initialPublic = await request<Thread>(`/api/public/agents/${slug}/chat`, publicCookie, { headers: publicHeaders });
+  const publicThreadPath = `/api/public/agents/${slug}/chat?conversationId=${publicConversationId}`;
+  const initialPublic = await request<Thread>(publicThreadPath, publicCookie, { headers: publicHeaders });
   assertChineseSuggestions(initialPublic.data.suggestedQuestions, "Empty public conversation");
 
   const publicDeep = await request<Thread>(`/api/public/agents/${slug}/chat`, publicCookie, {
     method: "POST",
     headers: publicHeaders,
-    body: JSON.stringify({ clientMessageId: randomUUID(), question: deepQuestion }),
+    body: JSON.stringify({ clientMessageId: randomUUID(), conversationId: publicConversationId, question: deepQuestion }),
   });
   if (publicDeep.response.status !== 202 || !publicDeep.data.analysisRun?.id) throw new Error("Public Deep was not routed to an Analysis Run");
-  const publicSettled = await pollThread(`/api/public/agents/${slug}/chat`, publicCookie, publicDeep.data.analysisRun.id, publicHeaders);
+  const publicSettled = await pollThread(publicThreadPath, publicCookie, publicDeep.data.analysisRun.id, publicHeaders);
   if (
     publicSettled.message.analysisRun?.state !== "completed" || publicSettled.message.status !== "completed" ||
     publicSettled.message.errorCode || !hasChinese(publicSettled.message.content) || publicSettled.message.citations.length < 1

@@ -7,6 +7,7 @@ import { AppError } from "@/server/errors";
 import { createSessionCredential, hashPassword, hashSessionToken, verifyPassword } from "./crypto";
 import type { ChangePasswordInput, ForgotPasswordInput, RegistrationInput, ResetPasswordInput } from "./auth-input";
 import { sendPasswordResetEmail } from "./password-mailer";
+import { publicAppUrl } from "@/server/mail/public-url";
 
 const RESET_TTL_MS = 30 * 60 * 1_000;
 
@@ -44,7 +45,7 @@ export async function registerCandidate(input: RegistrationInput, requestId?: st
   }
 }
 
-export async function requestCandidatePasswordReset(input: ForgotPasswordInput, origin: string, requestId?: string) {
+export async function requestCandidatePasswordReset(input: ForgotPasswordInput, requestId?: string) {
   if (getRuntimeConfig().mail.status !== "configured") {
     throw new AppError("MAIL_NOT_CONFIGURED", "Password reset email is temporarily unavailable.", 503);
   }
@@ -88,7 +89,7 @@ export async function requestCandidatePasswordReset(input: ForgotPasswordInput, 
   try {
     await sendPasswordResetEmail({
       to: user.email,
-      resetUrl: `${origin.replace(/\/$/, "")}/reset-password/${credential.token}`,
+      resetUrl: publicAppUrl(`/reset-password/${credential.token}`),
       expiresAt,
     });
   } catch (error) {

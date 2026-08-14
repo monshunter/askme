@@ -12,8 +12,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
   try {
     const params = await context.params;
     const slug = parsePublicSlug(params.slug);
+    const conversationId = requireResourceId(request.nextUrl.searchParams.get("conversationId") ?? "", "conversation");
     const materialId = requireResourceId(params.materialId, "material");
-    await requirePublicConversation(slug, requestVisitorToken(request));
+    await requirePublicConversation(slug, requestVisitorToken(request), conversationId);
     return withRequestId(materialContentResponse(await getPublicMaterialContent(slug, materialId), "no-store"), id);
   } catch (error) {
     return apiFailure(error, id);

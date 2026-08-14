@@ -16,6 +16,6 @@ describe("POST /api/auth/forgot-password", () => {
     }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ data: { accepted: true }, error: null });
-    expect(requestCandidatePasswordReset).toHaveBeenCalledWith({ email: "candidate@example.com" }, "http://localhost:3000", expect.any(String));
+    expect(requestCandidatePasswordReset).toHaveBeenCalledWith({ email: "candidate@example.com" }, expect.any(String));
   });
 });

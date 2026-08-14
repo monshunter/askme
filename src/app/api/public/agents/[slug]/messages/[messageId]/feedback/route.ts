@@ -13,6 +13,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ slu
   try {
     const params = await context.params;
     const slug = parsePublicSlug(params.slug);
+    const conversationId = requireResourceId(request.nextUrl.searchParams.get("conversationId") ?? "", "conversation");
     const messageId = requireResourceId(params.messageId, "message");
     let body: unknown;
     try {
@@ -20,7 +21,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ slu
     } catch {
       throw new AppError("INVALID_JSON", "Send valid JSON feedback.", 400);
     }
-    return apiData(await savePublicFeedback(slug, requestVisitorToken(request), messageId, parsePublicFeedbackInput(body), id), id);
+    return apiData(await savePublicFeedback(slug, requestVisitorToken(request), conversationId, messageId, parsePublicFeedbackInput(body), id), id);
   } catch (error) {
     return apiFailure(error, id);
   }

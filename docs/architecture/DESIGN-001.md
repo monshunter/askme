@@ -21,7 +21,7 @@ Status：`active`
 4. 数据库是业务状态唯一事实源；浏览器状态、设计稿示例、后台进程内存和日志均不能替代它。
 5. Secret 只存在于服务端进程环境或当前用户 `~/.env`，不持久化到业务表和客户端。
 6. Docker restart 保留 PostgreSQL 与上传文件；只有显式 reset 可删除本地数据。
-7. Candidate 身份由服务端 session owner；Browser Visitor Identity 由同源 localStorage 的高熵 bearer credential owner，数据库与日志只接触其 hash，公开资源仍以 `publication + visitor hash` 二次限定。
+7. Candidate 身份由服务端 session owner；Browser Visitor Identity 由同源 localStorage 的高熵 bearer credential owner，数据库与日志只接触其 hash。公开会话读写以 `publication + visitor hash + conversation id` 三重限定，conversation id 只是 selector，不能单独授权。
 
 ## 2. 系统上下文
 
@@ -82,7 +82,7 @@ Web 和 Worker 共享同一 TypeScript domain/service 层，UI 不直接访问�
 | `privacy_confirmations` | owner、policy revision、confirmed at；visibility 变化使旧确认失效 |
 | `agent_settings` | owner unique、tone、public mode、privacy-safe mode、推荐问题配置 |
 | `publications` | owner、unguessable slug unique、status、published/revoked/paused 时间 |
-| `conversations` | owner、preview/public mode、publication、visitor token hash、rolling expires、last activity；public 使用 publication + visitor hash 唯一 |
+| `conversations` | owner、preview/public mode、publication、visitor token hash、rolling expires、last activity；public 允许同一 publication + visitor hash 对应多行，并以覆盖 list/switch 的复合索引查询 |
 | `messages` | conversation、role、content、status、AI latency/model、error code |
 | `message_citations` | assistant message、chunk、rank、公开 excerpt；联合唯一 |
 | `answer_feedback` | message、actor/session、value，防止重复反馈 |
@@ -99,11 +99,13 @@ Web 和 Worker 共享同一 TypeScript domain/service 层，UI 不直接访问�
 
 Candidate 注册先规范化邮箱并以事务创建唯一 `candidate` 用户、默认 Agent/Privacy 状态和首个 session；注册路由不接收 role。登录复用相同邮箱规范化和密码校验。已登录改密先验证当前密码，再更新 hash、撤销全部旧 session 并签发当前请求的新 session。
 
-忘记密码按邮箱/IP hash 限流，外部始终返回相同的“请求已受理、投递不保证”反馈；只有 active Candidate 才创建 30 分钟 token hash 并通过共享 SMTP transport 发送 path 参数形式的 `/reset-password/<token>` 链接。Admin invitation 与密码重置只各自拥有主题和正文模板，连接、认证、TLS、超时、关闭和安全错误映射由 `server/mail` 单一 owner 负责。新请求原子失效旧 token；重置在锁定 token/user 后一次消费、更新密码并撤销全部 session。SMTP 整体未配置时在查询账号前返回安全能力错误；单封密码重置邮件发送失败时失效本次 token、记录不含身份和 token 的失败审计，并保持统一已受理反馈，避免用投递结果枚举账号。
+忘记密码按邮箱/IP hash 限流，外部始终返回相同的“请求已受理、投递不保证”反馈；只有 active Candidate 才创建 30 分钟 token hash 并通过共享 SMTP transport 发送 path 参数形式的 `/reset-password/<token>` 链接。Admin invitation 与密码重置只各自拥有主题和正文模板，连接、认证、TLS、超时、关闭和安全错误映射由 `server/mail` 单一 owner 负责。两类模板通过 URL helper 从 `ASKME_PUBLIC_BASE_URL` 构造绝对地址，不读取请求 Host；解析器把合法 HTTP(S) 根地址规范化为带尾部 `/` 的 canonical URL，默认使用 `https://askme.monshunter.xyz/`。新请求原子失效旧 token；重置在锁定 token/user 后一次消费、更新密码并撤销全部 session。SMTP 整体未配置时在查询账号前返回安全能力错误；单封密码重置邮件发送失败时失效本次 token、记录不含身份和 token 的失败审计，并保持统一已受理反馈，避免用投递结果枚举账号。
 
-公共页客户端读取 `askme.publicVisitor.v1`；不存在时由 session endpoint 签发 32-byte token，响应后先写 localStorage，再加载 Conversation。后续请求用 `X-Askme-Visitor-Token` 发送同一 token，session endpoint 同步一个全局 HttpOnly cookie 给 EventSource、来源预览和普通新标签请求；session 初始化时 header 是身份 owner，header 缺失表示创建新身份，只有升级前的 slug cookie 可被一次性桥接并清除。服务端统一解析 header/global cookie，hash 后只查询当前 publication 的 Conversation。
+公共页客户端读取 `askme.publicVisitor.v1`；不存在时由 singular session bootstrap endpoint 签发 32-byte token，响应后先写 localStorage，再加载该 publication 的 Conversation 列表。后续请求用 `X-Askme-Visitor-Token` 发送同一 token，bootstrap endpoint 同步一个全局 HttpOnly cookie 给 EventSource、来源预览和普通新标签请求；初始化时 header 是身份 owner，header 缺失表示创建新身份，只有升级前的 slug cookie 可被一次性桥接并清除。bootstrap 在事务级 advisory lock 内恢复最近活动 Conversation，不存在时只创建一个，显式 plural sessions POST 才无条件新建。
 
-Public Conversation 使用 30 天无活动滚动期限；有效 session/chat/suggestion/feedback/run/source 请求均重新验证 publication、visitor hash 与资源所属 Conversation，并更新 last activity/expiry。localStorage 清除后初始化不会从全局 cookie 恢复旧身份，而是覆盖为新 token；复制 localStorage token 等价于复制 bearer credential，是客户端应保护的身份边界。
+Session service 以 `publication + visitor hash` 列出最近活动会话，并从每个 Conversation 的首条 user message 投影最多 80 个字符的标题；空会话标题由 UI 按 locale 提供，不新增可漂移的 title 列。Chat、suggestion、feedback、run 与 source 路由必须携带或从目标资源解析 conversation id，再以三重条件重新授权。删除在事务中锁定目标 Conversation；存在 `pending/running` Analysis Run 时返回 `PUBLIC_SESSION_BUSY`，否则依靠外键级联删除消息、Citation、反馈与已结束 Run并记录安全审计。
+
+每个 Public Conversation 使用 30 天无活动滚动期限；有效访问只更新目标会话的 last activity/expiry。localStorage 清除后初始化不会从全局 cookie 恢复旧身份，而是覆盖为新 token；复制 localStorage token 等价于复制 bearer credential，是客户端应保护的身份边界。`0020` migration 只移除旧唯一索引并增加 list/switch 复合索引，不重写或删除既有 Conversation，因此回滚应用版本时必须保持能理解一对多模型。
 
 ### 5.1 资料处理
 
@@ -164,7 +166,7 @@ Route Handlers 统一返回 `{ data, error, requestId }`。错误包含稳定 `c
 - `/api/privacy/*`：visibility 修改、预览和确认。
 - `/api/agent/*`：设置、推荐问题和 Candidate preview conversation/chat/feedback。
 - `/api/publications/*`：供 Candidate Agent 页面使用的 readiness、generate、publish 与 revoke；公共投影继续由公共 Agent service 按公开权限读取。
-- `/api/public/agents/[slug]/*`：公开 profile、visitor conversation/chat/feedback；`GET /api/public/agents/[slug]/materials/[materialId]` 提供 `public_preview` 来源内容访问。
+- `/api/public/agents/[slug]/*`：公开 profile；singular `session` 负责身份 bootstrap 与最近会话恢复，plural `sessions` 负责列表/新建，`sessions/[conversationId]` 负责删除；chat/suggestion/feedback/run/source 在 visitor credential 之外携带 conversation id。`GET /api/public/agents/[slug]/materials/[materialId]` 提供 `public_preview` 来源内容访问。
 - `/api/admin/*`：overview、candidates、agents、reports、review、settings 和治理动作。
 - `/api/health/live` 只证明进程；`/api/health/ready` 检查数据库、migration、worker heartbeat 和 AI 配置状态并分别报告。
 
@@ -178,6 +180,7 @@ Route Handlers 统一返回 `{ data, error, requestId }`。错误包含稳定 `c
 | --- | --- |
 | `DATABASE_URL` | Docker 内指向 PostgreSQL；进程必须显式获得 |
 | `UPLOAD_ROOT` | `/data/uploads`（Docker volume） |
+| `ASKME_PUBLIC_BASE_URL` | 邮件站内链接的公开 HTTP(S) 根地址，默认 `https://askme.monshunter.xyz/` |
 | `DEEPSEEK_API_KEY` | 可缺省启动；AI 操作返回 `AI_NOT_CONFIGURED` |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` |
@@ -196,7 +199,9 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 
 ### Public Agent
 
-独立公共壳层：左侧 Candidate 授权 profile/Agent 状态，中央 Markdown Chat 与只显示来源名称的 Citation，右侧 highlights/recommendations；`public_preview` 来源名称可打开，其他 Citation 保持无地址文本。客户端在 Chat 初始化前建立 Browser Visitor Identity，所有 fetch 显式携带 token，EventSource 与普通来源链接使用同步 cookie。移动端顺序为 profile 摘要 → Chat → Citation/highlights，输入固定在可见内容流末端而不遮挡正文。
+独立公共壳层：左侧保留 Candidate 授权 profile/Agent 状态和分享入口，并增加会话管理卡片；卡片顶部是明确的新增按钮，下方按最近活动显示当前游客的标题、时间、选中态和逐项删除操作。中央 Markdown Chat 与只显示来源名称的 Citation，右侧 highlights/recommendations；`public_preview` 来源名称可打开，其他 Citation 保持无地址文本。新增先持久化空 Conversation 再切换；删除成功后选择下一最近会话，无剩余项时创建空会话；切换期间保留明确 loading/failed/ready 状态，不把旧消息显示在新会话下。
+
+客户端在 Chat 初始化前建立 Browser Visitor Identity，所有 fetch 显式携带 token 和当前 conversation id，EventSource 与普通来源链接使用同步 cookie 并在 URL 中携带 conversation id。桌面会话栏位于左侧 Candidate 信息下方且不挤压 Chat；窄屏按 profile 摘要 → 会话管理 → Chat → Citation/highlights 排列，会话列表自身有界滚动，页面无横向溢出，输入固定在可见内容流末端而不遮挡正文。
 
 ### Platform Admin
 
@@ -213,8 +218,8 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 - migration 失败：Web/Worker 不进入 ready；先修 migration，不自动降级旧 schema。
 - 文件与数据库不一致：定期 cleanup 只处理数据库已不存在且明确位于 upload root 下的孤儿；禁止宽范围递归删除。
 - 来源内容请求期间权限、publication 或文件状态变化：每个请求重新查询；不缓存授权决定，返回不存在且不暴露先前状态。Markdown 加载或 PDF 浏览器预览失败只影响当前 dialog，可关闭后重试或按允许格式在新标签页访问。
-- SMTP 未配置：忘记密码在账号查询前返回明确的暂不可发送能力错误；单封投递失败时统一返回已受理、失效本次 token 并记录安全审计，不以投递差异泄露账号存在性。已签发 token 不记录明文，恢复 SMTP 后重新请求即可替代旧 token。
-- 游客 localStorage 不可用或 token 非法：公共页面显示可重试的 session 初始化失败，不回退到共享 Conversation；过期 Conversation 由同一游客建立新 Conversation。
+- SMTP 未配置：忘记密码在账号查询前返回明确的暂不可发送能力错误；单封投递失败时统一返回已受理、失效本次 token 并记录安全审计，不以投递差异泄露账号存在性。已签发 token 不记录明文，恢复 SMTP 后重新请求即可替代旧 token。`ASKME_PUBLIC_BASE_URL` 非法时配置加载失败，不回退到请求 Host。
+- 游客 localStorage 不可用或 token 非法：公共页面显示可重试的 session 初始化失败，不回退到共享 Conversation；过期 Conversation 从列表消失，同一游客没有活动会话时建立新 Conversation。删除正在运行 Deep Analysis 的会话返回可读冲突，运行结束后可重试。
 
 结构化日志字段包含 timestamp、level、service、request/job id、action、outcome、safe error code；敏感 headers、cookie、密码、token、AI prompt、Chunk 原文和完整文件内容默认不记录。
 
@@ -226,10 +231,10 @@ Compose 包含 `db`、一次性 `migrate`、`web`、`worker` 和本地 `mailpit`
 
 ## 11. 验证策略
 
-1. Domain/unit：password/session/reset token、邮箱规范化、认证限流、游客 token/localStorage contract、visibility matrix、公开文件访问矩阵、Markdown 安全渲染、config allowlist、URL 安全、retrieval filter、状态机与 AI response parser。
-2. PostgreSQL integration：migration、注册唯一性、重置单次消费、session 撤销、双 Candidate owner 与双 Visitor Conversation 隔离、job lease/idempotency、级联删除、全文检索、发布/撤销与 Admin 聚合。
+1. Domain/unit：password/session/reset token、邮箱规范化、认证限流、公开 base URL 解析与两类邮件 path、游客 token/localStorage contract、visibility matrix、公开文件访问矩阵、Markdown 安全渲染、config allowlist、URL 安全、retrieval filter、状态机与 AI response parser。
+2. PostgreSQL integration：migration、注册唯一性、重置单次消费、session 撤销、同一 Visitor 多 Conversation 的列表/新建/切换/删除、双 Visitor 与双 publication 隔离、Deep 运行中删除冲突、job lease/idempotency、级联删除、全文检索、发布/撤销与 Admin 聚合。
 3. Adapter contract：真实样例文件、受控 GitHub/Notion/Website HTTP fixture、DeepSeek mock 与一次不记录响应正文的真实 health/chat smoke。
 4. Docker：空 volume 启动、健康、bootstrap、worker job、restart 持久性和显式 reset 目标审计。
-5. Browser：Candidate 注册/登录/注销/忘记/重置/改密、两个独立 localStorage 游客的 Markdown 对话与互相不可见、Candidate/Public 来源预览、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、430 × 932 overflow/a11y；最后用 Chrome 重跑核心场景。
+5. Browser：Candidate 注册/登录/注销/忘记/重置/改密、两个独立 localStorage 游客的 Markdown 对话与互相不可见、同一游客新增/切换/刷新恢复/删除多个会话、Candidate/Public 来源预览、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、430 × 932 overflow/a11y；最后用真实浏览器重跑核心场景。
 
 每个 `SPEC-001` AC 必须在 Review/Scenario/Operation owner 中指向当前 Evidence 后才可勾选；窄测试不能替代跨角色或真实浏览器结论。

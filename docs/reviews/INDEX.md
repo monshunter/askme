@@ -95,4 +95,8 @@
 | REVIEW-090 | REVIEW-090：DESIGN-001 / DESIGN-005 认证、游客与回答增量 Design Review | [REVIEW-090.md](REVIEW-090.md) |
 | REVIEW-091 | REVIEW-091：PLAN-017 统一 SMTP 范围调整 Plan Review | [REVIEW-091.md](REVIEW-091.md) |
 | REVIEW-092 | REVIEW-092：PLAN-017 认证、SMTP、游客隔离与 Citation 修复 Change Review | [REVIEW-092.md](REVIEW-092.md) |
+| REVIEW-093 | REVIEW-093：PLAN-018 Plan Review | [REVIEW-093.md](REVIEW-093.md) |
+| REVIEW-094 | REVIEW-094：SPEC-001 邮件域名与游客多会话增量 Spec Review | [REVIEW-094.md](REVIEW-094.md) |
+| REVIEW-095 | REVIEW-095：DESIGN-001 邮件域名与游客多会话增量 Design Review | [REVIEW-095.md](REVIEW-095.md) |
+| REVIEW-096 | REVIEW-096：PLAN-018 邮件域名与公开多会话 Change Review | [REVIEW-096.md](REVIEW-096.md) |
 <!-- AGENT-HARNESS:END INDEX -->

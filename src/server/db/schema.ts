@@ -293,7 +293,7 @@ export const conversations = pgTable(
   },
   (table) => [
     uniqueIndex("conversations_id_owner_unique").on(table.id, table.ownerId),
-    uniqueIndex("conversations_public_visitor_unique").on(table.publicationId, table.visitorTokenHash).where(sql`${table.mode} = 'public'`),
+    index("conversations_public_visitor_sessions_idx").on(table.publicationId, table.visitorTokenHash, table.lastActivityAt, table.id).where(sql`${table.mode} = 'public'`),
     index("conversations_publication_idx").on(table.publicationId),
     index("conversations_public_expiry_idx").on(table.expiresAt).where(sql`${table.mode} = 'public'`),
   ],

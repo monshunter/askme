@@ -55,6 +55,7 @@ const ALLOWED_KEYS = new Set([
   "ASKME_CANDIDATE_PASSWORD",
   "ASKME_ADMIN_EMAIL",
   "ASKME_ADMIN_PASSWORD",
+  "ASKME_PUBLIC_BASE_URL",
   "ASKME_SMTP_HOST",
   "ASKME_SMTP_PORT",
   "ASKME_SMTP_SECURE",
@@ -89,6 +90,7 @@ export type RuntimeConfig = {
   databaseUrl: string | null;
   uploadRoot: string;
   repositoryArtifactRoot: string;
+  publicBaseUrl: string;
   ai: {
     apiKey: string | null;
     baseUrl: string;
@@ -181,6 +183,18 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
   const mailValid = Boolean(mailHost && mailFrom)
     && Number.isInteger(mailPort) && mailPort >= 1 && mailPort <= 65_535
     && secureValid && Boolean(mailUser) === Boolean(mailPassword);
+  const publicBaseUrlSource = read("ASKME_PUBLIC_BASE_URL") ?? "https://askme.monshunter.xyz/";
+  let publicBaseUrl: string;
+  try {
+    const parsed = new URL(publicBaseUrlSource);
+    if ((parsed.protocol !== "https:" && parsed.protocol !== "http:")
+      || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== "/") {
+      throw new Error("invalid public base URL");
+    }
+    publicBaseUrl = parsed.toString();
+  } catch {
+    throw new Error("ASKME_PUBLIC_BASE_URL must be an absolute HTTP(S) root URL without credentials, query, or fragment");
+  }
   const integer = (key: string, fallback: number, minimum: number, maximum: number) => {
     const raw = read(key);
     if (raw === null) return fallback;
@@ -236,6 +250,7 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
     databaseUrl: read("DATABASE_URL"),
     uploadRoot: read("UPLOAD_ROOT") ?? path.resolve(process.cwd(), "data/uploads"),
     repositoryArtifactRoot: read("ASKME_REPOSITORY_ARTIFACT_ROOT") ?? path.resolve(process.cwd(), "data/repository-artifacts"),
+    publicBaseUrl,
     ai: {
       apiKey: read("ASKME_AI_API_KEY"),
       baseUrl: read("ASKME_AI_BASE_URL") ?? "https://api.deepseek.com/v1",

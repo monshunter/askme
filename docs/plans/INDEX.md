@@ -20,4 +20,5 @@
 | PLAN-015 | PLAN-015：统一 Approved Repository Wiki 的知识浏览与问答证据 | [PLAN-015.md](PLAN-015.md) |
 | PLAN-016 | PLAN-016：闭环 Agent 精准问答、Deep 路由与上下文推荐 | [PLAN-016.md](PLAN-016.md) |
 | PLAN-017 | PLAN-017：闭环认证、游客会话隔离与 Citation 修复 | [PLAN-017.md](PLAN-017.md) |
+| PLAN-018 | PLAN-018：闭环邮件公开域名与游客多会话管理 | [PLAN-018.md](PLAN-018.md) |
 <!-- AGENT-HARNESS:END INDEX -->

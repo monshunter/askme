@@ -7,12 +7,14 @@ import { requestVisitorToken } from "@/server/public-chat/visitor-credential";
 import { AppError } from "@/server/errors";
 import { parsePublicSlug } from "@/server/publication/publication-policy";
 import { getRequestLocale } from "@/i18n/server";
+import { requireResourceId } from "@/server/resource-id";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   const id = requestId(request);
   try {
     const slug = parsePublicSlug((await context.params).slug);
-    return apiData(await loadPublicThread(slug, requestVisitorToken(request), await getRequestLocale()), id);
+    const conversationId = requireResourceId(request.nextUrl.searchParams.get("conversationId") ?? "", "conversation");
+    return apiData(await loadPublicThread(slug, requestVisitorToken(request), conversationId, await getRequestLocale()), id);
   } catch (error) {
     return apiFailure(error, id);
   }

@@ -36,7 +36,7 @@ export type PublicCitation = {
   access: { href: string; mode: SourceOpenMode } | null;
 };
 
-export function projectPublicCitations(slug: string, citations: RawPublicCitation[]): PublicCitation[] {
+export function projectPublicCitations(slug: string, conversationId: string, citations: RawPublicCitation[]): PublicCitation[] {
   const seen = new Set<string>();
   return citations.flatMap((citation) => {
     if (citation.kind === "repository") {
@@ -47,6 +47,7 @@ export function projectPublicCitations(slug: string, citations: RawPublicCitatio
         ? {
             href: `/api/public/agents/${encodeURIComponent(slug)}/repositories/${citation.repositoryId}/source?${new URLSearchParams({
               messageId: citation.messageId,
+              conversationId,
               revisionId: citation.revisionId,
               path: citation.path,
               lineStart: String(citation.lineStart),
@@ -68,7 +69,7 @@ export function projectPublicCitations(slug: string, citations: RawPublicCitatio
     let access: PublicCitation["access"] = null;
     if (citation.visibility === "public_preview") {
       const href = citation.materialKind === "file"
-        ? `/api/public/agents/${encodeURIComponent(slug)}/materials/${citation.materialId}`
+        ? `/api/public/agents/${encodeURIComponent(slug)}/materials/${citation.materialId}?conversationId=${encodeURIComponent(conversationId)}`
         : safeExternalHref(citation.externalUrl);
       if (href) access = { href, mode: sourceOpenMode({ kind: citation.materialKind, title: citation.materialTitle, mimeType: citation.mimeType }) };
     }

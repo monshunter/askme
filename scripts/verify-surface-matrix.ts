@@ -82,6 +82,8 @@ const api: Record<string, ApiSurface> = {
   "/api/public/agents/[slug]/messages/[messageId]/feedback": { methods: ["PUT"], evidence: ["smoke:public-chat"] },
   "/api/public/agents/[slug]/repositories/[repositoryId]/source": { methods: ["GET"], evidence: ["smoke:repository-analysis-runner", "browser:anonymous"] },
   "/api/public/agents/[slug]/session": { methods: ["POST"], evidence: ["smoke:agent-runtime-acceptance", "smoke:public-chat"] },
+  "/api/public/agents/[slug]/sessions": { methods: ["GET", "POST"], evidence: ["smoke:public-chat", "browser:anonymous"] },
+  "/api/public/agents/[slug]/sessions/[conversationId]": { methods: ["DELETE"], evidence: ["smoke:public-chat", "browser:anonymous"] },
   "/api/public/agents/[slug]/suggestions/refresh": { methods: ["POST"], evidence: ["smoke:public-chat"] },
   "/api/publications/current": { methods: ["GET"], evidence: ["smoke:publication"] },
   "/api/publications/publish": { methods: ["POST"], evidence: ["smoke:publication"] },
