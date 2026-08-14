@@ -11,6 +11,7 @@ import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
 
 import { generateGroundedAnswer } from "./answer-generator";
+import { ensureConversationSuggestions } from "./conversation-suggestions";
 import { recordSuccessfulAiUsage } from "./ai-usage";
 import { retrieveUnifiedEvidence } from "./evidence-provider";
 import { answerCitationCount, persistAnswerCitations, validateAnswerEvidence } from "./message-evidence";
@@ -19,7 +20,9 @@ import { recoverStaleAnswers } from "./message-recovery";
 import { assessAgentQuestion } from "./question-policy";
 import { isRepositoryEvidence } from "./retrieval";
 import { loadQuestionRepositories } from "./question-context";
-import { routeQuestion } from "./question-router";
+import { localizedQuestionMessage } from "./question-language";
+import { recordQuestionRoute } from "./question-route-audit";
+import { effectiveQuestionRoute, routeQuestion } from "./question-router";
 
 type ExchangeRow = {
   conversationId: string;
@@ -105,7 +108,36 @@ async function beginExchange(ownerId: string, input: ChatInput) {
   }
 }
 
-export async function loadPreviewThread(ownerId: string, requestedConversationId?: string) {
+async function ensureLatestPreviewConversation(ownerId: string) {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`preview:${ownerId}`]);
+    const existing = await client.query<{ id: string; createdAt: Date; lastActivityAt: Date }>(
+      `SELECT id,created_at AS "createdAt",last_activity_at AS "lastActivityAt"
+       FROM conversations WHERE owner_id=$1 AND mode='preview' ORDER BY last_activity_at DESC,id DESC LIMIT 1`,
+      [ownerId],
+    );
+    if (existing.rows[0]) {
+      await client.query("COMMIT");
+      return existing.rows[0];
+    }
+    const created = await client.query<{ id: string; createdAt: Date; lastActivityAt: Date }>(
+      `INSERT INTO conversations(owner_id,mode) VALUES ($1,'preview')
+       RETURNING id,created_at AS "createdAt",last_activity_at AS "lastActivityAt"`,
+      [ownerId],
+    );
+    await client.query("COMMIT");
+    return created.rows[0]!;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function loadPreviewThread(ownerId: string, requestedConversationId?: string, locale: "en" | "zh-CN" = "en") {
   const pool = getPool();
   const conversation = await pool.query<{ id: string; createdAt: Date; lastActivityAt: Date }>(
     requestedConversationId
@@ -113,9 +145,9 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
       : "SELECT id,created_at AS \"createdAt\",last_activity_at AS \"lastActivityAt\" FROM conversations WHERE owner_id=$1 AND mode='preview' ORDER BY last_activity_at DESC,id DESC LIMIT 1",
     requestedConversationId ? [requestedConversationId, ownerId] : [ownerId],
   );
-  const thread = conversation.rows[0];
+  const thread = conversation.rows[0] ?? (!requestedConversationId ? await ensureLatestPreviewConversation(ownerId) : null);
   if (requestedConversationId && !thread) throw new AppError("CONVERSATION_NOT_FOUND", "The conversation was not found.", 404);
-  if (!thread) return { conversation: null, messages: [] };
+  if (!thread) throw new AppError("CONVERSATION_CREATE_FAILED", "The preview conversation could not be created.", 500);
   await recoverStaleAnswers(thread.id, ownerId, pool);
   const actorKey = `candidate:${ownerId}`;
   const messages = await pool.query(
@@ -182,7 +214,8 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
      ORDER BY message.created_at ASC,CASE WHEN message.role='user' THEN 0 ELSE 1 END,message.id ASC`,
     [thread.id, ownerId, actorKey],
   );
-  return { conversation: thread, messages: messages.rows };
+  const suggestedQuestions = await ensureConversationSuggestions({ conversationId: thread.id, ownerId, mode: "preview", locale });
+  return { conversation: thread, messages: messages.rows, suggestedQuestions };
 }
 
 async function persistAnswer(
@@ -294,21 +327,27 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
       const selected = decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null;
-      const shouldDeep = decision.route === "deep" && decision.confidence >= 0.65;
-      if (shouldDeep && selected?.deepAllowed) {
+      const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null);
+      await recordQuestionRoute(getPool(), {
+        ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
+        requestedRoute: decision.route, effectiveRoute,
+        reasonCode: decision.route === "deep" && effectiveRoute !== "deep" ? "low_confidence_rag_fallback" : decision.route === "refuse" && effectiveRoute !== "refuse" ? "router_refuse_not_deterministic" : decision.reasonCode,
+        confidence: decision.confidence, repositoryId: decision.repositoryId, evidenceCount: evidence.length, requestId,
+      });
+      if (effectiveRoute === "deep" && selected) {
         const run = await queueConversationAnalysisRun({
           pool: getPool(), config, ownerId, repositoryId: selected.id, conversationId: exchange.conversationId,
           assistantMessageId: exchange.assistantMessageId, clientMessageId: input.clientMessageId, actorRole: "candidate", requestId,
         });
         return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: true, analysisRun: run };
       }
-      if (decision.route === "refuse") {
+      if (effectiveRoute === "refuse") {
         const result: PreviewAnswerResult = {
           outcome: "refused" as const,
-          answer: decision.reason === "deep_analysis_not_allowed"
-            ? "Deep Repository analysis is not available for that source. I can still answer from its approved evidence when available."
-            : "I cannot answer that request within the authorized career evidence boundary.",
-          refusalCode: decision.reason === "deep_analysis_not_allowed" ? "DEEP_ANALYSIS_NOT_ALLOWED" : "QUESTION_OUT_OF_SCOPE",
+          answer: decision.reasonCode === "deep_analysis_not_allowed"
+            ? localizedQuestionMessage(input.question, { en: "Deep Repository analysis is not available for that source. I can still answer from its approved evidence when available.", zh: "该来源当前不允许进行深度代码仓库分析；如果存在已批准证据，我仍可以据此回答。" })
+            : localizedQuestionMessage(input.question, { en: "I cannot answer that request within the authorized career evidence boundary.", zh: "该请求超出了当前授权的职业证据范围，我无法回答。" }),
+          refusalCode: decision.reasonCode === "deep_analysis_not_allowed" ? "DEEP_ANALYSIS_NOT_ALLOWED" : "QUESTION_OUT_OF_SCOPE",
           citations: [],
           usage: decision.usage,
         };
@@ -326,6 +365,11 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     if (result.outcome === "insufficient_evidence" && assessment.allowed) {
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
       if (repositories.length === 1 && repositories[0]!.deepAllowed) {
+        await recordQuestionRoute(getPool(), {
+          ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
+          requestedRoute: "rag", effectiveRoute: "deep", reasonCode: "rag_insufficient_single_repository",
+          confidence: 1, repositoryId: repositories[0]!.id, evidenceCount: evidence.length, requestId,
+        });
         const run = await queueConversationAnalysisRun({
           pool: getPool(), config, ownerId, repositoryId: repositories[0]!.id, conversationId: exchange.conversationId,
           assistantMessageId: exchange.assistantMessageId, clientMessageId: input.clientMessageId, actorRole: "candidate", requestId,

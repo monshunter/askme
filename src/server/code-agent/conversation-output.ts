@@ -1,14 +1,18 @@
 import { AppError } from "@/server/errors";
+import { answerMatchesQuestionLanguage } from "@/server/agent/question-language";
 import { citationContentHash, type DossierArtifactEvidence } from "@/server/repositories/dossier-output";
 
 import { codeAnswerResultSchema } from "./contracts";
 
-export function validateCodeAnswerOutput(input: unknown, evidence: DossierArtifactEvidence) {
+export function validateCodeAnswerOutput(input: unknown, evidence: DossierArtifactEvidence, question?: string) {
   const parsed = codeAnswerResultSchema.safeParse(input);
   if (!parsed.success) {
     throw new AppError("CODE_ANSWER_OUTPUT_INVALID", "The deep analysis answer does not match its required schema.", 422);
   }
   const answer = parsed.data;
+  if (question && !answerMatchesQuestionLanguage(question, answer.answerMarkdown)) {
+    throw new AppError("CODE_ANSWER_LANGUAGE_MISMATCH", "The deep analysis answer does not match the current question language.", 422);
+  }
   const seen = new Set<string>();
   for (const citation of answer.citations) {
     if (!evidence.manifestPaths.has(citation.path)) {

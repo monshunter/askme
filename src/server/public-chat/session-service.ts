@@ -2,7 +2,8 @@ import "server-only";
 
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
-import { loadPublicSuggestedQuestions, requirePublicAgentContext } from "@/server/publication/public-agent-service";
+import { refreshConversationSuggestions } from "@/server/agent/conversation-suggestions";
+import { requirePublicAgentContext } from "@/server/publication/public-agent-service";
 import { loadPlatformPolicies } from "@/server/admin/settings-service";
 
 import { consumePublicRateLimit } from "./rate-limit";
@@ -77,13 +78,9 @@ export async function requirePublicConversation(slug: string, visitorToken: stri
   return { publication, conversation, token };
 }
 
-export async function refreshPublicSuggestions(slug: string, visitorToken: string | undefined) {
+export async function refreshPublicSuggestions(slug: string, visitorToken: string | undefined, locale: "en" | "zh-CN" = "en") {
   const { conversation, publication } = await requirePublicConversation(slug, visitorToken);
   await consumePublicRateLimit(`suggestion:${conversation.id}`, 30, 60);
-  const result = await getPool().query<{ suggestionCursor: number }>(
-    `UPDATE conversations SET suggestion_cursor=(suggestion_cursor+1)%1000000,last_activity_at=now()
-     WHERE id=$1 AND owner_id=$2 RETURNING suggestion_cursor AS "suggestionCursor"`,
-    [conversation.id, conversation.ownerId],
-  );
-  return { suggestedQuestions: await loadPublicSuggestedQuestions(conversation.ownerId, result.rows[0]!.suggestionCursor), publicationUpdatedAt: publication.updatedAt };
+  const suggestedQuestions = await refreshConversationSuggestions({ conversationId: conversation.id, ownerId: conversation.ownerId, mode: "public", locale });
+  return { suggestedQuestions, publicationUpdatedAt: publication.updatedAt };
 }

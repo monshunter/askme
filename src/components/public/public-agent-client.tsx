@@ -11,7 +11,7 @@ import { createTranslator, type Locale } from "@/i18n/core";
 
 type Citation = { materialTitle: string; access: { href: string; mode: SourceOpenMode } | null };
 type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[]; analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null };
-type Thread = { conversation: { id: string; expiresAt: string }; messages: PublicMessage[]; idempotent?: boolean; pending?: boolean };
+type Thread = { conversation: { id: string; expiresAt: string }; messages: PublicMessage[]; suggestedQuestions: string[]; idempotent?: boolean; pending?: boolean };
 type PublicProjection = {
   profile: { displayName: string; headline: string; location: string | null; bio: string | null; avatarUrl: string | null };
   agent: { slug: string; status: "published"; publishedAt: string; updatedAt: string };
@@ -60,6 +60,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
     if (!response.ok) throw new Error(t("public.threadLoadFailed"));
     if (!payload.data) throw new ApiClientError("invalid_response");
     setThread(payload.data);
+    setSuggestions(payload.data.suggestedQuestions);
     return payload.data;
   }, [slug, t]);
 
@@ -148,6 +149,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
       }
       if (!result.payload.data) throw new ApiClientError("invalid_response");
       setThread(result.payload.data);
+      setSuggestions(result.payload.data.suggestedQuestions);
       setQuestion("");
     } catch (error) {
       setRetryQuestion(normalized);

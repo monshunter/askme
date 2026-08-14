@@ -79,7 +79,6 @@ const contentReviewInput = z.object({
 const settingsInput = z.object({
   publicSessionHourlyLimit: z.number().int().min(1).max(100).optional(),
   publicChatMinuteLimit: z.number().int().min(1).max(60).optional(),
-  publicChatDailyLimit: z.number().int().min(1).max(500).optional(),
   negativeFeedbackAutoFlag: z.boolean().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one platform policy is required.");
 

@@ -1,27 +1,9 @@
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
 
 import type { RuntimeConfig } from "@/server/config";
 import { AppError } from "@/server/errors";
 
-export type AnalysisQuotaScope = { type: keyof RuntimeConfig["codeAgent"]["dailyQuotas"]; key: string };
-
-export async function analysisQuotaScopesAvailable(
-  pool: Pool,
-  config: RuntimeConfig["codeAgent"],
-  scopes: AnalysisQuotaScope[],
-) {
-  const windowStartedAt = new Date();
-  windowStartedAt.setUTCHours(0, 0, 0, 0);
-  for (const scope of scopes) {
-    if (!scope.key || scope.key.length > 200) return false;
-    const result = await pool.query<{ used: number }>(
-      `SELECT used FROM analysis_quota_usage WHERE scope_type=$1 AND scope_key=$2 AND window_started_at=$3`,
-      [scope.type, scope.key, windowStartedAt],
-    );
-    if ((result.rows[0]?.used ?? 0) >= config.dailyQuotas[scope.type]) return false;
-  }
-  return true;
-}
+type AnalysisQuotaScope = { type: keyof RuntimeConfig["codeAgent"]["dailyQuotas"]; key: string };
 
 export async function consumeAnalysisDailyQuotas(
   client: PoolClient,

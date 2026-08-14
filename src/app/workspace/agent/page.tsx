@@ -16,12 +16,12 @@ function pageOrigin(values: Headers) {
 
 export default async function AgentPreviewPage() {
   const user = await requirePageUser("candidate");
-  const [thread, settings, publicationOverview, requestHeaders, locale] = await Promise.all([
-    loadPreviewThread(user.id),
+  const locale = await getRequestLocale();
+  const [thread, settings, publicationOverview, requestHeaders] = await Promise.all([
+    loadPreviewThread(user.id, undefined, locale),
     loadAgentSettings(user.id),
     loadPublicationOverview(user.id),
     headers(),
-    getRequestLocale(),
   ]);
   const shareUrl = publicationOverview.publication ? new URL(`/a/${publicationOverview.publication.slug}`, pageOrigin(requestHeaders)).toString() : null;
   return (

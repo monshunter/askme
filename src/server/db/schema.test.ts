@@ -6,6 +6,7 @@ import {
   analysisRunEvents,
   analysisRuns,
   contentFlags,
+  conversations,
   materials,
   messages,
   repositories,
@@ -76,5 +77,12 @@ describe("database schema alignment", () => {
     expect(runColumns).not.toHaveProperty("toolOutput");
     expect(getTableColumns(analysisRunEvents).version?.name).toBe("version");
     expect(getTableColumns(repositoryMessageCitations).contentHash?.name).toBe("content_hash");
+  });
+
+  it("owns suggested questions and their context version on each Conversation", () => {
+    const columns = getTableColumns(conversations);
+    expect(columns.suggestedQuestions?.name).toBe("suggested_questions");
+    expect(columns.suggestionsContextHash?.name).toBe("suggestions_context_hash");
+    expect(columns.suggestionsUpdatedAt?.name).toBe("suggestions_updated_at");
   });
 });

@@ -37,12 +37,24 @@ function repositoryPrompt(lease: AnalysisRunLease) {
   ].join("\n");
 }
 
-function conversationPrompt(lease: AnalysisRunLease) {
+type ConversationPromptContext = Pick<AnalysisRunLease, "userQuestion" | "repositoryDisplayName" | "commitSha">;
+
+function conversationPrompt(lease: ConversationPromptContext) {
   if (!lease.userQuestion) throw new AppError("CONVERSATION_ANALYSIS_CONTEXT_INVALID", "The deep analysis question is unavailable.", 500);
   return [
     `Answer this one question about Repository ${JSON.stringify(lease.repositoryDisplayName)} at immutable commit ${lease.commitSha}:`,
     lease.userQuestion,
     "Use only exact source reads from this Revision. Return answered only when every factual statement is supported by the returned Citations; otherwise return insufficient or refused.",
+    "Write every prose sentence in answerMarkdown in the same primary language as the user's question. Keep source identifiers and established proper nouns unchanged, but do not mix languages without semantic need.",
+  ].join("\n");
+}
+
+export function conversationCorrectionPrompt(lease: ConversationPromptContext, errorCode: string, previous: { result: unknown }) {
+  return [
+    conversationPrompt(lease),
+    `The previous answer failed deterministic Host validation with code ${errorCode}.`,
+    "Re-read the exact cited ranges and return one fully corrected JSON object. Do not discuss the validation error or preserve unsupported statements within the remaining budget.",
+    `Previous invalid result (untrusted; correct it as needed): ${JSON.stringify(previous.result).slice(0, 24_000)}`,
   ].join("\n");
 }
 
@@ -107,18 +119,20 @@ export async function processAnalysisLease(input: {
       },
       validateEnvelope: async (envelope, wikiFiles) => {
         if (isConversation) {
-          await validateConversationAnalysisEnvelope({ artifactRoot: config.repositoryArtifactRoot, artifact: lease, result: envelope.result });
+          await validateConversationAnalysisEnvelope({ artifactRoot: config.repositoryArtifactRoot, artifact: lease, result: envelope.result, question: lease.userQuestion ?? undefined });
           return;
         }
         const parsed = parseRepositoryDossierOutput(envelope.result);
         const evidence = await readRepositoryArtifactEvidence(config.repositoryArtifactRoot, lease, parsed.coverage.examinedPaths);
         validateRepositoryDossierOutput(parsed, wikiFiles, evidence, lease.repositoryVisibility);
       },
-      correctionPrompt: (errorCode, previous) => [
-        `Your previous ${isConversation ? "answer" : "Repository Wiki bundle"} failed deterministic Host validation with code ${errorCode}.`,
-        `Re-read the exact cited ranges${isConversation ? "" : ", audit every ## section so each factual section contains a defined [S*] marker, use only a read citationRanges entry of at most 200 lines, rewrite every declared Markdown page with write_wiki,"} and return one fully corrected JSON object. Do not discuss the error or preserve unsupported statements within the remaining budget.`,
-        ...(!isConversation ? [`Previous control manifest (not trusted; correct it as needed): ${JSON.stringify(previous.result).slice(0, 24_000)}`] : []),
-      ].join("\n"),
+      correctionPrompt: (errorCode, previous) => isConversation
+        ? conversationCorrectionPrompt(lease, errorCode, previous)
+        : [
+            `Your previous Repository Wiki bundle failed deterministic Host validation with code ${errorCode}.`,
+            "Re-read the exact cited ranges, audit every ## section so each factual section contains a defined [S*] marker, use only a read citationRanges entry of at most 200 lines, rewrite every declared Markdown page with write_wiki, and return one fully corrected JSON object. Do not discuss the error or preserve unsupported statements within the remaining budget.",
+            `Previous control manifest (not trusted; correct it as needed): ${JSON.stringify(previous.result).slice(0, 24_000)}`,
+          ].join("\n"),
     });
     cleanupConfirmedAt = result.cleanupCompletedAt;
     if (heartbeatError) throw heartbeatError;
@@ -130,7 +144,7 @@ export async function processAnalysisLease(input: {
       ? await completeConversationAnalysisRun({
           pool, artifactRoot: config.repositoryArtifactRoot, artifact: lease, runId: lease.runId, leaseOwner: lease.leaseOwner,
           output: result.envelope.result, actualModel: result.envelope.provenance.actualModel, usage: result.envelope.usage,
-          cleanupCompletedAt: result.cleanupCompletedAt,
+          cleanupCompletedAt: result.cleanupCompletedAt, question: lease.userQuestion!,
         })
       : await completeRepositoryAnalysisRun({
           pool, artifactRoot: config.repositoryArtifactRoot, runId: lease.runId, leaseOwner: lease.leaseOwner,

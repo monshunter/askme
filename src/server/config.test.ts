@@ -63,12 +63,16 @@ describe("runtime config", () => {
       memoryMib: 1_024,
       diskSizeGb: 2,
       globalConcurrency: 2,
-      dailyQuotas: { global: 1_000, candidate: 50, repository: 10, publication: 20, visitor: 5 },
+      dailyQuotas: { global: 1_000, candidate: 50, repository: 10 },
       budgets: {
         repositoryAnalysis: { analysisTimeoutMs: 1_200_000, maxRounds: 50, maxToolCalls: 80 },
         conversationAnalysis: { analysisTimeoutMs: 120_000, maxRounds: 50, maxToolCalls: 80 },
       },
     });
+  });
+
+  it("does not accept obsolete publication or visitor daily Conversation Deep quotas", () => {
+    expect(parseAllowedEnv("ASKME_CODE_AGENT_PUBLICATION_DAILY_QUOTA=1\nASKME_CODE_AGENT_VISITOR_DAILY_QUOTA=1\n")).toEqual({});
   });
 
   it("allows developers to override the shared Code Agent round budget", () => {

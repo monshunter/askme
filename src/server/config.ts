@@ -51,8 +51,6 @@ const ALLOWED_KEYS = new Set([
   "ASKME_CODE_AGENT_GLOBAL_DAILY_QUOTA",
   "ASKME_CODE_AGENT_CANDIDATE_DAILY_QUOTA",
   "ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA",
-  "ASKME_CODE_AGENT_PUBLICATION_DAILY_QUOTA",
-  "ASKME_CODE_AGENT_VISITOR_DAILY_QUOTA",
   "ASKME_CANDIDATE_EMAIL",
   "ASKME_CANDIDATE_PASSWORD",
   "ASKME_ADMIN_EMAIL",
@@ -119,8 +117,6 @@ export type RuntimeConfig = {
       global: number;
       candidate: number;
       repository: number;
-      publication: number;
-      visitor: number;
     };
     budgets: {
       repositoryAnalysis: CodeAgentBudget;
@@ -268,8 +264,6 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
         global: integer("ASKME_CODE_AGENT_GLOBAL_DAILY_QUOTA", 1_000, 1, 1_000_000),
         candidate: integer("ASKME_CODE_AGENT_CANDIDATE_DAILY_QUOTA", 50, 1, 100_000),
         repository: integer("ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA", 10, 1, 10_000),
-        publication: integer("ASKME_CODE_AGENT_PUBLICATION_DAILY_QUOTA", 20, 1, 100_000),
-        visitor: integer("ASKME_CODE_AGENT_VISITOR_DAILY_QUOTA", 5, 1, 10_000),
       },
       budgets: {
         repositoryAnalysis: {

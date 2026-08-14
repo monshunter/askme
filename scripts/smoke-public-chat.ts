@@ -10,7 +10,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL is required");
 
 type Citation = { materialTitle?: string; access?: unknown; chunkId?: never };
 type Message = { id?: string; role?: "user" | "assistant"; status?: string; content?: string; errorCode?: string | null; feedback?: string | null; citations?: Citation[] };
-type Thread = { conversation?: { id?: string }; messages?: Message[]; idempotent?: boolean };
+type Thread = { conversation?: { id?: string }; messages?: Message[]; suggestedQuestions?: string[]; idempotent?: boolean };
 type Envelope<T> = { data?: T; error?: { code?: string } };
 
 const db = new Client({ connectionString: databaseUrl });
@@ -96,7 +96,7 @@ try {
   };
   if ((await chat(undefined)).response.status !== 401) throw new Error("Public Chat did not require the visitor credential");
   const empty = await chat(firstCookie);
-  if (!empty.response.ok || empty.payload.data?.messages?.length !== 0) throw new Error("New public Chat thread was not empty");
+  if (!empty.response.ok || empty.payload.data?.messages?.length !== 0 || empty.payload.data.suggestedQuestions?.length !== 4) throw new Error("New public Chat thread was not empty with guided questions");
 
   const firstClientMessageId = randomUUID();
   const answered = await chat(firstCookie, { clientMessageId: firstClientMessageId, question: "What impact did the Orion Agent deliver?" });
@@ -105,6 +105,11 @@ try {
   if (!answered.response.ok || firstAnswer?.status !== "completed" || firstAnswer.errorCode || firstCitation?.materialTitle !== "Orion Agent delivery" || "chunkId" in (firstCitation ?? {})) {
     throw new Error(`Public Chat did not persist a safe grounded Citation: ${JSON.stringify({ status: answered.response.status, answerStatus: firstAnswer?.status, errorCode: firstAnswer?.errorCode, citationCount: firstAnswer?.citations?.length, materialTitle: firstCitation?.materialTitle, exposedChunkId: "chunkId" in (firstCitation ?? {}) })}`);
   }
+  if (answered.payload.data?.suggestedQuestions?.length !== 4 || JSON.stringify(answered.payload.data.suggestedQuestions) === JSON.stringify(empty.payload.data?.suggestedQuestions)) {
+    throw new Error("Public suggestions did not update from the settled conversation");
+  }
+  const suggestionUsage = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM ai_usage WHERE owner_id=$1 AND purpose='public.suggestions'", [ownerId]);
+  if ((suggestionUsage.rows[0]?.count ?? 0) < 1) throw new Error("Public conversation suggestions did not use the configured LLM");
   const replay = await chat(firstCookie, { clientMessageId: firstClientMessageId, question: "What impact did the Orion Agent deliver?" });
   if (!replay.response.ok || replay.payload.data?.idempotent !== true || replay.payload.data.messages?.length !== 2) throw new Error("Public Chat replay was not idempotent");
 

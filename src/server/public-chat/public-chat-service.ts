@@ -3,11 +3,14 @@ import "server-only";
 import { performance } from "node:perf_hooks";
 
 import { generateGroundedAnswer } from "@/server/agent/answer-generator";
+import { ensureConversationSuggestions } from "@/server/agent/conversation-suggestions";
 import { recordSuccessfulAiUsage } from "@/server/agent/ai-usage";
 import { retrieveUnifiedEvidence } from "@/server/agent/evidence-provider";
 import { answerCitationCount, persistAnswerCitations, validateAnswerEvidence } from "@/server/agent/message-evidence";
 import { loadQuestionRepositories } from "@/server/agent/question-context";
-import { routeQuestion } from "@/server/agent/question-router";
+import { localizedQuestionMessage } from "@/server/agent/question-language";
+import { recordQuestionRoute } from "@/server/agent/question-route-audit";
+import { effectiveQuestionRoute, routeQuestion } from "@/server/agent/question-router";
 import { isRepositoryEvidence } from "@/server/agent/retrieval";
 import { recoverStaleAnswers } from "@/server/agent/message-recovery";
 import { OpenAiChatClient } from "@/server/ai/openai-compatible";
@@ -46,11 +49,10 @@ async function existingExchange(conversationId: string, clientMessageId: string)
   return result.rows[0] ?? null;
 }
 
-async function beginPublicExchange(conversation: PublicConversation, input: PublicChatInput, limits: { publicChatMinuteLimit: number; publicChatDailyLimit: number }) {
+async function beginPublicExchange(conversation: PublicConversation, input: PublicChatInput, limits: { publicChatMinuteLimit: number }) {
   const already = await existingExchange(conversation.id, input.clientMessageId);
   if (already) return { ...already, created: false as const };
   await consumePublicRateLimit(`chat:minute:${conversation.id}`, limits.publicChatMinuteLimit, 60);
-  await consumePublicRateLimit(`chat:day:${conversation.id}`, limits.publicChatDailyLimit, 86_400);
 
   const client = await getPool().connect();
   try {
@@ -101,7 +103,7 @@ async function priorAllowedQuestions(conversationId: string, currentMessageId: s
     .reverse();
 }
 
-export async function loadPublicThread(slug: string, visitorToken: string | undefined) {
+export async function loadPublicThread(slug: string, visitorToken: string | undefined, locale: "en" | "zh-CN" = "en") {
   const { conversation, token } = await requirePublicConversation(slug, visitorToken);
   await recoverStaleAnswers(conversation.id, conversation.ownerId, getPool());
   const actorKey = `visitor:${hashVisitorToken(token)}`;
@@ -169,9 +171,11 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
      ORDER BY message.created_at ASC,CASE WHEN message.role='user' THEN 0 ELSE 1 END,message.id ASC`,
     [conversation.id, conversation.ownerId, actorKey],
   );
+  const suggestedQuestions = await ensureConversationSuggestions({ conversationId: conversation.id, ownerId: conversation.ownerId, mode: "public", locale });
   return {
     conversation: { id: conversation.id, expiresAt: conversation.expiresAt },
     messages: messages.rows.map((message) => ({ ...message, citations: projectPublicCitations(slug, message.citations) })),
+    suggestedQuestions,
   };
 }
 
@@ -314,7 +318,14 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId: conversation.ownerId, purpose: "public.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
       const selected = decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null;
-      if (decision.route === "deep" && decision.confidence >= 0.65 && selected?.deepAllowed) {
+      const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null);
+      await recordQuestionRoute(getPool(), {
+        ownerId: conversation.ownerId, actorRole: "interviewer", conversationId: conversation.id,
+        requestedRoute: decision.route, effectiveRoute,
+        reasonCode: decision.route === "deep" && effectiveRoute !== "deep" ? "low_confidence_rag_fallback" : decision.route === "refuse" && effectiveRoute !== "refuse" ? "router_refuse_not_deterministic" : decision.reasonCode,
+        confidence: decision.confidence, repositoryId: decision.repositoryId, evidenceCount: evidence.length, requestId,
+      });
+      if (effectiveRoute === "deep" && selected) {
         const run = await queueConversationAnalysisRun({
           pool: getPool(), config, ownerId: conversation.ownerId, repositoryId: selected.id,
           conversationId: conversation.id, assistantMessageId: createdExchange.assistantMessageId,
@@ -322,13 +333,13 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
         });
         return { ...(await loadPublicThread(slug, token)), idempotent: false, pending: true, analysisRun: run };
       }
-      if (decision.route === "refuse") {
+      if (effectiveRoute === "refuse") {
         const result: AnswerResult = {
           outcome: "refused",
-          answer: decision.reason === "deep_analysis_not_allowed"
-            ? "Deep Repository analysis is not enabled for this public Agent. I can answer from approved public evidence when available."
-            : "I cannot answer that request within this public Agent's authorized career evidence.",
-          refusalCode: decision.reason === "deep_analysis_not_allowed" ? "DEEP_ANALYSIS_NOT_ALLOWED" : "QUESTION_OUT_OF_SCOPE",
+          answer: decision.reasonCode === "deep_analysis_not_allowed"
+            ? localizedQuestionMessage(input.question, { en: "Deep Repository analysis is not enabled for this public Agent. I can answer from approved public evidence when available.", zh: "这个公开 Agent 没有启用深度代码仓库分析；如果存在已批准的公开证据，我仍可以据此回答。" })
+            : localizedQuestionMessage(input.question, { en: "I cannot answer that request within this public Agent's authorized career evidence.", zh: "该请求超出了这个公开 Agent 的授权职业证据范围，我无法回答。" }),
+          refusalCode: decision.reasonCode === "deep_analysis_not_allowed" ? "DEEP_ANALYSIS_NOT_ALLOWED" : "QUESTION_OUT_OF_SCOPE",
           citations: [],
           usage: decision.usage,
         };
@@ -352,6 +363,11 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
         publicationId: publication.publicationId, visitorKey: hashVisitorToken(token),
       });
       if (repositories.length === 1 && repositories[0]!.deepAllowed) {
+        await recordQuestionRoute(getPool(), {
+          ownerId: conversation.ownerId, actorRole: "interviewer", conversationId: conversation.id,
+          requestedRoute: "rag", effectiveRoute: "deep", reasonCode: "rag_insufficient_single_repository",
+          confidence: 1, repositoryId: repositories[0]!.id, evidenceCount: evidence.length, requestId,
+        });
         const run = await queueConversationAnalysisRun({
           pool: getPool(), config, ownerId: conversation.ownerId, repositoryId: repositories[0]!.id,
           conversationId: conversation.id, assistantMessageId: createdExchange.assistantMessageId,

@@ -6,7 +6,9 @@ Owner boundary：满足 [SPEC-002](../specs/SPEC-002.md) 的 Repository、Wiki�
 
 Status：`active`
 
-唯一父 Plan：[PLAN-014](../plans/PLAN-014.md)
+创建父 Plan：[PLAN-014](../plans/PLAN-014.md)
+
+当前修订 Plan：[PLAN-016](../plans/PLAN-016.md)
 
 批准依据：[REVIEW-073](../reviews/REVIEW-073.md)
 
@@ -79,12 +81,13 @@ V1 只支持一个 Web 实例。该实例持有一条 PostgreSQL `LISTEN` 连接
 | GitHub Sync Adapter | 校验 GitHub.com URL/ref，使用请求内 Token 解析 SHA、下载 archive，随后立即丢弃 Token |
 | Artifact Service | 安全解压、过滤、限额、checksum、`.tar.zst` 持久化、引用计数与 GC |
 | Document Retrieval | 只检索文件/Website/Notion、Knowledge Item 与 Approved Wiki section，不读取源码正文 |
-| Question Router | 确定性门禁后的 `rag/deep/refuse` 分类，不拥有权限 |
+| Question Router | 确定性门禁后的 `rag/deep/refuse` 分类与稳定 reason code，不拥有权限 |
 | Business AI Adapter | 使用官方 `openai` SDK 承担 Router 与普通回答，统一 schema、超时、重试和错误 |
+| Conversation Suggestion Service | 以单个会话的完整可见消息、当前授权主题、locale 与 refresh cursor 生成并持久化四条上下文相关问题；失败时使用确定性上下文 fallback |
 | Agent Runner | lease run、创建/销毁 microVM、注入运行配置、复制 artifact、预算与最终校验 |
 | Pi Guest Runtime | 在 guest 内加载一个产品 Skill，执行多轮只读搜索/阅读与模型决策 |
 | Analysis Event Bridge | 事务更新 run/version 后 `NOTIFY`，SSE 连接按授权发送快照和最小状态事件 |
-| Admin Controller | 配额、禁用、重跑、取消与运行健康治理；不分析代码 |
+| Admin Controller | Repository Wiki 运行资源控制、禁用、重跑、取消与运行健康治理；不限制 Agent 问答次数，也不分析代码 |
 
 Pi 是 Askme 的业务运行时依赖，不是 Askme 源码开发 Harness。业务配置、contracts、guest 和 Skill 全部放在 `src` 下，不创建项目根 `.pi`，也不从 `.agents/skills` 加载业务能力。建议目录：
 
@@ -161,6 +164,16 @@ Profile fingerprint 包含模型名、thinking/reasoning、token/timeout/tool bu
 
 消息 Citation 通过统一 EvidenceProvider 投影文档或 Repository 来源。Repository Citation 的内部记录保存 SHA/path/lines/hash；公共 API 不直接序列化内部记录，而是每次根据当前 publication/visibility 生成名称-only 或 source-preview DTO。
 
+问答路由只把安全元数据写入 `audit_events`：requested route、effective route、稳定 reason code、confidence、repository id 和 evidence count；不保存问题、回答、prompt 或 reasoning。RAG 回答的 Repository Evidence 先由模型选择 evidence index 与其中实际支撑回答的 `[S*]` marker，再由 Host 校验 marker 确实属于该 section，最终消息只持久化这些被选择的源码 Citation，而不是 section 中所有候选 marker。
+
+### 5.4 会话推荐问题
+
+推荐问题的唯一 owner 是 `conversations`，不是 Candidate 的全局 `agent_settings`。additive migration 为会话增加 `suggested_questions jsonb`、`suggestions_context_hash text` 与 `suggestions_updated_at timestamptz`；既有 `suggestion_cursor` 作为同一上下文的主动刷新版本继续使用。历史 `agent_settings.suggested_questions` 可以暂时保留列，但新读写路径忽略它，不做破坏性清理。
+
+`ConversationSuggestionService` 读取该会话全部当前可见且已落定的消息，并读取调用方当前有权引用的 Knowledge Item 标题与 active Approved Repository 主题。它以最后一条用户问题判定当前语言（空会话回退 UI locale），并把 locale、cursor、消息 id/status/content 与授权主题生成 context hash：hash 未变化时直接复用持久结果；hash 变化或用户主动刷新时调用 Router profile 生成四条同语言、非重复、可由当前授权信息继续回答且能推进当前聊天进度的问题，并使用 optimistic hash 更新避免并发覆盖新上下文。对超长历史只做确定性分段压缩并保留全部轮次的主题，不静默丢弃早期会话语义。
+
+空会话不依赖随机模板或 AI 调用，而是由当前授权项目、经历与 Repository 清单生成稳定的引导问题；没有任何主题时使用通用的职业资料发现问题。已有会话的 AI 生成失败、超时或 schema 不合格不能回滚已经完成的回答，服务改用包含最近问题、当前项目/Repository 和 cursor 的确定性上下文 fallback。Candidate 首次进入时确保存在一个空 preview 会话，因此初始引导也有真实 conversation owner；Public session 创建后采用相同会话级合同。
+
 ## 6. Repository 同步、过滤与 Artifact
 
 ```mermaid
@@ -193,7 +206,7 @@ Artifact Service 以过滤后 manifest + file content 计算 content key，生�
 ```mermaid
 flowchart TD
   Q["Question"] --> G{"Deterministic gates"}
-  G -->|deny| X["Refuse or quota error"]
+  G -->|deny| X["Refuse or short-window rate error"]
   G -->|allow| R["Document and Approved Wiki section retrieval"]
   R --> L["Router Profile"]
   L -->|rag| A["RAG Answer Profile"]
@@ -205,11 +218,11 @@ flowchart TD
   T -->|no and denied| I["Insufficient"]
 ```
 
-门禁先确定 caller mode、owner/publication、唯一 Repository、visibility、Candidate public-deep setting、rate/concurrency/quota 和 question scope。Router 输入只包含问题、允许的文档/Wiki section 摘要和候选 repository id；Zod schema 只接受 `rag|deep|refuse`、reason、confidence、repositoryId。repositoryId 必须来自 Host 候选集合。
+门禁先确定 caller mode、owner/publication、唯一 Repository、visibility、Candidate public-deep setting、短窗口 rate、并发和 question scope；Conversation Analysis 不读取或消费按日问题次数。Router 输入只包含问题、允许的文档/Wiki section 摘要和候选 repository id；Zod schema 只接受 `rag|deep|refuse`、稳定 reason code、confidence、repositoryId。repositoryId 必须来自 Host 候选集合。Host 在进入 RAG、排队 Deep 或拒绝前确定 effective route 并写安全路由审计；RAG Evidence 不足后升级 Deep 时再写一条稳定的 escalation event。
 
-Document Retrieval 继续使用 PostgreSQL 的结构化查询与全文搜索；个人资料规模允许在预算内直接加载少量全文。`ApprovedWikiEvidenceProvider` 在请求内切分并排序 Markdown section，与 `DocumentEvidenceProvider` 返回统一 evidence DTO；Wiki marker 对应的内部源码 Citation 仍由专用 projector 处理。V1 不引入 vector database。
+Document Retrieval 继续使用 PostgreSQL 的结构化查询与全文搜索；个人资料规模允许在预算内直接加载少量全文。`ApprovedWikiEvidenceProvider` 在请求内切分并排序 Markdown section，与 `DocumentEvidenceProvider` 返回统一 evidence DTO；Wiki marker 对应的内部源码 Citation 仍由专用 projector 处理。Repository display name/owner/repo alias 只用于识别问题指向的 Repository，不得作为 section 正文相关性词，否则 `copybook` 与 `CopybookPreview` 这类字符串碰撞会把无关入口文件提升为证据；剔除实体词后无正文关键词命中时，只回退到 Overview/Summary 等项目级 section。V1 不引入 vector database。
 
-`rag` 路径由 Business AI Adapter 生成同步或短时流式回答；只允许引用本次候选 evidence。`deep` 路径先创建 pending assistant message + run，HTTP 返回 accepted/run id，浏览器转为 SSE 观察。run 完成后 Web 重新读取最终 message；run 失败不再次调用 RAG 生成看似成功的替代答案。
+`rag` 路径由 Business AI Adapter 生成同步或短时流式回答；Host 根据当前用户问题确定 `zh-CN|en` 并在 system contract 中要求回答、证据不足与拒绝反馈使用同一主要语言。结构化输出必须对每条 Repository Evidence 同时返回实际使用的 `[S*]` marker，Host 只接受该 Evidence 自带 marker 的子集，并只持久化被选择的源码 Citation。Document Evidence 继续按 evidence index 引用。`deep` 路径把同一语言要求写入 Code Q&A Skill，最终 Host 仍校验结构与 Citation；它先创建 pending assistant message + run，HTTP 返回 accepted/run id，浏览器转为 SSE 观察。run 完成后 Web 重新读取最终 message；run 失败不再次调用 RAG 生成看似成功的替代答案。
 
 ## 8. Agent Runner、BoxLite 与 Pi guest
 
@@ -334,18 +347,18 @@ Agent prompt 将 artifact 中的所有内容标记为不可信数据，并明确
 
 ## 12. 预算、并发与成本控制
 
-Host 是预算 owner。所有 Profile/Skill 只能消费预算，不能自行提高。默认值来自 `SPEC-002`，Runner 在每次 tool/model 调用前原子扣减；输出截断、timeout 和 quota 都使用稳定终止原因。
+Host 是单次运行资源预算 owner。所有 Profile/Skill 只能消费预算，不能自行提高。默认值来自 `SPEC-002`，Runner 在每次 tool/model 调用前原子扣减；输出截断、timeout 和 budget 都使用稳定终止原因。
 
 多层限额至少覆盖：
 
-- visitor/session：并发 1、时间窗口内 run 数与 token/tool预算；
-- publication/Candidate：并发 2、日/小时 run 与 usage；
-- Repository：同步、Wiki rerun 与 deep run 速率；
+- visitor/session：并发 1、短窗口防滥用与单 run token/tool 预算；
+- publication/Candidate：并发 2、短窗口防滥用与 usage 观测，不设 Agent 问答日次数；
+- Repository：同步、Wiki rerun 的运行资源控制；Conversation Deep 不按 Repository 日次数拒绝；
 - runner global：并发 2、至少一个 realtime slot；
 - sandbox：1 vCPU、1 GiB memory、2 GiB disk、network allowlist；
 - 单 run：deadline、round、tool calls、read/search/output/final token。
 
-配额拒绝发生在创建 microVM 前。Repository Analysis 可以排队且低优先级，不得耗尽全部 realtime slot。V1 只记录 usage 和配额，不计算价格、不扣费；是否接入商业计费留到有真实需求时决定。
+Repository Analysis 可以继续使用 global/Candidate/Repository 运行资源配额并以低优先级排队，不得耗尽全部 realtime slot；这不适用于 Agent 问答的 `conversation_analysis`。Candidate 与 Public 问答均不读取或消费 `analysis_quota_usage` 的日次数，也没有 public session 每日问题数控制；仍保留短窗口防滥用、并发、deadline、round、tool、token 与 microVM 资源上限。V1 只记录 usage，不计算价格、不扣费；未来若引入 token/积分余额，由独立余额 owner 决定可用性，不能恢复为 Askme 自定义问题次数限制。
 
 ## 13. 失败、恢复与可观测性
 
@@ -375,7 +388,8 @@ Askme 仍在开发阶段，不做旧 GitHub Material 或 `DEEPSEEK_*` 配置兼�
 4. 构建并锁定 `askme-code-agent` image，交付 Host runner、BoxLite adapter、Pi guest、两个产品 Skill、预算和 Citation validator。
 5. 交付 Router、EvidenceProvider、Conversation Analysis、消息持久化和失败语义，先只开放 Candidate preview。
 6. 交付 PostgreSQL NOTIFY + SSE、取消/reconcile/GC 和 readiness/observability。
-7. 在固定 public/private Repository 验收通过后，增加 Candidate public-deep开关和公共自动触发；默认关闭，按 publication 配额逐步启用。
+7. 在固定 public/private Repository 验收通过后，增加 Candidate public-deep 开关和公共自动触发；默认关闭，启用后仍受授权、短窗口防滥用、并发与单 run 预算约束，但不设 publication/visitor 日次数。
+8. additive 增加会话推荐问题字段并把 Candidate/Public 读写切换到 `ConversationSuggestionService`；历史 Agent settings 推荐列与历史日配额记录保留但不再参与问答决策。删除 public daily-limit 管理入口，但不做破坏性数据清理。
 
 Wiki migration 先 additive 增加 Markdown 字段与 Citation 表，再原子切换 consumer；旧 Claim-only active pointer 被清空并标记 outdated，但旧行和 artifact 保留。每个 migration 仍只向前、可在空库重建。回滚优先关闭 `ASKME_CODE_AGENT_ENABLED`、停止 runner和公共开关，保留新表与 artifact 供诊断；不得通过宽范围删除恢复。
 
@@ -383,13 +397,13 @@ Wiki migration 先 additive 增加 Markdown 字段与 Citation 表，再原子�
 
 ### 15.1 自动化与运行验证
 
-1. Unit：URL/ref、filter、archive path、防 zip bomb、visibility、Router schema、budget、result/Citation validation、projection、config allowlist。
+1. Unit：URL/ref、filter、archive path、防 zip bomb、visibility、Router schema/reason code、Repository 实体词与 section 相关性隔离、精确 marker Citation、budget、result/Citation validation、projection、config allowlist、会话推荐 context hash/fallback。
 2. PostgreSQL integration：双 owner 隔离、revision activation transaction、Wiki immutability/approval、legacy active 退出、lease/version、cancel/reconcile、historical Citation retention 与 GC。
 3. SDK contract：通用 OpenAI-compatible Chat Completions mock + 真实 smoke，覆盖 timeout/body watchdog、retry、thinking/provider compatibility 与 usage，不记录 raw body。
 4. Guest/image contract：镜像 digest、Skill hash、无动态 install、固定 tools、repository 指令不加载、无 host mount、network deny、credential absence、资源限制与销毁。
-5. Runner E2E：Repository Analysis 与 Conversation Analysis 两种 purpose、优先级保留、crash/lease、invalid Citation 修正、permission cancel 和 cleanup failure。
+5. Runner E2E：Repository Analysis 与 Conversation Analysis 两种 purpose、优先级保留、crash/lease、invalid Citation 修正、permission cancel 和 cleanup failure；真实问题必须产生并完成 `conversation_analysis`，不能只以 Router 调用或 Repository Wiki run 代替 Deep 验收。
 6. SSE integration：snapshot、version、missed NOTIFY、listener reconnect、heartbeat、auth revoke、proxy buffering 与 terminal resource fetch。
-7. Browser：Candidate sync/Wiki Markdown 阅读编辑预览、普通/深度路由、pending/completed/insufficient/failed/cancelled、public auto trigger、Citation降权和移动端无阻塞。
+7. Browser：Candidate sync/Wiki Markdown 阅读编辑预览、普通/深度路由、pending/completed/insufficient/failed/cancelled、public auto trigger、Citation 降权和移动端无阻塞；覆盖 `copybook` 项目概览只显示直接支撑来源、Candidate/Public 不受日次数阻断、空会话引导与多轮后推荐问题随所属会话完整上下文更新。
 
 ### 15.2 固定验收输入
 

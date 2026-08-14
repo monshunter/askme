@@ -69,8 +69,9 @@ type AgentMessage = {
   analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null;
 };
 type PreviewThread = {
-  conversation: { id: string; createdAt: string; lastActivityAt: string } | null;
+  conversation: { id: string; createdAt: string; lastActivityAt: string };
   messages: AgentMessage[];
+  suggestedQuestions: string[];
   idempotent?: boolean;
   pending?: boolean;
 };
@@ -78,7 +79,6 @@ type AgentSettings = {
   answerTone: "professional" | "concise" | "conversational";
   publicMode: boolean;
   privacySafeMode: boolean;
-  suggestedQuestions: string[];
   updatedAt: string;
 };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string } | null };
@@ -232,13 +232,13 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     setRefreshingSuggestions(true);
     setNotice(null);
     try {
-      const { response, payload } = await requestApi<ApiEnvelope<AgentSettings>>("/api/agent/settings/suggestions/refresh", { method: "POST" });
+      const { response, payload } = await requestApi<ApiEnvelope<{ suggestedQuestions: string[] }>>("/api/agent/settings/suggestions/refresh", { method: "POST" });
       if (!response.ok) {
         setNotice({ tone: "error", message: t("agent.suggestionsFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
-      setSettings(payload.data);
+      setThread((current) => ({ ...current, suggestedQuestions: payload.data!.suggestedQuestions }));
     } catch (error) {
       setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.suggestions"), locale) });
     } finally {
@@ -311,7 +311,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
 
           <section className="suggestion-section" aria-labelledby="suggestion-title">
             <div><h2 id="suggestion-title">{t("agent.suggestions.title")}</h2><button type="button" disabled={refreshingSuggestions} onClick={() => void refreshSuggestions()}>{refreshingSuggestions ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {t("agent.suggestions.refresh")}</button></div>
-            <div className="suggestion-grid">{settings.suggestedQuestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={16} />{suggestion}</button>)}</div>
+            <div className="suggestion-grid">{thread.suggestedQuestions.map((suggestion) => <button type="button" key={suggestion} disabled={sending} onClick={() => void sendQuestion(suggestion)}><MessageSquareText size={16} />{suggestion}</button>)}</div>
           </section>
         </section>
 

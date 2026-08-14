@@ -46,7 +46,7 @@ describe("Admin input contracts", () => {
       negativeFeedbackAutoFlag: false,
     });
     expect(() => parseSettingsInput({ deepseekApiKey: "secret" })).toThrow();
-    expect(() => parseSettingsInput({ publicChatDailyLimit: 501 })).toThrow();
+    expect(() => parseSettingsInput({ publicChatDailyLimit: 100 })).toThrow();
   });
 
   it("validates real Admin invitation and acceptance inputs", () => {

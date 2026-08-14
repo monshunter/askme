@@ -10,12 +10,13 @@ export async function validateConversationAnalysisEnvelope(input: {
   artifactRoot: string;
   artifact: RepositoryArtifactDescriptor;
   result: unknown;
+  question?: string;
 }) {
   const parsed = codeAnswerResultSchema.safeParse(input.result);
   if (!parsed.success) throw new AppError("CODE_ANSWER_OUTPUT_INVALID", "The deep analysis answer does not match its required schema.", 422);
   const paths = [...new Set(parsed.data.citations.map((citation) => citation.path))];
   const evidence = await readRepositoryArtifactEvidence(input.artifactRoot, input.artifact, paths);
-  return validateCodeAnswerOutput(parsed.data, evidence);
+  return validateCodeAnswerOutput(parsed.data, evidence, input.question);
 }
 
 export async function completeConversationAnalysisRun(input: {
@@ -28,8 +29,9 @@ export async function completeConversationAnalysisRun(input: {
   actualModel: string;
   usage: Record<string, number>;
   cleanupCompletedAt: Date;
+  question: string;
 }) {
-  const answer = await validateConversationAnalysisEnvelope({ artifactRoot: input.artifactRoot, artifact: input.artifact, result: input.output });
+  const answer = await validateConversationAnalysisEnvelope({ artifactRoot: input.artifactRoot, artifact: input.artifact, result: input.output, question: input.question });
   const client = await input.pool.connect();
   try {
     await client.query("BEGIN");

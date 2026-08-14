@@ -83,4 +83,11 @@
 | REVIEW-078 | REVIEW-078：DESIGN-005 统一知识只读投影 Design Review | [REVIEW-078.md](REVIEW-078.md) |
 | REVIEW-079 | REVIEW-079：PLAN-015 统一知识投影 Change Review | [REVIEW-079.md](REVIEW-079.md) |
 | REVIEW-080 | REVIEW-080：PLAN-015 统一知识投影 Reconcile Change Review | [REVIEW-080.md](REVIEW-080.md) |
+| REVIEW-081 | REVIEW-081：PLAN-016 Plan Review | [REVIEW-081.md](REVIEW-081.md) |
+| REVIEW-082 | REVIEW-082：SPEC-002 Agent 精准问答与会话推荐增量 Spec Review | [REVIEW-082.md](REVIEW-082.md) |
+| REVIEW-083 | REVIEW-083：DESIGN-005 精确 Citation、Deep 使用边界与会话推荐 Design Review | [REVIEW-083.md](REVIEW-083.md) |
+| REVIEW-084 | REVIEW-084：PLAN-016 问答语言与 LLM 推荐范围调整 Plan Review | [REVIEW-084.md](REVIEW-084.md) |
+| REVIEW-085 | REVIEW-085：SPEC-002 问答语言与 LLM 推荐增量 Spec Review | [REVIEW-085.md](REVIEW-085.md) |
+| REVIEW-086 | REVIEW-086：DESIGN-005 问答语言与 LLM 推荐增量 Design Review | [REVIEW-086.md](REVIEW-086.md) |
+| REVIEW-087 | REVIEW-087：PLAN-016 Agent 精准问答与上下文推荐 Change Review | [REVIEW-087.md](REVIEW-087.md) |
 <!-- AGENT-HARNESS:END INDEX -->

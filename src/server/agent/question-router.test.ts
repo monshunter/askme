@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/server/errors";
 
-import { routeQuestion, type QuestionRouterClient } from "./question-router";
+import { effectiveQuestionRoute, routeQuestion, type QuestionRouterClient } from "./question-router";
 
 const repositories = [
   { id: "11111111-1111-4111-8111-111111111111", displayName: "Askme", deepAllowed: true },
@@ -20,14 +20,19 @@ function client(content: unknown): QuestionRouterClient {
 }
 
 describe("routeQuestion", () => {
+  it("does not let the model turn a Host-allowed career question with no evidence into an out-of-scope refusal", () => {
+    expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "out_of_scope", confidence: 1 }, null)).toBe("rag");
+    expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "insufficient_authorized_evidence", confidence: 1 }, null)).toBe("rag");
+    expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "ambiguous_repository", confidence: 1 }, null)).toBe("refuse");
+  });
   it("accepts a deep route only for a Host-authorized Repository", async () => {
     const result = await routeQuestion({
       question: "How is Askme repository analysis isolated?",
       evidenceSummaries: ["Askme uses a Repository Dossier."],
       repositories,
-    }, client({ route: "deep", reason: "Needs exact source", confidence: 0.91, repositoryId: repositories[0]!.id }));
+    }, client({ route: "deep", reasonCode: "source_inspection_required", confidence: 0.91, repositoryId: repositories[0]!.id }));
 
-    expect(result).toMatchObject({ route: "deep", repositoryId: repositories[0]!.id, confidence: 0.91 });
+    expect(result).toMatchObject({ route: "deep", reasonCode: "source_inspection_required", repositoryId: repositories[0]!.id, confidence: 0.91 });
   });
 
   it("cannot expand a Repository deep-analysis gate", async () => {
@@ -35,11 +40,11 @@ describe("routeQuestion", () => {
       question: "Inspect Ferry internals",
       evidenceSummaries: [],
       repositories,
-    }, client({ route: "deep", reason: "Needs exact source", confidence: 0.9, repositoryId: repositories[1]!.id }));
+    }, client({ route: "deep", reasonCode: "source_inspection_required", confidence: 0.9, repositoryId: repositories[1]!.id }));
 
     expect(result).toEqual({
       route: "refuse",
-      reason: "deep_analysis_not_allowed",
+      reasonCode: "deep_analysis_not_allowed",
       confidence: 1,
       repositoryId: repositories[1]!.id,
       usage: { inputTokens: 20, outputTokens: 8 },
@@ -51,7 +56,7 @@ describe("routeQuestion", () => {
       question: "Inspect another repository",
       evidenceSummaries: [],
       repositories,
-    }, client({ route: "deep", reason: "Needs source", confidence: 0.9, repositoryId: "33333333-3333-4333-8333-333333333333" })))
+    }, client({ route: "deep", reasonCode: "source_inspection_required", confidence: 0.9, repositoryId: "33333333-3333-4333-8333-333333333333" })))
       .rejects.toEqual(expect.objectContaining<Partial<AppError>>({ code: "AI_ROUTER_INVALID" }));
   });
 
@@ -60,11 +65,11 @@ describe("routeQuestion", () => {
       question: "Inspect code",
       evidenceSummaries: [],
       repositories,
-    }, client({ route: "deep", reason: "Needs source", confidence: 0.8, repositoryId: null })))
+    }, client({ route: "deep", reasonCode: "source_inspection_required", confidence: 0.8, repositoryId: null })))
       .rejects.toEqual(expect.objectContaining<Partial<AppError>>({ code: "AI_ROUTER_INVALID" }));
 
-    const rag = await routeQuestion({ question: "What is the candidate's background?", evidenceSummaries: ["Career summary"], repositories }, client({ route: "rag", reason: "Evidence is enough", confidence: 0.7, repositoryId: null }));
-    expect(rag).toMatchObject({ route: "rag", repositoryId: null, confidence: 0.7 });
+    const rag = await routeQuestion({ question: "What is the candidate's background?", evidenceSummaries: ["Career summary"], repositories }, client({ route: "rag", reasonCode: "evidence_sufficient", confidence: 0.7, repositoryId: null }));
+    expect(rag).toMatchObject({ route: "rag", reasonCode: "evidence_sufficient", repositoryId: null, confidence: 0.7 });
   });
 
   it("fails closed on malformed model output", async () => {
@@ -79,7 +84,7 @@ describe("routeQuestion", () => {
       repositories,
     }, client({
       route: "rag",
-      reason: "Evidence already answers the question. ".repeat(10),
+      reasonCode: "evidence_sufficient",
       confidence: "0.95",
       diagnostic: "ignored",
     }));

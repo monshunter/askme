@@ -5,7 +5,13 @@ import { AppError } from "@/server/errors";
 
 const decisionSchema = z.object({
   route: z.enum(["rag", "deep", "refuse"]),
-  reason: z.string().trim().min(1).max(1_000),
+  reasonCode: z.enum([
+    "evidence_sufficient",
+    "source_inspection_required",
+    "out_of_scope",
+    "ambiguous_repository",
+    "insufficient_authorized_evidence",
+  ]),
   confidence: z.coerce.number().min(0).max(1),
   repositoryId: z.string().uuid().nullable().optional().default(null),
 });
@@ -23,6 +29,12 @@ export type QuestionRouteRepository = {
   displayName: string;
   deepAllowed: boolean;
 };
+
+export function effectiveQuestionRoute(decision: { route: "rag" | "deep" | "refuse"; reasonCode: string; confidence: number }, selected: QuestionRouteRepository | null) {
+  if (decision.route === "deep" && decision.confidence >= 0.65 && selected?.deepAllowed) return "deep" as const;
+  if (decision.route === "refuse" && (decision.reasonCode === "ambiguous_repository" || decision.reasonCode === "deep_analysis_not_allowed")) return "refuse" as const;
+  return "rag" as const;
+}
 
 function parseDecision(content: string) {
   try {
@@ -43,8 +55,8 @@ export async function routeQuestion(input: {
       role: "system",
       content: [
         "Route one career-Agent question using only the Host-authorized context below.",
-        "Choose rag when supplied document or approved-Dossier evidence can answer it; choose deep only when exact original Repository source inspection is required; choose refuse when the request is outside the career scope or cannot be served safely.",
-        "Never invent or widen a repository id. Return one JSON object only: {\"route\":\"rag\"|\"deep\"|\"refuse\",\"reason\":string,\"confidence\":number,\"repositoryId\":string|null}.",
+        "Choose rag when supplied document or approved-Wiki evidence can answer it. Choose deep when the user asks to inspect exact implementation, execution flow, source lines, or another fact that requires original Repository source inspection. Choose refuse when the request is outside the career scope or cannot be served safely.",
+        "Use reasonCode=evidence_sufficient for rag, source_inspection_required for deep, and out_of_scope, ambiguous_repository, or insufficient_authorized_evidence for refuse. Never invent or widen a repository id. Return one JSON object only: {\"route\":\"rag\"|\"deep\"|\"refuse\",\"reasonCode\":\"evidence_sufficient\"|\"source_inspection_required\"|\"out_of_scope\"|\"ambiguous_repository\"|\"insufficient_authorized_evidence\",\"confidence\":number,\"repositoryId\":string|null}.",
       ].join(" "),
     },
     {
@@ -68,7 +80,7 @@ export async function routeQuestion(input: {
   }
   const usage = { inputTokens: completion.inputTokens, outputTokens: completion.outputTokens };
   if (decision.route === "deep" && !selected!.deepAllowed) {
-    return { route: "refuse" as const, reason: "deep_analysis_not_allowed", confidence: 1, repositoryId: selected!.id, usage };
+    return { route: "refuse" as const, reasonCode: "deep_analysis_not_allowed" as const, confidence: 1, repositoryId: selected!.id, usage };
   }
   return { ...decision, usage };
 }

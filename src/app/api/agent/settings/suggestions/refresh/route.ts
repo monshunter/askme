@@ -1,14 +1,16 @@
 import type { NextRequest } from "next/server";
 
-import { refreshSuggestedQuestions } from "@/server/agent/settings-service";
+import { refreshConversationSuggestions } from "@/server/agent/conversation-suggestions";
 import { requireRequestUser } from "@/server/auth/current";
 import { apiData, apiFailure, requestId } from "@/server/http";
+import { getRequestLocale } from "@/i18n/server";
 
 export async function POST(request: NextRequest) {
   const id = requestId(request);
   try {
     const user = await requireRequestUser(request, ["candidate"]);
-    return apiData(await refreshSuggestedQuestions(user.id, id), id);
+    const suggestedQuestions = await refreshConversationSuggestions({ ownerId: user.id, mode: "preview", locale: await getRequestLocale() });
+    return apiData({ suggestedQuestions }, id);
   } catch (error) {
     return apiFailure(error, id);
   }

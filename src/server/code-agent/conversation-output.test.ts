@@ -36,4 +36,12 @@ describe("validateCodeAnswerOutput", () => {
       citations: [{ path: "src/answer.ts", lineStart: 1, lineEnd: 1, contentHash: "8ddd56a4478052aac936a9d31d6ef165ee3968c394156d6eb2856438c23cb8f1" }],
     }, evidence)).toThrowError(expect.objectContaining<Partial<AppError>>({ code: "CODE_ANSWER_OUTPUT_INVALID" }));
   });
+
+  it("rejects a Deep answer whose primary language differs from the current user question", () => {
+    expect(() => validateCodeAnswerOutput({
+      outcome: "answered",
+      answerMarkdown: "The answer constant is 42.",
+      citations: [{ path: "src/answer.ts", lineStart: 1, lineEnd: 1, contentHash: "8ddd56a4478052aac936a9d31d6ef165ee3968c394156d6eb2856438c23cb8f1" }],
+    }, evidence, "这个常量的值是什么？")).toThrowError(expect.objectContaining<Partial<AppError>>({ code: "CODE_ANSWER_LANGUAGE_MISMATCH" }));
+  });
 });

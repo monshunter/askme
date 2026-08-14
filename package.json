@@ -27,6 +27,7 @@
     "smoke:job-lease": "tsx scripts/smoke-job-lease.ts",
     "smoke:material-lifecycle": "tsx scripts/smoke-material-lifecycle.ts",
     "smoke:agent-preview": "tsx scripts/smoke-agent-preview.ts",
+    "smoke:agent-runtime-acceptance": "tsx scripts/smoke-agent-runtime-acceptance.ts",
     "smoke:admin": "tsx scripts/smoke-admin.ts",
     "smoke:privacy-api": "tsx scripts/smoke-privacy-api.ts",
     "smoke:public-chat": "tsx scripts/smoke-public-chat.ts",

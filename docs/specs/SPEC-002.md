@@ -6,7 +6,7 @@ Owner boundary：Askme V1 的代码仓库同步、Repository Wiki、问答路由
 
 Status：`approved`
 
-唯一父 Plan：[PLAN-014](../plans/PLAN-014.md)
+创建 Plan：[PLAN-014](../plans/PLAN-014.md)；当前修订 Plan：[PLAN-016](../plans/PLAN-016.md)
 
 批准依据：[REVIEW-072](../reviews/REVIEW-072.md)
 
@@ -120,14 +120,22 @@ Askme 的知识检索只保存和检索文档型资料、Knowledge Item 与 Appr
 
 每次问题按以下顺序决策：
 
-1. 确定性门禁检查身份、publication、owner、Repository visibility、公开深度分析开关、问题范围、频率、并发和配额；任何 LLM 不能绕过这些门禁。
-2. 在允许的文档、Knowledge Item 和 Approved Wiki section 中进行初始检索。
-3. 轻量 Router 输出 `rag`、`deep` 或 `refuse`，并附 reason、confidence 和唯一 repository id。低 confidence 先尝试普通回答；证据仍不足且门禁允许时才升级为 `deep`。
-4. `rag` 使用检索到的文档或 Wiki section 回答；`deep` 创建异步 Deep Analysis Run 读取绑定 Revision 的原始 artifact；`refuse` 返回明确边界说明。
+1. 确定性门禁检查身份、publication、owner、Repository visibility、公开深度分析开关、问题范围、短窗口滥用防护、并发和单次运行预算；任何 LLM 不能绕过这些门禁。问答 `conversation_analysis` 不按 Askme 内部日次数配额拒绝，未来是否可用只由独立 Token/积分余额合同决定；该合同未引入前不设置次数门禁。
+2. 在允许的文档、Knowledge Item 和 Approved Wiki section 中进行初始检索。Repository 名称用于确定目标 Repository，不得同时作为 section 相关性的主要内容词；跨语言或词法证据无法回答时不能把“同仓库”当作“已找到答案”。
+3. 轻量 Router 输出 `rag`、`deep` 或 `refuse`，并附稳定 reason code、confidence 和唯一 repository id。Host 必须持久化不含问题正文的 requested/effective route、reason code、confidence、repository id 与 evidence count，供当前运行验收和故障审计。低 confidence 先尝试普通回答；证据仍不足且门禁允许时才升级为 `deep`。
+4. `rag` 使用检索到的文档或 Wiki section 回答；`deep` 创建异步 Deep Analysis Run 读取绑定 Revision 的原始 artifact；`refuse` 返回明确边界说明。RAG、Deep、证据不足与拒绝反馈都必须使用当前用户问题的主要语言；源码、标识符和既有专有名词可以保持原文，但不得把中文问答整体回答成英文或在没有语义需要时中英混写。
 
 一个问题涉及多个 Repository 且无法唯一确定目标时，Askme 必须请用户明确选择，不猜测、不并行启动多个 sandbox。公共访客只可看到当前 publication 允许展示的项目名称。
 
 普通回答与深度回答都必须区分 `answered`、`insufficient` 与 `refused`。深度分析启动后如果失败，不得伪装成成功的 RAG fallback；系统应保留失败状态和安全重试入口。
+
+RAG Answer 选择 Repository Wiki Evidence 时，必须同时返回该 Evidence 中实际支撑最终回答的一个或多个 `[S*]` marker。Host 只验证并持久化这些 marker 对应的源码范围；同一 section 中未被回答选择的其他 marker 不得出现在“实际使用来源”。模型只选择 section、Host 自动展开 section 全部 Citation 的旧行为不再允许。回答无法把事实绑定到精确 marker 时必须返回证据不足或失败，不能用同仓库、同页面或内容 hash 有效代替事实关联。
+
+### 6.1 会话推荐问题
+
+推荐问题属于具体 Candidate Preview 或 Public Conversation，不属于全局 Agent Settings。空会话的推荐应根据当前可授权的 Repository 与职业知识生成引导性问题，优先帮助访问者了解项目、经历、技能和可验证成果；不能随机轮换一组与当前入口无关的问题。
+
+每次回答进入终态后，系统必须使用该 conversation 当前全部已落库且仍可见的用户与 Assistant 消息，以及当前授权的知识主题，通过 LLM 重新生成与最后一条用户问题相同语言的后续问题。后续推荐应延续真实已讨论主题、避免重复已问问题、避免暗示证据中不存在的事实，并优先提出能够推进当前聊天进度、继续澄清或深入验证的问题；它们与产生它们的 conversation context version 一同保存。刷新只让 LLM 为同一上下文生成相关替代问题，不得切换到无关的预定义题库。RAG 与 Deep 回答均遵守同一更新语义；仅当 LLM 失败、超时或输出不合格时允许使用当前会话主题的确定性 fallback，且推荐失败不得使已完成回答失败。
 
 ## 7. 权限与 Citation 投影
 
@@ -166,13 +174,13 @@ V1 默认使用三个可独立配置的 Profile：
 
 ## 10. 配额、预算与失败反馈
 
-公共访问者只有在 Candidate 开启公开深度分析且 publication、visibility、并发和配额均允许时，才可自动触发 Deep Analysis Run，不需要逐问题 Human Gate。V1 不提供计费系统，但必须支持 Candidate/publication/visitor、Repository 和全局多层配额。
+公共访问者只有在 Candidate 开启公开深度分析且 publication、visibility、短窗口滥用防护、并发与单次运行预算均允许时，才可自动触发 Deep Analysis Run，不需要逐问题 Human Gate。Askme 不以 Candidate、publication、visitor、Repository 或全局日运行次数限制 Agent 问答，也不以每个公开会话的每日问题数限制问答；未来 Token/积分余额与计费是独立业务合同，未引入前不能由次数配额替代。短窗口请求速率、运行并发、sandbox 资源和单次 timeout/round/tool/token 预算继续由 Host 强制。Repository Wiki 的离线生成仍可使用独立运维资源控制，但不得影响 Conversation Deep 准入。
 
 Deep Analysis Run 默认预算：创建 microVM 30 秒、分析 120 秒、清理 30 秒；最多 50 个 LLM rounds、80 次工具调用、1 MiB 聚合工具输出、单次读取 64 KiB 或 500 lines、单次搜索 200 hits；Code Agent 默认模型最大输入上下文为 1,000,000 tokens、单次模型输出上限为 200,000 tokens；microVM 资源为 1 vCPU、1 GiB memory、2 GiB disk。Repository Analysis 的默认 80 次调用以前 48 次 `ls/find/grep/read` 为软边界：大型仓库达到至少 30 个真实 examined paths 后 guest 移除这些 source tools，只保留最多 32 次 `write_wiki`；不足 30 时拒绝过早写作并允许继续读取，但 source tools 最迟在 60 次时移除，硬保留至少 20 次写入与页面修正。修正 session 不重复 examined-path 门禁，Controller 合并首轮和修正轮真实 coverage。默认并发为 visitor 1、publication 2、runner global 2。
 
 Repository Analysis Run 与 Deep Analysis Run 使用同一隔离运行时，但前者为支持大型仓库 Wiki 默认最长 20 分钟且为低优先级，后者仍为 120 秒并保持高优先级；全局并发 2 时至少为实时 Deep Analysis 保留一个 slot。所有默认值允许开发者配置。guest 非零退出且实际耗时到达 deadline 时，Host 必须返回稳定 `CODE_AGENT_ANALYSIS_TIMEOUT`，不得降级为不可诊断的通用 guest failure。
 
-用户必须能区分等待、证据不足、拒绝、超时、上游 AI 失败、sandbox 失败、配额拒绝、取消和清理失败；服务端使用稳定错误码，不向 UI 暴露内部路径、Token、prompt、tool output 或 provider 原始敏感错误。
+用户必须能区分等待、证据不足、拒绝、超时、上游 AI 失败、sandbox 失败、短窗口限流、取消和清理失败；服务端使用稳定错误码，不向 UI 暴露内部路径、Token、prompt、tool output 或 provider 原始敏感错误。
 
 ## 11. 安全不变量
 
@@ -215,9 +223,14 @@ Repository Analysis Run 与 Deep Analysis Run 使用同一隔离运行时，但�
 - [x] `AC-ASYNC-001` SSE 基于数据库 version 快照和事件恢复 pending/running/终态，不使用短轮询、WebSocket，也不泄露 reasoning、源码或 Secret。
 - [x] `AC-PRIV-004` 四级 Repository visibility 同时约束 Wiki、Candidate/Public 回答和 Citation 投影；降权与撤销立即作用于历史公共消息。
 - [x] `AC-AI-002` Router、RAG Answer 与 Code Agent Profile 可独立配置，默认模型符合合同，并可通过通用 OpenAI-compatible Chat Completions endpoint 工作。
-- [x] `AC-COST-001` 超时、round、工具、输出、读取、搜索、token、microVM 资源、并发和多层配额均由服务端强制，公共自动深度分析不能绕过。
+- [x] `AC-COST-001` 超时、round、工具、输出、读取、搜索、token、microVM 资源、并发和 Repository Wiki 运维资源控制均由服务端强制，公共自动深度分析不能绕过；Agent 问答不设置日次数配额。
 - [x] `AC-HISTORY-001` 最终会话消息、有效 Citation 和最小 run metadata 可恢复；中间 reasoning/tool output 不持久化，深度结论不进入 Wiki、RAG 或 Knowledge Item。
 - [x] `AC-ACCEPT-001` 固定 `new-api` Revision 完成约 10 题路由、事实与 Citation 验收，固定 private Revision 完成一次性 Token、不可变 SHA、撤权和清理验收。
+- [x] `AC-ANSWER-001` RAG 回答只持久化模型实际选择且能支撑最终陈述的 Repository `[S*]` 源码范围；Repository 名称与无关 section marker 不会膨胀来源，固定 copybook 项目概览问题不展示入口组件来源。
+- [x] `AC-DEEP-001` Candidate 与 Public 的真实问题可以产生可审计 `deep` 有效路由和 `conversation_analysis`，由 worker 在新 microVM 读取固定 Revision 原始源码并提交有效 Citation；验收不能由 Router mock、Wiki `repository_analysis` 或 readiness 代替。
+- [x] `AC-USAGE-001` Agent 问答和 Conversation Deep 不读取或消耗 Askme 日次数配额，Admin 不再配置公开会话每日问题数；短窗口滥用防护、并发和单次运行预算仍有效。
+- [x] `AC-SUGGEST-001` 空会话展示基于当前授权知识的引导问题；每次 RAG/Deep 回答后，Candidate 与 Public 推荐均随同一 conversation 的完整可见上下文更新并保存 context version，刷新不退回无关预定义轮换。
+- [x] `AC-LANGUAGE-001` 中文问题得到中文回答和中文推荐，英文问题得到英文回答和英文推荐；RAG、Deep、证据不足、拒绝与 refresh 均遵守，源码标识符与专有名词除外。
 
 ## 14. 已批准的后续延迟项
 

@@ -11,10 +11,9 @@ import { policyEntries, resolvePlatformPolicies } from "./platform-policy";
 const PLATFORM_POLICY_KEYS = [
   "public_session_hourly_limit",
   "public_chat_minute_limit",
-  "public_chat_daily_limit",
   "negative_feedback_auto_flag",
 ] as const;
-const CURRENT_MIGRATION = "0016_analysis_runner_health.sql";
+const CURRENT_MIGRATION = "0018_conversation_suggestions.sql";
 
 type Queryable = Pick<PoolClient, "query">;
 

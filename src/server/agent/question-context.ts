@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
 
 import type { RuntimeConfig } from "@/server/config";
-import { analysisQuotaScopesAvailable, type AnalysisQuotaScope } from "@/server/code-agent/analysis-quotas";
 
 import type { QuestionRouteRepository } from "./question-router";
 
@@ -30,20 +29,9 @@ export async function loadQuestionRepositories(input: {
      ORDER BY repository.display_name,repository.id`,
     [input.ownerId, input.mode === "candidate" ? ["agent_only", "citation_allowed", "public_preview"] : ["citation_allowed", "public_preview"]],
   );
-  const commonScopes: AnalysisQuotaScope[] = [
-    { type: "global", key: "global" },
-    { type: "candidate", key: input.ownerId },
-  ];
-  if (input.mode === "public") {
-    if (input.publicationId) commonScopes.push({ type: "publication", key: input.publicationId });
-    if (input.visitorKey) commonScopes.push({ type: "visitor", key: input.visitorKey });
-  }
-  const commonAvailable = await analysisQuotaScopesAvailable(input.pool, input.config.codeAgent, commonScopes);
-  return Promise.all(rows.rows.map(async (repository) => ({
+  return rows.rows.map((repository) => ({
     id: repository.id,
     displayName: repository.displayName,
-    deepAllowed: commonAvailable
-      && (input.mode === "candidate" || repository.publicDeepAnalysisEnabled)
-      && await analysisQuotaScopesAvailable(input.pool, input.config.codeAgent, [{ type: "repository", key: repository.id }]),
-  })));
+    deepAllowed: input.mode === "candidate" || repository.publicDeepAnalysisEnabled,
+  }));
 }

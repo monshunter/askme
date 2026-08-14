@@ -6,7 +6,7 @@ import type { RuntimeConfig } from "@/server/config";
 import { AppError } from "@/server/errors";
 
 import { codeAgentProfileFingerprint, codeAgentSkillHash, requireCodeAgentImageDigest } from "./provenance";
-import { consumeAnalysisDailyQuotas, type AnalysisQuotaScope } from "./analysis-quotas";
+import { consumeAnalysisDailyQuotas } from "./analysis-quotas";
 
 export type RepositoryAnalysisRun = {
   id: string;
@@ -75,15 +75,8 @@ export async function queueConversationAnalysisRun(input: {
     await client.query("BEGIN");
     const context = await client.query<{
       revisionId: string;
-      mode: "preview" | "public";
-      publicationId: string | null;
-      visitorTokenHash: string | null;
-      visibility: "private" | "agent_only" | "citation_allowed" | "public_preview";
-      publicDeepAnalysisEnabled: boolean;
     }>(
-      `SELECT revision.id AS "revisionId",conversation.mode,conversation.publication_id AS "publicationId",
-              conversation.visitor_token_hash AS "visitorTokenHash",repository.visibility,
-              repository.public_deep_analysis_enabled AS "publicDeepAnalysisEnabled"
+      `SELECT revision.id AS "revisionId"
        FROM messages assistant
        JOIN conversations conversation ON conversation.id=assistant.conversation_id AND conversation.owner_id=assistant.owner_id
        JOIN messages question ON question.id=assistant.reply_to_message_id AND question.owner_id=assistant.owner_id
@@ -141,16 +134,6 @@ export async function queueConversationAnalysisRun(input: {
     const run = inserted.rows[0];
     if (!run) throw new AppError("CONVERSATION_ANALYSIS_QUEUE_FAILED", "The deep analysis run could not be queued.", 500);
     if (run.inserted) {
-      const scopes: AnalysisQuotaScope[] = [
-        { type: "global", key: "global" },
-        { type: "candidate", key: input.ownerId },
-        { type: "repository", key: input.repositoryId },
-      ];
-      if (authorized.mode === "public") {
-        if (!authorized.publicationId || !authorized.visitorTokenHash) throw new AppError("CONVERSATION_ANALYSIS_CONTEXT_INVALID", "The public deep analysis context is invalid.", 500);
-        scopes.push({ type: "publication", key: authorized.publicationId }, { type: "visitor", key: authorized.visitorTokenHash });
-      }
-      await consumeAnalysisDailyQuotas(client, input.config.codeAgent, scopes);
       await client.query("INSERT INTO analysis_run_events(run_id,version,state,phase) VALUES ($1,1,'pending','pending')", [run.id]);
       await client.query(
         `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)

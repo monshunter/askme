@@ -33,6 +33,11 @@ function queryTerms(value: string) {
   return [...new Set(value.toLocaleLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length >= 2))].slice(0, 20);
 }
 
+function repositoryContentTerms(query: string, repositoryTitle: string) {
+  const entityTerms = new Set(queryTerms(repositoryTitle));
+  return queryTerms(query).filter((term) => !entityTerms.has(term));
+}
+
 function sectionScore(content: string, terms: string[], base: number) {
   const normalized = content.toLocaleLowerCase();
   return base + terms.reduce((score, term) => score + (normalized.includes(term) ? 0.2 : 0), 0);
@@ -47,6 +52,7 @@ export async function retrieveUnifiedEvidence(
   const query = parseEvidenceQuery(input);
   const documents = await searchEvidence(pool, ownerId, consumer, query);
   const searchQuery = buildEvidenceSearchQuery(query.query);
+  const entityTerms = queryTerms(query.query);
   const repositories = await pool.query<RepositoryWikiRow>(
     `SELECT page.id AS "repositoryWikiPageId",repository.id AS "repositoryId",repository.display_name AS "repositoryTitle",
             page.path AS "wikiPagePath",page.title AS "wikiPageTitle",revision.id AS "revisionId",revision.commit_sha AS "commitSha",
@@ -63,23 +69,32 @@ export async function retrieveUnifiedEvidence(
      JOIN repository_wiki_citations citation ON citation.page_id=page.id AND citation.dossier_id=dossier.id AND citation.revision_id=revision.id
      WHERE repository.owner_id=$1 AND repository.disabled_at IS NULL AND repository.visibility=ANY($2::visibility[])
        AND (to_tsvector('simple',page.title || ' ' || coalesce(projected.edited_markdown,page.generated_markdown)) @@ websearch_to_tsquery('simple',$3)
-            OR page.title ILIKE $4 ESCAPE '\\' OR coalesce(projected.edited_markdown,page.generated_markdown) ILIKE $4 ESCAPE '\\')
+            OR page.title ILIKE $4 ESCAPE '\\' OR coalesce(projected.edited_markdown,page.generated_markdown) ILIKE $4 ESCAPE '\\'
+            OR EXISTS (SELECT 1 FROM unnest($6::text[]) entity_term WHERE lower(repository.display_name) LIKE '%' || lower(entity_term) || '%'))
      ORDER BY score DESC,repository.updated_at DESC,page.sort_order,citation.rank
      LIMIT $5`,
-    [ownerId, allowedVisibilities(consumer), searchQuery, escapeLikePattern(query.query), query.limit * 64],
+    [ownerId, allowedVisibilities(consumer), searchQuery, escapeLikePattern(query.query), query.limit * 64, entityTerms],
   );
-  const groupedPages = new Map<string, { row: RepositoryWikiRow; citations: RepositoryWikiRow[] }>();
+  const groupedRepositories = new Map<string, Map<string, { row: RepositoryWikiRow; citations: RepositoryWikiRow[] }>>();
   for (const row of repositories.rows) {
-    const current = groupedPages.get(row.repositoryWikiPageId) ?? { row, citations: [] };
+    const pages = groupedRepositories.get(row.repositoryId) ?? new Map();
+    const current = pages.get(row.repositoryWikiPageId) ?? { row, citations: [] };
     current.citations.push(row);
-    groupedPages.set(row.repositoryWikiPageId, current);
+    pages.set(row.repositoryWikiPageId, current);
+    groupedRepositories.set(row.repositoryId, pages);
   }
-  const terms = queryTerms(query.query);
   const wikiEvidence: RetrievedRepositoryEvidence[] = [];
-  for (const { row, citations } of groupedPages.values()) {
-    const sections = repositoryWikiSections(row.markdown);
-    const matching = sections.filter((section) => terms.length === 0 || terms.some((term) => `${section.heading}\n${section.body}`.toLocaleLowerCase().includes(term)));
-    for (const section of (matching.length > 0 ? matching : sections.slice(0, 1))) {
+  for (const pages of groupedRepositories.values()) {
+    const firstPage = pages.values().next().value as { row: RepositoryWikiRow; citations: RepositoryWikiRow[] } | undefined;
+    if (!firstPage) continue;
+    const terms = repositoryContentTerms(query.query, firstPage.row.repositoryTitle);
+    const matchedSections = [...pages.values()].flatMap((page) => repositoryWikiSections(page.row.markdown)
+      .filter((section) => terms.length > 0 && terms.some((term) => `${section.heading}\n${section.body}`.toLocaleLowerCase().includes(term)))
+      .map((section) => ({ ...page, section })));
+    const selectedSections = matchedSections.length > 0
+      ? matchedSections
+      : repositoryWikiSections(firstPage.row.markdown).slice(0, 1).map((section) => ({ ...firstPage, section }));
+    for (const { row, citations, section } of selectedSections) {
       const content = `## ${section.heading}\n${section.body}`;
       const markers = new Set(repositoryWikiMarkers(content));
       const sourceCitations = citations

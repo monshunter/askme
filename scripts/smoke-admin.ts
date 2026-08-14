@@ -36,7 +36,7 @@ const candidateEmail = `${candidateId}@local.invalid`;
 const candidateDisplayName = `Governance ${candidateId.slice(0, 8)}`;
 const privateMarker = `PRIVATE_ADMIN_FORBIDDEN_${randomUUID()}`;
 const safeSummary = `Governance review ${candidateId.slice(0, 8)}`;
-const policyKeys = ["public_session_hourly_limit", "public_chat_minute_limit", "public_chat_daily_limit", "negative_feedback_auto_flag"];
+const policyKeys = ["public_session_hourly_limit", "public_chat_minute_limit", "negative_feedback_auto_flag"];
 let requestNumber = 0;
 let originalPolicies: PolicyRow[] = [];
 

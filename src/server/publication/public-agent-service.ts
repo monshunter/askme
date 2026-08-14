@@ -4,7 +4,8 @@ import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
 import { allowedVisibilities } from "@/server/privacy/visibility-policy";
 
-import { buildSuggestedQuestionsAtOffset, type SuggestionKnowledgeItem } from "../agent/suggested-questions";
+import { loadSuggestionTopics } from "../agent/conversation-suggestions";
+import { buildInitialSuggestedQuestions, type SuggestionKnowledgeItem, type SuggestionLocale } from "../agent/suggested-questions";
 import { parsePublicSlug } from "./publication-policy";
 
 type PublicIdentity = {
@@ -32,28 +33,7 @@ export type PublicationContext = {
   updatedAt: Date;
 };
 
-async function publicSuggestionItems(ownerId: string) {
-  const result = await getPool().query<SuggestionKnowledgeItem>(
-    `SELECT knowledge.type,knowledge.title
-     FROM knowledge_items knowledge
-     WHERE knowledge.owner_id=$1 AND knowledge.status='active' AND EXISTS (
-       SELECT 1 FROM knowledge_evidence evidence
-       JOIN chunks chunk ON chunk.id=evidence.chunk_id AND chunk.owner_id=evidence.owner_id
-       JOIN materials material ON material.id=chunk.material_id AND material.owner_id=chunk.owner_id
-       WHERE evidence.knowledge_item_id=knowledge.id AND evidence.owner_id=knowledge.owner_id
-         AND material.status='indexed' AND material.visibility=ANY($2::visibility[])
-     )
-     ORDER BY knowledge.updated_at DESC,knowledge.id DESC LIMIT 12`,
-    [ownerId, allowedVisibilities("public_answer")],
-  );
-  return result.rows;
-}
-
-export async function loadPublicSuggestedQuestions(ownerId: string, cursor: number) {
-  return buildSuggestedQuestionsAtOffset(await publicSuggestionItems(ownerId), cursor);
-}
-
-async function projectPublicAgent(context: PublicationContext) {
+async function projectPublicAgent(context: PublicationContext, locale: SuggestionLocale) {
   const pool = getPool();
   const [identityResult, statsResult, highlightsResult, suggestionItemsResult] = await Promise.all([
     pool.query<PublicIdentity>(
@@ -89,7 +69,7 @@ async function projectPublicAgent(context: PublicationContext) {
        ORDER BY knowledge.confidence DESC,knowledge.updated_at DESC,knowledge.id DESC LIMIT 5`,
       [context.ownerId],
     ),
-    publicSuggestionItems(context.ownerId),
+    loadSuggestionTopics(context.ownerId, "public_answer"),
   ]);
   const profile = identityResult.rows[0];
   if (!profile) throw new AppError("PUBLIC_AGENT_UNAVAILABLE", "This public Agent is unavailable.", 404);
@@ -103,12 +83,12 @@ async function projectPublicAgent(context: PublicationContext) {
     },
     stats: statsResult.rows[0] ?? { publicKnowledgeItems: 0, publicSources: 0 },
     highlights: highlightsResult.rows.map((item) => ({ ...item, highlights: item.highlights.slice(0, 3) })),
-    suggestedQuestions: buildSuggestedQuestionsAtOffset(suggestionItemsResult, 0),
+    suggestedQuestions: buildInitialSuggestedQuestions(suggestionItemsResult, locale, 0),
   };
 }
 
-export async function loadPublicAgentBySlug(slugInput: string) {
-  return projectPublicAgent(await requirePublicAgentContext(slugInput));
+export async function loadPublicAgentBySlug(slugInput: string, locale: SuggestionLocale = "en") {
+  return projectPublicAgent(await requirePublicAgentContext(slugInput), locale);
 }
 
 export async function requirePublicAgentContext(slugInput: string) {

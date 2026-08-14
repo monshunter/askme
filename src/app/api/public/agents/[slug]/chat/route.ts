@@ -6,12 +6,13 @@ import { parsePublicChatInput } from "@/server/public-chat/public-chat-input";
 import { visitorCookieName } from "@/server/public-chat/visitor-credential";
 import { AppError } from "@/server/errors";
 import { parsePublicSlug } from "@/server/publication/publication-policy";
+import { getRequestLocale } from "@/i18n/server";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   const id = requestId(request);
   try {
     const slug = parsePublicSlug((await context.params).slug);
-    return apiData(await loadPublicThread(slug, request.cookies.get(visitorCookieName(slug))?.value), id);
+    return apiData(await loadPublicThread(slug, request.cookies.get(visitorCookieName(slug))?.value, await getRequestLocale()), id);
   } catch (error) {
     return apiFailure(error, id);
   }

@@ -111,3 +111,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-015：统一 Approved Repository Wiki 的知识浏览与问答证据](docs/plans/PLAN-015.md)
 ---
+
+---
+ID: OBJ-011
+Objective: 提升 Agent 回答与 Citation 精度，真实闭环 Deep 问答，并让推荐问题随会话更新
+Status: 已完成
+Plans:
+- [x] [PLAN-016：闭环 Agent 精准问答、Deep 路由与上下文推荐](docs/plans/PLAN-016.md)
+---

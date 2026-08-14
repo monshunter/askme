@@ -32,4 +32,37 @@ describe("retrieveUnifiedEvidence", () => {
     await retrieveUnifiedEvidence({ query } as unknown as Pool, "owner", "public_answer", { query: "Askme", limit: 8 });
     expect(query.mock.calls[1]?.[1]?.[1]).toEqual(["citation_allowed", "public_preview"]);
   });
+
+  it("uses a Repository name only to locate the repository and does not match unrelated section identifiers", async () => {
+    const markdown = [
+      "# Copybook Generator",
+      "",
+      "## Summary",
+      "A browser app that generates printable Chinese and English copybook sheets and PDF exports. [S1] [S2]",
+      "",
+      "## Application entry and providers",
+      "The entry renders CopybookPreview inside App providers. [S3] [S4]",
+    ].join("\n");
+    const base = { repositoryWikiPageId: "page", repositoryId: "repo", repositoryTitle: "monshunter/copybook", wikiPagePath: "overview.md", wikiPageTitle: "Overview", revisionId: "revision", commitSha: "a".repeat(40), visibility: "public_preview", markdown, score: 0.9 };
+    const architecture = { ...base, repositoryWikiPageId: "architecture", wikiPagePath: "architecture.md", wikiPageTitle: "Architecture", markdown: "# Architecture\n\n## Rendering pipeline\nLayout, pagination, and PDF rendering. [S6]" };
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [
+        { ...base, marker: "S1", citationRank: 1, path: "README.md", lineStart: 1, lineEnd: 100, contentHash: "b".repeat(64) },
+        { ...base, marker: "S2", citationRank: 2, path: "package.json", lineStart: 1, lineEnd: 42, contentHash: "c".repeat(64) },
+        { ...base, marker: "S3", citationRank: 3, path: "src/main.tsx", lineStart: 1, lineEnd: 16, contentHash: "d".repeat(64) },
+        { ...base, marker: "S4", citationRank: 4, path: "src/App.tsx", lineStart: 1, lineEnd: 15, contentHash: "e".repeat(64) },
+        { ...architecture, marker: "S6", citationRank: 6, path: "src/lib/layout.ts", lineStart: 1, lineEnd: 200, contentHash: "f".repeat(64) },
+      ] });
+
+    const result = await retrieveUnifiedEvidence({ query } as unknown as Pool, "owner", "public_answer", { query: "copybook 是一个什么样的项目？", limit: 8 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ sectionHeading: "Summary" });
+    expect(result[0]).toHaveProperty("sourceCitations", [
+      expect.objectContaining({ marker: "S1", path: "README.md" }),
+      expect.objectContaining({ marker: "S2", path: "package.json" }),
+    ]);
+    expect(String(query.mock.calls[1]?.[0])).toContain("repository.display_name");
+  });
 });
