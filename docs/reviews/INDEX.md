@@ -103,4 +103,8 @@
 | REVIEW-098 | REVIEW-098：SPEC-001 公开身份补全与发布可达性 Spec Review | [REVIEW-098.md](REVIEW-098.md) |
 | REVIEW-099 | REVIEW-099：DESIGN-001 公开身份补全与发布可达性 Design Review | [REVIEW-099.md](REVIEW-099.md) |
 | REVIEW-100 | REVIEW-100：PLAN-019 公开身份补全与 Agent 发布可达性 Change Review | [REVIEW-100.md](REVIEW-100.md) |
+| REVIEW-101 | REVIEW-101：PLAN-020 Hybrid Agentic RAG V2 Plan Review | [REVIEW-101.md](REVIEW-101.md) |
+| REVIEW-102 | REVIEW-102：SPEC-002 Hybrid Agentic RAG V2 Spec Review | [REVIEW-102.md](REVIEW-102.md) |
+| REVIEW-103 | REVIEW-103：DESIGN-005 Hybrid Agentic RAG V2 Design Review | [REVIEW-103.md](REVIEW-103.md) |
+| REVIEW-104 | REVIEW-104：PLAN-020 Hybrid Agentic RAG V2 Change Review | [REVIEW-104.md](REVIEW-104.md) |
 <!-- AGENT-HARNESS:END INDEX -->

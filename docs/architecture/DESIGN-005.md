@@ -1,425 +1,323 @@
-# DESIGN-005：代码仓库 Wiki 与 Pi + BoxLite 深度分析 V1 系统设计
+# DESIGN-005：Hybrid Agentic RAG V2 与隔离源码分析系统设计
 
-Boundary ID：`askme-repository-code-agent-runtime-v1`
+Boundary ID：`askme-hybrid-agentic-rag-runtime-v2`
 
-Owner boundary：满足 [SPEC-002](../specs/SPEC-002.md) 的 Repository、Wiki、路由、隔离运行、异步事件、成本与部署架构。
+Owner boundary：满足 [SPEC-002](../specs/SPEC-002.md) 的版本化索引、Repository 文档、混合检索、有界 Agent、Citation、权限、观测与隔离源码分析架构。
 
 Status：`active`
 
-创建父 Plan：[PLAN-014](../plans/PLAN-014.md)
-
-当前修订 Plan：[PLAN-016](../plans/PLAN-016.md)
-
-批准依据：[REVIEW-073](../reviews/REVIEW-073.md)
+当前修订 Plan：[PLAN-020](../plans/PLAN-020.md)
 
 ## 1. 目标、现状与不变量
 
-本设计在 Askme 现有 Next.js、PostgreSQL、Node worker 和 Docker Compose 基础上增加独立 Repository 领域和 Host-native Code Agent Runner。代码仓库在同步时由 Pi 在隔离输出目录生成 1–N 个可审核 Wiki Markdown 文件，普通问答使用文档与 Approved Wiki，深度问答才在一次性 BoxLite microVM 中运行 Pi 并读取不可变源码。
+Askme 继续使用 Next.js、PostgreSQL、Node worker、Docker Compose 和现有 Repository Artifact/Code Agent Runtime。V2 直接替换 `chunks.search_vector + websearch_to_tsquery` 的 V1 文档问答：持久索引统一承载 Material、Knowledge anchor、Approved Wiki 与已批准 Repository Markdown/PDF，再由有界 Agent 完成 Query Planning、四路召回、RRF、Rerank、Evidence Judge、一次补检、Claim Verifier 和 Citation Validator。
 
-本设计定向替代 [DESIGN-001](DESIGN-001.md) 中的 GitHub External Source Adapter、GitHub 文本快照/Chunk、DeepSeek 专用 adapter 与同步 Chat-only 回答边界；文件、Website、Notion、PostgreSQL 文档全文检索、身份、发布、普通 worker、上传 volume 和 Admin 架构继续有效。
+当前实现的关键差距：
+
+- `buildEvidenceSearchQuery` 使用连续 `\p{L}` 匹配中文，整句会成为 PostgreSQL 的单个长 lexeme；
+- Material chunk 固定按约 `1,200` 字符、`160` 字符 overlap 切分，不理解履历和文档结构；
+- 普通回答只取 8 条 Evidence，并把 Evidence Pack 固定截断为约 28,000 字符；
+- Approved Wiki 在请求时临时切 section，Repository Markdown/PDF 不进入长期索引；
+- Provider 只有 Router/RAG/Code Chat Profile，没有独立 Embedding、Rerank 或 Claim Verifier；
+- `postgres:18-alpine` 不含 pgvector extension。
 
 系统不变量：
 
-1. Repository 与 Material 是两个独立聚合；源码正文不进入 `materials`、`chunks`、Knowledge Item 或向量索引。
-2. 一个 run 只绑定一个 owner、Repository、完整 SHA 和 artifact checksum；Agent 不读取 live branch、宿主工作树或其他 revision。
-3. Candidate/Public 授权由 Host 确定性代码执行；Router、Pi、Skill 和模型都不能扩大权限。
-4. 每个深度 run 使用新的 BoxLite microVM，guest 不挂载宿主目录、不接收 GitHub credential、不跨 run 保留状态。
-5. Repository 中的指令文件只作为数据；Pi 只加载 Askme 产品代码内显式注册的 Skill 和工具。
-6. Wiki Generated Version、Candidate Approved Projection、会话答案和数据库运行状态各有唯一 owner，不互相回写形成循环知识源。
-7. 数据库是 job/run 状态与 SSE 恢复的唯一事实源；`LISTEN/NOTIFY` 只用于唤醒，不能替代持久状态。
-8. 任何源码 Citation 在返回前都由 Host 重新验证 SHA、path、line、hash、过滤与 visibility。
+1. Host 在检索前确定 owner、caller mode、publication、visibility、source state、active revision 和 active index；任何模型不能扩大集合。
+2. 原始业务数据与派生检索数据分离。V2 迁移可以重建派生表，不能删除账号、Source、Knowledge Item、Repository、权限和会话。
+3. 一个查询只使用一个 active index version；Embedding model、dimension、prefix 或 chunking 不同的向量不得混合。
+4. Repository 文档索引只读取成功同步的不可变 commit；原始源码仍只进入一次性只读 Deep Analysis。
+5. 所有来源正文、对话历史和 Repository 指令都是不可信数据，不能改变 system contract、权限或工具。
+6. Answer 生成、Claim 验证、Citation 校验与消息持久化是分离边界；任何一步失败都不能发布未验证 Claim。
+7. 权限撤销立即作用于 active 检索与历史 Citation；延迟 GC 不等于延迟授权。
 
 ## 2. 关键选型与权衡
 
-| 决策 | V1 选择 | 主要理由 | 放弃或延迟 |
+| 决策 | V2 选择 | 理由 | 未选择 |
 | --- | --- | --- | --- |
-| 源码知识 | 同步时由 Agent 生成单页或多页 Wiki bundle，实时深度问题读取原始 artifact | 页面边界可以随仓库内容变化；Wiki 可直接阅读和审核，深度问题保持源码新鲜度 | 离散 Claim 卡片、固定单页模板、源码 RAG、embedding、AST、call graph、语言适配器 |
-| Agent harness | Pi 在 BoxLite guest 内按 run 启动 | 工具、上下文、临时文件和模型调用处于同一隔离边界 | Pi 常驻 Host、每用户常驻 Agent |
-| 隔离粒度 | 每个 Repository/Conversation Analysis Run 一个新 microVM | tenant、问题和凭证不跨 run；生命周期可确定清理 | tenant warm pool、session-long sandbox |
-| 队列 | PostgreSQL lease + `FOR UPDATE SKIP LOCKED` | 复用当前事实源、事务、审计与恢复能力 | Redis、Kafka、独立 orchestrator |
-| 浏览器更新 | HTTP command + PostgreSQL `LISTEN/NOTIFY` + SSE | 单向状态流足够，断线可由 DB 快照恢复 | 短轮询、WebSocket、独立消息总线 |
-| 业务 LLM 客户端 | 官方 `openai` Node SDK 后置 Askme adapter | OpenAI-compatible Chat Completions 生态稳定、provider 中立 | 自定义 DeepSeek 客户端、Responses-only 合同 |
-| Pi 模型调用 | guest 内 `pi-ai` / ModelRuntime 直连外部 endpoint | 不重复实现 Pi provider/tool loop，Askme 不代理 prompt | Host LLM Gateway |
-| Artifact | Host content-addressed immutable `.tar.zst` store | 简单、可校验、适合单机 V1，且可抽象为对象存储接口 | PostgreSQL blob、直接 host mount |
-| 管理能力 | 确定性 Admin API/controller/worker | 状态治理不需要非确定 Agent | System Operations Agent |
+| Vector store | 同一 PostgreSQL 18 + pgvector | 复用 tenant filter、事务、迁移、备份和运行入口 | Milvus、Qdrant、DashVector、独立向量服务 |
+| Vector search | 过滤后的 exact cosine | 初始规模下 perfect recall，避免 ANN filter 漏召回 | 默认 HNSW/IVFFlat |
+| Chunk | structure-first Parent–Child | 小 Child 提升召回，Parent 保留完整职业/文档上下文 | 固定字符窗口、句子碎片 |
+| Fusion | weighted RRF + independent rerank | 词法/向量分数量纲不同，RRF 稳定；Rerank 独立优化回答相关性 | 直接加权原始分数、Chat LLM 排序 |
+| Agent | Host 编排的最多两轮 bounded workflow | 保持权限、延迟和失败可控 | 自由工具循环、无界自反思 |
+| Claim grounding | 结构化 Claim + 独立 Verifier + Host validator | 模型不能同时担任唯一生成者和裁判 | 只靠 Prompt 要求引用 |
+| Repository 文档 | approved Repository 的 Markdown/PDF 进入相同索引 | README/docs 是直接、可引用的职业项目证据 | 只检索派生 Wiki、源码全量 Embedding |
+| Feedback | 离线标签 + versioned policy | 可评估、可回滚，不形成线上自修改闭环 | 点踩自动调权、自动改 Knowledge |
 
-## 3. 系统上下文与部署边界
+pgvector 官方支持 exact/approximate、cosine 与 PostgreSQL filter；本地 Compose 使用已验证存在的 `pgvector/pgvector:pg18` 镜像，并由 migration 执行 `CREATE EXTENSION IF NOT EXISTS vector` 与 `pg_trgm`。
+
+## 3. 系统上下文
 
 ```mermaid
 flowchart LR
-  C["Candidate browser"] --> W["Askme Web"]
-  V["Visitor browser"] --> W
-  A["Platform Admin browser"] --> W
-  W --> P[("PostgreSQL")]
-  W --> S["Repository Sync Service"]
-  S --> GH["GitHub API / Archive"]
-  S --> AS[("Immutable Artifact Store")]
-  IW["Ingestion Worker"] --> P
-  IW --> FS[("Document Upload Volume")]
-  W --> AI["OpenAI-compatible API / AI Gateway"]
-  AR["Host-native Agent Runner"] --> P
-  AR --> AS
-  AR --> B["One-run BoxLite microVM"]
-  B --> PI["Pi guest runtime"]
-  PI --> AI
+  C["Candidate / Visitor"] --> W["Next.js Web"]
+  W --> O["RAG Orchestrator"]
+  O --> P[("PostgreSQL + pgvector")]
+  O --> QP["Query Planner Chat"]
+  O --> E["Embedding Provider"]
+  O --> RR["Rerank Provider"]
+  O --> AG["Answer Generator"]
+  O --> CV["Claim Verifier"]
+  IW["Index Worker"] --> P
+  IW --> E
+  IW --> FS[("Uploads / Repository Artifact")]
+  RS["Repository Sync"] --> FS
+  RS --> P
+  DR["Code Agent Runner"] --> P
+  DR --> BX["One-run BoxLite"]
+  BX --> FS
 ```
 
-Docker Compose 继续运行 `db`、`migrate`、`web` 和文档 `worker`。`agent-runner` 作为宿主原生服务运行，因为 BoxLite 需要 macOS Hypervisor.framework 或 Linux KVM，不能假设普通 Compose 容器具有嵌套虚拟化权限。V1 runner 直接从 PostgreSQL lease `analysis_runs`，不暴露公共管理 HTTP API。
+Web 负责同步命令、问答 API、Candidate/Admin Trace 和 Citation projection。Worker 负责材料/Repository 文档解析、Parent–Child、Embedding、索引激活和失败 reconcile。普通 RAG 不启动 BoxLite；只有实现级源码问题经过既有 deterministic gate 后创建 `conversation_analysis` run。
 
-开发机与本地交付支持 macOS Hypervisor.framework；Linux 部署要求可用 `/dev/kvm`。BoxLite 最低锁定到包含只读挂载安全修复的 `0.9.0`，实现阶段应锁定精确版本并验证实际平台能力。Repository/Deep Analysis 未配置或 runner 不可用时，Web 与普通文档问答仍可启动，但相关能力显示明确 unavailable/degraded。
-
-V1 只支持一个 Web 实例。该实例持有一条 PostgreSQL `LISTEN` 连接并向本进程 SSE consumer 扇出；未来多 Web 实例可以让每个实例各自 LISTEN，或在实际规模需要时引入共享事件服务，不在 V1 预建。
-
-## 4. 组件职责与源码组织
+## 4. 组件与依赖方向
 
 | 组件 | 单一职责 |
 | --- | --- |
-| Candidate Repository UI | 以 Repository 卡片目录呈现已添加仓库；唯一新增入口打开受焦点约束的模态同步表单，卡片继续拥有该仓库的同步、可见性、分析与 Wiki 审核动作 |
-| Candidate Knowledge UI | 通过统一知识只读投影同时浏览资料派生 Knowledge Item 与 current active Approved Repository Wiki；Repository 条目复用 Wiki 详情但不拥有编辑或批准动作 |
-| Repository Source Viewer | Candidate/Public Citation 在当前页面请求 owner/session 授权的结构化 source API，再把 Repository、完整 SHA、path/range 与源码代码块投影为安全 Markdown 弹窗；API JSON 不作为用户导航页面 |
-| Repository Service | owner 授权、Repository CRUD、visibility、同步请求、active Revision/Wiki 投影 |
-| GitHub Sync Adapter | 校验 GitHub.com URL/ref，使用请求内 Token 解析 SHA、下载 archive，随后立即丢弃 Token |
-| Artifact Service | 安全解压、过滤、限额、checksum、`.tar.zst` 持久化、引用计数与 GC |
-| Document Retrieval | 只检索文件/Website/Notion、Knowledge Item 与 Approved Wiki section，不读取源码正文 |
-| Question Router | 确定性门禁后的 `rag/deep/refuse` 分类与稳定 reason code，不拥有权限 |
-| Business AI Adapter | 使用官方 `openai` SDK 承担 Router 与普通回答，统一 schema、超时、重试和错误 |
-| Conversation Suggestion Service | 以单个会话的完整可见消息、当前授权主题、locale 与 refresh cursor 生成并持久化四条上下文相关问题；失败时使用确定性上下文 fallback |
-| Agent Runner | lease run、创建/销毁 microVM、注入运行配置、复制 artifact、预算与最终校验 |
-| Pi Guest Runtime | 在 guest 内加载一个产品 Skill，执行多轮只读搜索/阅读与模型决策 |
-| Analysis Event Bridge | 事务更新 run/version 后 `NOTIFY`，SSE 连接按授权发送快照和最小状态事件 |
-| Admin Controller | Repository Wiki 运行资源控制、禁用、重跑、取消与运行健康治理；不限制 Agent 问答次数，也不分析代码 |
+| `RagConfig` | 解析、校验并隐藏 Provider、TopK、RRF、token budget、chunk 和 Repository 文档默认值 |
+| `EmbeddingProvider` | 批量把版本化 contextual text 转为固定 1024 维向量，校验数量、维度和 finite number |
+| `RerankProvider` | 对一个 query 的候选正文返回请求内相对排序，不跨请求比较 score |
+| `StructureChunker` | 解析 source structure，生成 Parent、Child、原始范围、stable checksum 和 contextual prefix |
+| `IndexCoordinator` | 创建 index/source version、调度 job、原子激活、失败保持旧 active、强撤销和 GC |
+| `RepositoryDocumentCollector` | 在 immutable artifact 内按 allowlist/glob/容量发现并提取 Markdown/PDF 文本 |
+| `DeterministicQueryAnalyzer` | Unicode、中文片段、CJK n-gram、实体、精确短语、混合语言与会话指代 seed |
+| `QueryPlanner` | 输出受 schema 约束的 standalone query、terms、semantic queries 和 evidence type |
+| `HybridRetriever` | 在同一授权集合并行执行 exact、lexical、vector、structured 并返回 route ranks |
+| `RrfFusion` | 按配置化 weight/k 合并、stable dedup、Parent 限流和 evidence-family 标记 |
+| `EvidenceJudge` | 独立 Rerank 后判断 coverage、unsupported aspects 与是否执行唯一补检 |
+| `AnswerGenerator` | 输出结构化 claims/evidenceIds，不拥有授权或最终 Markdown |
+| `ClaimVerifier` | 只对每条 Claim 的引用 Evidence 判断 entailment/contradiction |
+| `CitationValidator` | 重新读取 active/auth/checksum，校验 Claim-Citation，Host 渲染最终 Markdown |
+| `RetrievalTraceStore` | 保存安全 metadata、route count/rank/outcome/degradation，不保存向量或未授权正文 |
 
-Pi 是 Askme 的业务运行时依赖，不是 Askme 源码开发 Harness。业务配置、contracts、guest 和 Skill 全部放在 `src` 下，不创建项目根 `.pi`，也不从 `.agents/skills` 加载业务能力。建议目录：
+依赖只能从 Orchestrator 指向 Provider/Repository interface；Provider 不访问数据库，模型输出不直接写消息，Repository Collector 不修改 artifact。
 
-```text
-src/
-├── agent-runner.ts
-└── server/
-    └── code-agent/
-        ├── contracts/                 run、result、citation、budget schema
-        ├── host/                      lease、scheduler、validation、reconcile
-        ├── sandbox/                   BoxLite adapter、image、copy、cleanup
-        ├── guest/                     Pi bootstrap、readonly tool implementations
-        ├── skills/
-        │   ├── repository-analysis/SKILL.md
-        │   └── code-question-answering/SKILL.md
-        └── resources/
-            ├── model-profiles/
-            └── system-prompts/
-```
+## 5. 持久数据模型
 
-`.agents/skills` 继续只服务 Askme 开发治理。产品 Skill 通过自定义 resource loader 按 run purpose 显式选择，不启用 Pi 默认目录发现。Repository 内的 `AGENTS.md`、`.agents`、`.pi` 或相似文件可以被 `read/grep/find` 观察，但没有注册或执行路径。
+### 5.1 `rag_index_versions`
 
-## 5. 数据与事实 owner
+全局索引配置 owner：
 
-### 5.1 Repository 与 Revision
-
-| 实体 | 关键字段 |
+| 字段 | 语义 |
 | --- | --- |
-| `repositories` | owner、provider=`github`、canonical URL、display name、visibility、public deep-analysis flag、active revision/projection、created/updated |
-| `repository_revisions` | repository、requested ref、full SHA、archive/artifact checksum、filter version、artifact key、size/file counts、state、failure code、timestamps |
-| `repository_sync_jobs` | repository/revision、state、lease owner/expiry、attempt、safe error、created/finished |
-| `repository_artifacts` | content key、checksum、compressed/extracted size、file count、retention/ref count、GC eligibility |
+| `id` | UUID |
+| `state` | `building | ready | active | failed | superseded` |
+| `chunking_version` | StructureChunker 合同版本 |
+| `embedding_provider/model/dimensions` | 默认 Qwen/`qwen3.7-text-embedding`/1024 |
+| `context_prefix_version` | contextual prefix 版本 |
+| `distance_metric` | `cosine` |
+| `created_at/activated_at/failure_code` | 生命周期与安全错误 |
 
-`repositories.active_revision_id` 与 `active_projection_id` 在 Candidate 批准事务中同时更新。Revision 唯一键至少包含 repository + full SHA + filter fingerprint；同一输入重复同步复用 artifact，但不能复用另一个 owner 的授权记录。
+全库同一时间只有一个 active index version。新配置重建在独立 version 下完成；只有全部要求的 source versions ready 且 Golden gate 可执行时才切换 active。首次 V2 migration 不保留 V1 query path，但仍用此机制保证重建失败不会产生半成品检索。
 
-### 5.2 Wiki Generated Version 与 Approved Projection
+### 5.2 `rag_source_versions`
 
-| 实体 | 关键字段 |
+统一表示一个可索引来源 revision：
+
+| 字段 | 语义 |
 | --- | --- |
-| `repository_dossiers` | revision、generated version、`wiki_title`、`wiki_summary`、不可变 navigation manifest、state、coverage、image/Skill/prompt/profile/model provenance、outdated reason |
-| `repository_wiki_pages` | dossier、相对 `.md` path、title、不可变 generated Markdown 与导航顺序 |
-| `repository_wiki_citations` | dossier、page、稳定 marker、path、line start/end、content hash 与顺序 |
-| `repository_dossier_projections` | dossier、state、approved by/at、superseded/disabled at |
-| `repository_wiki_projection_pages` | projection、generated page、Candidate 可编辑 Markdown |
+| `owner_id` | tenant filter |
+| `source_kind` | `material | approved_wiki | repository_markdown | repository_pdf` |
+| `source_id` | Material、Wiki page 或 Repository id |
+| `source_revision` | material checksum、projection checksum 或 `commit:path:content_hash` |
+| `index_version_id` | 所属 global index version |
+| `state` | `queued | processing | ready | ready_with_warnings | failed | revoked` |
+| `visibility` | 入库快照，仅用于诊断；查询仍 join 当前业务 owner |
+| `evidence_family_id` | 原始/派生血缘 |
+| `metadata` | title、path、commit、page/line、warning 等安全 JSON |
+| `parent_count/child_count/token_count` | readiness 与观测 |
 
-`repository_dossiers`、`repository_wiki_pages` 与 `repository_wiki_citations` 只追加，不更新 Generated Markdown 或 Citation。正文使用 `[S1]` 等全 bundle 唯一 marker；Host 先按正文 marker 剔除模型返回但未使用的 Citation，再验证每个事实章节至少引用一个 marker、所有正文 marker 恰好映射一个当前 Revision Citation，且 Markdown 不含危险 HTML。Candidate 编辑只写 projection page；批准前重新验证 marker 只能来自 Generated Version、跨页链接只指向 manifest 页面、bundle 至少保留一个限制/未覆盖章节、visibility 未降低到 `private`，并重新验证底层源码 hash。
+逻辑 source + index version + revision 唯一。Repository 文档的 `source_id` 使用 Repository id，`source_revision` 固定 commit/path/checksum；查询必须 join `repositories.active_revision_id`，不能只信 metadata。
 
-旧 `repository_dossier_claims`、`repository_dossier_citations` 与 `repository_dossier_projection_claims` 仅作为部署前 Claim-only 数据的保留表，不再被新 run 写入，也不再被检索或 UI 读取。迁移将没有 `generated_markdown` 的旧 active 投影退出 active pointer并标记 `wiki_contract_v1_required`，但不删除旧行或 artifact；Candidate 重跑后生成新 Wiki。这样既不丢数据，也没有双重语义索引。
+### 5.3 `rag_parent_chunks` 与 `rag_child_chunks`
 
-Approved Wiki 检索不持久化第二份 section 索引。EvidenceProvider 读取 active projection 的每个 `edited_markdown ?? generated_markdown`，确定性按页面与 Markdown H2/H3 切分，在当前请求中以关键词命中和标题权重选择少量 section；每个 section 只携带正文 marker 实际引用的结构化 Citation。个人知识库规模与 1,000,000-token Profile 足以支撑这一直接加载方式，避免把源码或 Wiki 再复制为 Chunk。
+Parent 保存原始完整上下文、token count、structure path、source range 和 checksum。Child 保存 parent id、position、原始文本、contextual text、token count、`tsvector`、trigram 可检索正文和 `vector(1024)` embedding。所有表重复保存 `owner_id + index_version_id + source_version_id` 以允许数据库约束和先过滤后排序；foreign key 必须阻止跨 owner 关联。
 
-`UnifiedEvidenceProvider` 并行调用现有 `DocumentEvidenceProvider` 与 `ApprovedWikiEvidenceProvider`，合并后按 score 截断为同一 evidence packet；因此审核通过是 Wiki 加入长期知识库的唯一激活事务，而不是另建一套“代码问答”入口。Candidate Preview 与 Public Chat 复用同一 DTO、answer generator、消息提交和即时权限复核；Material evidence 以 chunk id 复核，Wiki evidence 以 active projection + page id + marker + source hash 复核。Repository visibility 降权或 active projection 切换后，两类消费者都在写最终消息前重新查询权限，不能依赖生成答案时的旧快照。
+Child stable key 由 `source_revision + structure_path + normalized_range + content_checksum` 计算，不以数组 position 作为跨重建身份。Knowledge Item structured route 先读取现有 `knowledge_sources/knowledge_evidence`；V2 重建后由 `knowledge_sources` 将 anchor 重新绑定到该 Material 的 active Child，不把 Candidate summary 复制成最终 Evidence。
 
-职业知识库使用独立的 `UnifiedKnowledgeReadModel`，但不创建新持久表。`/api/knowledge` 在既有 Knowledge Item 行之外按当前请求读取 active Repository、Approved Projection、Dossier 与 Wiki pages，返回带 `sourceKind=knowledge_item|repository_wiki` 的统一列表；Repository 行的稳定 id 使用 Repository id，每个 Repository 只返回一行，Wiki 页面留在详情中。服务端分别应用 owner、status、type、search、citation readiness 与 active/visibility 约束，再按统一 sort 合并分页并汇总分类计数；因此页面结果不依赖浏览器拼接两个不一致的总数。
+V1 `chunks`、其 search vector 和派生 `knowledge_evidence` 可以在 V2 build 成功后清空或退出读取路径；已有 Message/Conversation 保留。无法重建的历史 V1 Citation 标记 `evidence_revoked`，不级联删除消息。
 
-详情继续复用领域 owner：`sourceKind=knowledge_item` 读取现有 Knowledge detail API 并允许既有字段编辑；`sourceKind=repository_wiki` 读取专用的 Candidate active Repository knowledge detail API，该查询必须从 `repositories.active_projection_id` 出发，只返回 current active Approved Projection 的有效 Markdown、完整 SHA、coverage、visibility 与 Citation，不能复用“最新待审核 Dossier”语义。Knowledge UI 根据 discriminator 选择详情，不把 Repository id 送入 Knowledge Item 更新接口，也不在 Knowledge 服务中复制 Wiki Markdown。Repository 同步、分析和审核失败不会污染统一读模型；active pointer 原子切换后下一次无缓存请求立即看到新 Wiki，回滚只需恢复旧应用版本，因为持久数据模型不变。
+### 5.4 Trace 与反馈
 
-### 5.3 Analysis Run 与消息
+`rag_query_traces` 保存 conversation/message、caller mode、policy/index version、Planner safe JSON、每 route count、selected evidence IDs/scores、coverage、round count、degradation、token budget 和 latency。表不保存 question、evidence正文、Prompt 或 vector；Candidate 只能读自己的 trace，Admin API 只返回诊断字段。
 
-`analysis_runs` 统一承载两种 purpose：
+`rag_feedback` 保存 message、owner、`up | down | correction`、可选安全标签和 policy version。correction 正文按 Candidate 私有数据处理，但不进入索引或 Prompt，只有离线 eval export 显式读取。
 
-- `repository_analysis`：同步触发，低优先级，结果写新的 Generated Wiki；
-- `conversation_analysis`：问题触发，高优先级，结果只写会话最终消息与 Citation。
-
-关键字段包括 owner、purpose、repository/revision/artifact、conversation/message、state、outcome、priority、version、lease、cancel reason、budget snapshot、usage、image digest、Skill hash、prompt version、profile、actual model、safe error code、created/started/finished/cleanup timestamps。`analysis_run_events` 只在确有审计/调试需要时保存安全状态转换，不保存 reasoning 或 tool output；SSE 读取 `analysis_runs` 当前行即可恢复。
-
-幂等键由 Host 计算并受数据库唯一约束：
-
-- sync 使用 owner + canonical repository + full SHA + filter fingerprint，阻止同一显式同步请求重复创建 artifact；
-- Repository Analysis 使用 revision artifact checksum + filter fingerprint + image digest + Skill hash + prompt version + Profile fingerprint + `analysis_generation`。普通重试保持 generation 不变并复用 run，Candidate/Admin 显式重跑先递增 generation，因此同一环境的误重试可去重而主动重跑仍会创建新 Generated Wiki Version；
-- Conversation Analysis 使用 conversation + `clientMessageId` + repository revision + route/policy version，避免浏览器重试重复启动 microVM 或保存两条回答。
-
-Profile fingerprint 包含模型名、thinking/reasoning、token/timeout/tool budgets 与 provider compatibility；最终 provenance 仍保存上游实际返回的 model。任何幂等命中都重新执行当前授权检查，不能因为旧 run 存在而绕过 visibility、publication 或取消状态。
-
-消息 Citation 通过统一 EvidenceProvider 投影文档或 Repository 来源。Repository Citation 的内部记录保存 SHA/path/lines/hash；公共 API 不直接序列化内部记录，而是每次根据当前 publication/visibility 生成名称-only 或 source-preview DTO。
-
-问答路由只把安全元数据写入 `audit_events`：requested route、effective route、稳定 reason code、confidence、repository id 和 evidence count；不保存问题、回答、prompt 或 reasoning。RAG 回答的 Repository Evidence 先由模型选择 evidence index 与其中实际支撑回答的 `[S*]` marker，再由 Host 校验 marker 确实属于该 section，最终消息只持久化这些被选择的源码 Citation，而不是 section 中所有候选 marker。
-
-### 5.4 会话推荐问题
-
-推荐问题的唯一 owner 是 `conversations`，不是 Candidate 的全局 `agent_settings`。additive migration 为会话增加 `suggested_questions jsonb`、`suggestions_context_hash text` 与 `suggestions_updated_at timestamptz`；既有 `suggestion_cursor` 作为同一上下文的主动刷新版本继续使用。历史 `agent_settings.suggested_questions` 可以暂时保留列，但新读写路径忽略它，不做破坏性清理。
-
-`ConversationSuggestionService` 读取该会话全部当前可见且已落定的消息，并读取调用方当前有权引用的 Knowledge Item 标题与 active Approved Repository 主题。它以最后一条用户问题判定当前语言（空会话回退 UI locale），并把 locale、cursor、消息 id/status/content 与授权主题生成 context hash：hash 未变化时直接复用持久结果；hash 变化或用户主动刷新时调用 Router profile 生成四条同语言、非重复、可由当前授权信息继续回答且能推进当前聊天进度的问题，并使用 optimistic hash 更新避免并发覆盖新上下文。对超长历史只做确定性分段压缩并保留全部轮次的主题，不静默丢弃早期会话语义。
-
-空会话不依赖随机模板或 AI 调用，而是由当前授权项目、经历与 Repository 清单生成稳定的引导问题；没有任何主题时使用通用的职业资料发现问题。已有会话的 AI 生成失败、超时或 schema 不合格不能回滚已经完成的回答，服务改用包含最近问题、当前项目/Repository 和 cursor 的确定性上下文 fallback。Candidate 首次进入时确保存在一个空 preview 会话，因此初始引导也有真实 conversation owner；Public session 创建后采用相同会话级合同。
-
-## 6. Repository 同步、过滤与 Artifact
-
-```mermaid
-flowchart LR
-  S["Revision staging"] -->|fetch/filter/limit failure| F["Revision failed"]
-  S -->|private artifact valid| ST["Revision stored"]
-  S -->|analyzable artifact valid| Q["Wiki analysis queued"]
-  ST -->|visibility raised| Q
-  Q --> R["Repository Analysis Run"]
-  R -->|failed| DF["Wiki generation failed"]
-  R -->|Markdown and citations validated| RP["Wiki review_pending"]
-  RP -->|explicit rerun| Q
-  RP -->|Candidate approval transaction| AP["Repository active Revision + Approved Projection"]
-  AP -->|new Revision or reanalysis| Q
-  AP -->|revoke/security action| D["Access disabled"]
-```
-
-Revision artifact readiness、Wiki generation/review 与 Repository active pointer 是三个独立事实。开始新 Revision 或同 Revision 重分析时，现有 `active_revision_id + active_projection_id` 保持不变；新的 Wiki 失败或仍待审核都不能修改它们。只有 Candidate approval 事务同时校验 Revision、Generated Wiki、projection Markdown 与 Citation 后更新两个 active pointer，对外才投影为 Spec 中的 `active`。`private` Revision 保持 `stored`，提升 visibility 后创建新的 Wiki run，而不是修改 artifact。
-
-同步由已认证 Web 请求执行或创建独立 sync job，但 Token 必须在完成 GitHub fetch 前一直留在请求内存，不能写 job payload。为避免异步 job 需要持久 Token，V1 推荐请求阶段完成 GitHub metadata + archive 下载到隔离 staging 文件，再将不含 Token 的 artifact processing job 交给 worker。请求失败或断开时清理 staging 文件。
-
-GitHub adapter 只接受 `github.com/{owner}/{repo}`，使用 API 将 branch/tag/ref 解析为 full SHA，再按 SHA 下载 archive；不调用 `git clone`。archive 处理拒绝绝对路径、`..` escape、重复规范化 path 和超过 Spec 限额的输入；symlink、hardlink、device、FIFO、socket 只按条目类型计数并跳过，绝不解析、跟随或写入 Artifact，NUL/二进制与非 UTF-8 文本同样过滤。Candidate 自定义 excludes 先规范化并生成 filter fingerprint，不能反向包含默认安全排除项。
-
-Artifact Service 以过滤后 manifest + file content 计算 content key，生成不可变 `.tar.zst`。Host 只给 runner artifact key 与 checksum。Runner 创建 microVM 后把归档复制到 guest 临时磁盘并在 guest 内解压到固定只读 source root；不使用 host mount，即使 BoxLite 提供 mount API也不作为 V1 正常路径。
-
-仍被 active Revision、Wiki、run 或历史 message Citation 引用的 artifact 不可 GC。权限撤销只先切断授权，后台 GC 在 retention 到期且引用计数为零时删除精确 content key；删除失败记录 safe error 并可幂等重试。
-
-## 7. 问答路由与 EvidenceProvider
-
-```mermaid
-flowchart TD
-  Q["Question"] --> G{"Deterministic gates"}
-  G -->|deny| X["Refuse or short-window rate error"]
-  G -->|allow| R["Document and Approved Wiki section retrieval"]
-  R --> L["Router Profile"]
-  L -->|rag| A["RAG Answer Profile"]
-  L -->|deep| J["Create conversation_analysis run"]
-  L -->|refuse| X
-  L -->|low confidence| T{"Retrieved evidence sufficient?"}
-  T -->|yes| A
-  T -->|no and allowed| J
-  T -->|no and denied| I["Insufficient"]
-```
-
-门禁先确定 caller mode、owner/publication、唯一 Repository、visibility、Candidate public-deep setting、短窗口 rate、并发和 question scope；Conversation Analysis 不读取或消费按日问题次数。Router 输入只包含问题、允许的文档/Wiki section 摘要和候选 repository id；Zod schema 只接受 `rag|deep|refuse`、稳定 reason code、confidence、repositoryId。repositoryId 必须来自 Host 候选集合。Host 在进入 RAG、排队 Deep 或拒绝前确定 effective route 并写安全路由审计；RAG Evidence 不足后升级 Deep 时再写一条稳定的 escalation event。Host 另有窄化的 source-inspection classifier：问题同时包含明确代码符号和实现行为、边界、分支或调用链意图，且唯一目标 Repository 允许 Deep 时，effective route 固定为 `deep/source_inspection_required`，Router 的 RAG 选择不能覆盖该决定。
-
-Document Retrieval 继续使用 PostgreSQL 的结构化查询与全文搜索；个人资料规模允许在预算内直接加载少量全文。`ApprovedWikiEvidenceProvider` 在请求内切分并排序 Markdown section，与 `DocumentEvidenceProvider` 返回统一 evidence DTO；Wiki marker 对应的内部源码 Citation 仍由专用 projector 处理。Repository display name/owner/repo alias 只用于识别问题指向的 Repository，不得作为 section 正文相关性词，否则 `copybook` 与 `CopybookPreview` 这类字符串碰撞会把无关入口文件提升为证据；剔除实体词后无正文关键词命中时，只回退到 Overview/Summary 等项目级 section。V1 不引入 vector database。
-
-`rag` 路径由 Business AI Adapter 生成同步或短时流式回答；Host 根据当前用户问题确定 `zh-CN|en` 并在 system contract 中要求回答、证据不足与拒绝反馈使用同一主要语言。结构化输出要求 `sourceMarkers` 使用 canonical `S1` 值；parser 同时接受 Provider 常见的正文形式 `[S1]`，先去掉单层方括号并按 canonical 值检查格式、规范化后唯一性和 Evidence 允许集合，再只持久化被选择的源码 Citation。其他宽松纠错、未知 marker 或重复值均 fail closed。Document Evidence 继续按 evidence index 引用。`deep` 路径把同一语言要求写入 Code Q&A Skill，最终 Host 仍校验结构与 Citation；它先创建 pending assistant message + run，HTTP 返回 accepted/run id，浏览器转为 SSE 观察。run 完成后 Web 重新读取最终 message；run 失败不再次调用 RAG 生成看似成功的替代答案。
-
-## 8. Agent Runner、BoxLite 与 Pi guest
-
-### 8.1 调度与生命周期
-
-Runner 使用独立进程身份和数据库最小权限，循环以短事务 `FOR UPDATE SKIP LOCKED` lease 到期 run。调度器优先 `conversation_analysis`，全局并发为 2 时最多允许一个 `repository_analysis` 占用 slot，从而为实时问题保留一个 slot。lease heartbeat、Host watchdog 与 DB reconcile 共同处理 runner crash；只有持有当前 lease 的 runner 可以提交结果。
-
-每个 run 的固定阶段为：
-
-```text
-lease → create microVM → bootstrap guest → copy+verify artifact
-→ run Pi skill → receive manifest → copy-out Wiki → host validate in temp
-→ cleanup microVM → persist completed result or failed cleanup outcome
-```
-
-创建、分析、结果校验和清理分别受 watchdog 控制。Repository Analysis 因需跨子系统读取并写多页 Markdown，默认 analysis watchdog 为 20 分钟；实时 Conversation Analysis 仍为 120 秒。guest 非零退出且实际耗时已到 watchdog 时，Controller 确定性归类为 `CODE_AGENT_ANALYSIS_TIMEOUT`。权限或 publication 在排队/运行中被撤销时，Host 写 cancel request；Runner 在下一边界停止模型/tool loop并清理。validated result 在 cleanup 成功前只保留于当前 Runner 内存，不对 Web 可见。cleanup 成功后，Runner 才在持有当前 lease 的事务中写最终 message/Wiki 并把 run 置为 `completed`；cleanup 失败只写 `failed` 与高优先级安全观测，并丢弃未发布结果。Runner 在 cleanup 后、提交前崩溃时，lease reconcile 发现目标 microVM 已不存在并重新运行或安全终止，绝不把未提交结果推断为成功。
-
-### 8.2 OCI image 与 guest 能力
-
-使用 Askme 管理的专用 OCI image：
-
-```text
-ASKME_CODE_AGENT_IMAGE=askme-code-agent:<immutable-version-or-digest>
-```
-
-生产必须 pin digest。Image 在构建时包含 Pi guest runtime、`pi-ai`、两个产品 Skill、readonly tools 与 schema，不在 run 内安装 npm/package、下载 Skill 或修改镜像。Repository Analysis 与 Code Q&A 使用同一 image，通过 run purpose 选择唯一 Skill。
-
-guest 暴露语义受限的 `ls`、`find`、`grep`、`read` 和 `write_wiki`。前四个工具只能读取固定 `/workspace/source`；`read` 可以展示最多 500 行，但把结果确定性拆成每段最多 200 行的 `citationRanges`，其换行归一化和文件末尾空行语义与 Host validator 完全一致。`write_wiki` 只能在独立 `/workspace/output/wiki` 创建或覆盖 manifest 声明的普通 `.md` 文件，拒绝绝对路径、`..`、symlink、隐藏文件、非 Markdown 扩展、单文件/文件数/总大小越界；它还使用与 Host 相同的事实章节判定，当任一事实型 H2 没有 `[S*]` marker 时当场拒绝页面并把缺失标题反馈给当前 Pi session，不能把结构错误延迟到唯一一次 Host correction。它不能写 Repository Artifact，也不向模型暴露任意 shell command、通用 write/edit、process spawn、package manager、browser、network fetch、MCP 或动态 tool registration。工具按预算截断并返回明确 `truncated`、line range 和 match count。代码、manifest 和文档统一按纯文本处理，是否继续搜索、读取和对照由 Pi + LLM 多轮决策，不引入 Tree-sitter、LSP 或每语言 adapter。
-
-guest 默认只允许到开发者配置的 OpenAI-compatible endpoint 的出站连接；GitHub、metadata service、局域网、Host API 与任意互联网均不可达。配置 endpoint 属于部署者信任边界，不能由 Candidate/Visitor 输入覆盖。
-
-### 8.3 Secret 注入
-
-Runner 从自身进程允许配置中取得 `ASKME_AI_BASE_URL` 与 `ASKME_AI_API_KEY`，在 microVM 启动后通过一次性 bootstrap/control channel 发送给 guest bootstrap；guest 直接构造 Pi ModelRuntime 的内存 provider 配置，channel buffer 使用后清零并关闭。正常路径不设置 guest 环境变量、不写文件、不创建 Pi credential directory。
-
-如果特定 Pi/BoxLite 版本只能通过环境变量、临时文件或 Pi credential directory 兼容，则该 fallback 必须只存在当前 microVM、使用最小权限、在模型调用前后清理，并由 microVM 销毁兜底；不得落到 Host 全局目录、artifact 或跨 run volume。Fallback 默认关闭，启用时产生不含 Secret 的安全观测。
-
-Askme 不实现 Host LLM Gateway。guest 直接访问外部 OpenAI-compatible API 或 AI Gateway；Askme 不判断其后方 provider，也不管理 API key 的上游来源。
-
-### 8.4 结果与 Citation 校验
-
-Pi Code Q&A 最终输出：
-
-```ts
-type CodeAnswerResult = {
-  outcome: "answered" | "insufficient" | "refused";
-  answerMarkdown: string;
-  citations: Array<{
-    path: string;
-    lineStart: number;
-    lineEnd: number;
-    contentHash: string;
-  }>;
-};
-```
-
-Repository Analysis 使用相同 Citation schema，stdout 外层结果只包含 `title + summary + pages manifest + citations + coverage`，完整 Markdown 已由 `write_wiki` 写入 guest 输出目录。guest 根据真实 tool 观测补全 eligible/examined/skipped 计数，不允许模型伪造。Pi 结束后、microVM cleanup 前，Controller 使用 BoxLite `copyOut('/workspace/output/wiki', hostTempDir)` 取回文件；SDK `0.9.7` 当前接口原生支持目录 copy-out，不需要把大文档重复塞进 stdout。
-
-Host 对临时目录使用 fail-closed walk，只接收 manifest 声明的 1–32 个普通 UTF-8 `.md` 文件，总计不超过 1 MiB；拒绝 symlink、path escape、未声明文件、重复 path/title、空页和危险 HTML。整个 bundle 至少包含 H1、5 个实质 H2、Mermaid fence、限制章节和稳定 `[S*]` marker；固定 `new-api` 质量场景额外要求 8 个实质章节。随后验证 path 属于 source manifest、未被排除、line range 存在且不超过 200 lines、hash 对应绑定 SHA 内容、每个事实 section 引用只指向返回 citations。Host 可以把同一有效 Citation 的跨页复用规范化为页面唯一 marker，也可以剔除正文未引用的额外 Citation，但不会补造路径、范围或 hash。第一次失败可以让同一 microVM 继续通过 `write_wiki` 修正一次并重新 copy-out；Controller 合并两次 guest 工具真实观测到的 examined paths，避免把首次已读 Citation 误判为未检查；仍失败则 run `failed`，host temp 目录精确删除，不持久化未验证回答或 Wiki。
-
-Repository Analysis 的产品 Skill 使用最多 50 rounds 和 80 次受限工具调用。每次工具结果都携带剩余调用数。guest 根据当前 session 的实际调用上限把 40%（默认 32 次，最多等于 32 页上限）作为正常写入预留；默认前 48 次可用 `ls/find/grep/read` 完成盘点与代表性读取。大型仓库只有达到 30 个真实 examined paths 后才在该软边界通过 Pi session 动态移除 source tools；不足时 `write_wiki` 拒绝过早写作并允许继续读唯一代表路径，但 source tools 最迟在第 60 次移除，硬保留至少 20 次多页写入和 writer 修正。修正 session 使用 Host 计算出的剩余预算、跳过重复 coverage 门禁，Controller 合并两轮真实 examined paths。Skill 必须先盘点仓库结构，再按主要子系统读取代表性实现、测试和运行文件，并根据真实内容选择单页或多页 Wiki；前 44 rounds 用于分析与写作，保留 rounds 给收口和一次 Host 修正。Skill 不以“4–6 条结论”或固定文件清单提前结束。固定 `new-api` 验收额外要求至少 30 个跨子系统 examined paths；其他仓库按规模诚实记录 coverage。
-
-## 9. AI Adapter 与 Profile 配置
-
-Web/worker 的 Router 与 RAG Answer 使用官方 `openai` Node SDK，并由薄的 Askme domain adapter 包装。Adapter 只负责：
-
-- 读取通用 OpenAI-compatible base URL/key；
-- Profile 到 Chat Completions 参数映射；
-- `AbortSignal` + SDK timeout + Host hard watchdog；
-- 有界 retry、provider compatibility 选项和稳定错误码；
-- Zod 结构校验、usage/latency/request id 观测；
-- 禁止 raw prompt、response body、key 和 provider敏感错误进入日志。
-
-Chat Completions 是 V1 最低兼容合同，不依赖 Responses API。由于 SDK timeout 不能单独证明响应 body 永不挂起，每次请求必须再受调用方 hard deadline 控制。Pi guest 使用其自身 `pi-ai` ModelRuntime，但读取同一逻辑 Profile 定义。
-
-推荐配置键：
-
-```text
-ASKME_AI_BASE_URL
-ASKME_AI_API_KEY
-ASKME_AI_ROUTER_MODEL=deepseek-v4-flash
-ASKME_AI_RAG_MODEL=deepseek-v4-flash
-ASKME_AI_CODE_MODEL=deepseek-v4-pro
-ASKME_AI_ROUTER_THINKING=off
-ASKME_AI_RAG_THINKING=off
-ASKME_AI_CODE_THINKING=high
-ASKME_CODE_AGENT_IMAGE=<pinned digest>
-ASKME_CODE_AGENT_ENABLED=true|false
-```
-
-timeout、retry、token、reasoning/provider quirks 和 run budgets 使用配置文件的 typed profile，可由明确环境变量覆盖。实现直接删除 `DeepSeekClient` 与 `DEEPSEEK_*` provider 分支，不提供旧配置兼容；readiness 展示通用 AI、agent-runner、BoxLite 和 artifact store 状态。
-
-## 10. 异步状态、SSE 与一致性
+## 6. 索引流水线
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending
-  pending --> running: runner lease
-  pending --> cancelled: revoke/user cancel
-  running --> completed: validated result + cleanup
-  running --> failed: timeout/provider/sandbox/validation/cleanup
-  running --> cancelled: revoke/cancel acknowledged
+  [*] --> queued
+  queued --> processing
+  processing --> ready
+  processing --> ready_with_warnings
+  processing --> failed
+  ready --> active: source/index activation transaction
+  ready_with_warnings --> active: warnings accepted by policy
+  active --> revoked: delete/permission downgrade
+  active --> superseded: newer revision activated
 ```
 
-Runner 每次状态更新在数据库事务中递增 `analysis_runs.version`，提交后执行：
+### 6.1 Material / Approved Wiki
 
-```sql
-NOTIFY askme_analysis_run, '{"runId":"...","version":42}';
+Material 继续由现有 ingestion job 提取原始文本，但 persistence 改为：提取结构 → Parent/Child → Embedding batch → source version ready → activation transaction。生成摘要/Knowledge Item 可以读取 ready Parent，不再负责定义 chunk identity。
+
+Approved Wiki 以 active projection page 和 H2/H3 section 作为结构输入；每个 section 保留实际 `[S*]` marker 与 Repository source ranges。Wiki 进入 `evidence_family` 后可参与检索，但 RRF/Verifier 优先投影到原始 Material/Repository document；只有 Wiki 的 Host-verified source 能独立引用。新的 projection 批准后，旧 projection 的 Wiki source 必须在同一协调流程中 supersede，随后按非 revoked/superseded source 重算 active index expected count；Repository 文档 readiness 只统计 Markdown/PDF，不能把 Wiki page 混入文件数。
+
+### 6.2 Repository 文档
+
+Repository sync 成功后，Collector 从 content-addressed artifact 读取 manifest，不从 GitHub live branch 拉取。默认 allowlist 与 Candidate include/exclude 使用 `minimatch`；默认安全 excludes 不可被反向 include。
+
+Markdown 解析 heading/list/table/code-fence 边界，并计算源行范围。PDF 复用 `pdfjs-dist` 直接文本提取，按 page/block 记录页码；空文本或质量阈值不达标时标记 `unsupported_no_extractable_text`，不调用 OCR。单文件/页/revision token 预算超限产生 warning 和 skip reason，不截断证据。
+
+Repository 首次处于 private 时可以预建 private index 以缩短后续切换，但检索仍不可使用；最小实现也可以在 visibility 提升时构建。实现必须保证 visibility 是 Repository 级 owner，新增/变化 path 自动继承，删除 path 使旧 source version revoked。
+
+### 6.3 并发与幂等
+
+复用 PostgreSQL job lease + `FOR UPDATE SKIP LOCKED`。幂等键包含 owner、source kind/id/revision、index version 和 extractor version；Provider retry 不创建重复 Parent/Child。一个 source version 只有 lease holder 可以提交 ready；激活事务重新检查当前业务权限与 revision。
+
+Embedding batch 使用配置化并发、batch size、timeout 和 retry；429/5xx 可退避，dimension/schema/invalid-number 是永久失败。旧 active 只有在新 source ready 后 supersede。
+
+## 7. Query Planning 与多路检索
+
+```mermaid
+flowchart TD
+  Q["Question + conversation"] --> G{"Host authorization gates"}
+  G -->|deny| RF["refused"]
+  G -->|allow| DQ["Deterministic analyzer"]
+  DQ --> QP["Structured Query Planner"]
+  QP --> MR["exact + lexical + vector + structured"]
+  MR --> RRF["weighted RRF + family dedup"]
+  RRF --> RR["independent rerank"]
+  RR --> J{"Evidence Judge"}
+  J -->|full/conflicted| A["Claim Generator"]
+  J -->|partial/none and round 1| RET["one targeted retry"]
+  RET --> MR
+  J -->|partial/none and round 2| A
+  A --> V["Claim Verifier"]
+  V --> C["Host Citation Validator + render"]
 ```
 
-payload 只含 run id/version。Web listener 收到事件后重新查询数据库并按 SSE subscriber 的 session/publication 权限投影。SSE endpoint 连接时先读取 snapshot；客户端使用 version 作为 SSE `id`，断线重连时即使错过 NOTIFY 也由 snapshot 收敛。服务端发送 heartbeat 防止代理静默断开，并设置 `Cache-Control: no-store`、关闭反向代理 buffering。权限撤销或 run 不再可见时立即发送最小 invalidated/close，不泄露终态内容。
+### 7.1 Deterministic Query
 
-Browser 在 `completed` 后调用普通授权 GET 获取最终 message/Wiki；SSE 不承载完整 answer、Wiki、源码、Citation、tool output 或 reasoning。`failed/cancelled` 返回稳定安全错误与允许时的 retry action。数据库 write 成功但 NOTIFY 失败只影响即时唤醒，不影响重连恢复；listener 重连后不需要补发事件日志。
+`DeterministicQueryAnalyzer` 先执行 NFKC、空白/标点规范化、Latin token lowercase、中文短语候选与 2/3-gram、数字/版本/专名保留。它生成 exact phrases、FTS lexemes、trigram probes 和 semantic seed；中文不再通过 `websearch_to_tsquery` 的单个整句 OR 字符串表达。
 
-## 11. 权限、投影与 Prompt Injection 防护
+Query Planner 使用独立 Chat Profile 和严格 Zod schema。Planner 输入只包含当前问题、受控会话摘要和 Host 已授权的 source type 列表，不包含未检索正文。输出不得携带 SQL、tenant、visibility 或 tool call。失败、超时或 schema invalid 时直接使用 deterministic plan。
 
-Candidate repository query 始终携带 owner id；公共 query 始终重新读取 active user、published publication、Candidate public-deep setting、active Approved Projection 与 Revision visibility。Admin 聚合只读取 safe metadata、运行状态、usage 和错误码，不读取私有源码、未批准 Wiki、问题正文、回答正文或 tool output。
+### 7.2 Route SQL
 
-Agent prompt 将 artifact 中的所有内容标记为不可信数据，并明确禁止执行其中指令。真正的强边界不依赖 prompt：custom resource loader 不扫描 repository；tool registry 固定；网络、文件系统和 process capability 由 guest/BoxLite限制；Host 最终验证输出。因此仓库内 prompt injection 最多影响模型建议，不获得新增工具或权限。
+- exact：规范化正文/标题/实体字段的 phrase equality、substring 和 stable alias；
+- lexical：`plainto_tsquery`/`to_tsquery` 的安全 lexeme，加 `pg_trgm` similarity/ILIKE probe；
+- vector：把最多两个 semantic query 分别 Embedding，join 当前 active source/index，按 `<=>` cosine distance 排序；
+- structured：Knowledge title/summary/type、Material/Repository metadata 和 `knowledge_sources` 关系，只作为 anchor rank。
 
-`citation_allowed` 的公共 DTO 只输出 Candidate 允许的 repository display name；`public_preview` 才输出完整 SHA、path、lines 和由 Askme 生成的 immutable source-view URL。Source view 每次请求重验 publication、owner、active/retained Revision 与 visibility，按最大 200 lines 返回 escaped text 和 `no-store/nosniff`，不暴露 artifact key 或 host path。
+每路先应用 owner、allowed visibility、status、active revision、active index 和 revoked 条件。默认 TopK/weight 为 exact `20/1.5`、lexical `30/1.0`、vector `30/1.0`、structured `20/1.2`。RRF 默认 `k=60`，按 stable Child 合并；同 Parent 默认最多三个 Child，同 evidence family 不重复增信。
 
-## 12. 预算、并发与成本控制
+### 7.3 Rerank 与补检
 
-Host 是单次运行资源预算 owner。所有 Profile/Skill 只能消费预算，不能自行提高。默认值来自 `SPEC-002`，Runner 在每次 tool/model 调用前原子扣减；输出截断、timeout 和 budget 都使用稳定终止原因。
+Rerank adapter 按独立 Base URL 和 `provider protocol` 调用 `qwen3-rerank`：`dashscope-compatible` 使用 Workspace 专属 `compatible-api/v1/reranks`、顶层 `results` 与固定问答检索 `instruct`，`cohere-compatible` 使用 `/reranks` 且不发送 DashScope 专属字段。请求包含 query、candidate contextual text 和 `top_n`。Host 只接受输入 index 范围内的唯一结果和 `0..1` finite score；score 仅在当前请求内使用。
 
-多层限额至少覆盖：
+Rerank 未配置、超时或失败时使用 RRF，Trace 标记 degradation，Judge 提高 full 阈值。Judge 根据 aspect coverage、family 独立性、矛盾和 source quality 输出 coverage。只有 round 1 partial/none 才构造 unsupported-aspect retry plan；round 2 无论结果如何都停止。
 
-- visitor/session：并发 1、短窗口防滥用与单 run token/tool 预算；
-- publication/Candidate：并发 2、短窗口防滥用与 usage 观测，不设 Agent 问答日次数；
-- Repository：同步、Wiki rerun 的运行资源控制；Conversation Deep 不按 Repository 日次数拒绝；
-- runner global：并发 2、至少一个 realtime slot；
-- sandbox：1 vCPU、1 GiB memory、2 GiB disk、network allowlist；
-- 单 run：deadline、round、tool calls、read/search/output/final token。
+## 8. Evidence Pack、Claim 与 Citation
 
-Repository Analysis 可以继续使用 global/Candidate/Repository 运行资源配额并以低优先级排队，不得耗尽全部 realtime slot；这不适用于 Agent 问答的 `conversation_analysis`。Candidate 与 Public 问答均不读取或消费 `analysis_quota_usage` 的日次数，也没有 public session 每日问题数控制；仍保留短窗口防滥用、并发、deadline、round、tool、token 与 microVM 资源上限。V1 只记录 usage，不计算价格、不扣费；未来若引入 token/积分余额，由独立余额 owner 决定可用性，不能恢复为 Askme 自定义问题次数限制。
+Evidence Pack Builder 先按 Rerank/Parent/family 选择，再计算 token。配置的 `200,000` 是 hard ceiling；effective ceiling 必须扣除 system、conversation、output reserve 和 safety margin。Builder 以 full coverage 提前停止，不为了填满预算加入弱 Evidence。
 
-## 13. 失败、恢复与可观测性
+Answer Generator 输出：
 
-| 失败 | 状态与恢复 |
-| --- | --- |
-| GitHub auth/ref/archive | sync failed，Token 丢弃，旧 active 保持；Candidate 用新 Token/ref 重试 |
-| archive/filter/limit | revision failed，保留 safe reason，不创建 artifact/Wiki |
-| AI not configured | 普通 AI/deep capability unavailable；非 AI 功能继续运行 |
-| BoxLite/KVM unavailable | runner readiness degraded，pending run 不伪成功；修复环境后 lease |
-| create/bootstrap/copy timeout | run failed，执行 cleanup，允许新 run 重试 |
-| model 401/429/timeout/invalid | 映射稳定 error，usage outcome，按 profile 有界重试 |
-| Citation validation | 同 run 修正一次，仍失败则 failed |
-| runner crash/lease expiry | reconciler 检查 microVM owner；安全清理后重新 lease 或终止，不双写结果 |
-| permission/revoke | cancel pending/running，后续读取立即拒绝，物理 GC 延迟 |
-| NOTIFY/listener/SSE disconnect | DB 状态不变，snapshot/reconnect 收敛 |
-| cleanup failed | run 不得 completed；记录高优先级安全事件并由精确 microVM id 重试清理 |
+```text
+coverage
+claims[] = { claimId, aspectId, text, evidenceIds[] }
+unsupportedAspects[]
+```
 
-结构化日志和 metrics 允许 run id、purpose、owner/repository 的不可逆 hash、phase、duration、model、token/tool counts、budget reason、BoxLite version/image digest、outcome、safe error code 与 cleanup result。禁止 GitHub/AI Token、prompt、question/answer、源码、path、tool output、stack中的敏感 payload 和 guest credential。审计保存 sync、visibility、approve、rerun、cancel、disable 与 GC 决策，不复制模型内容。
+Host 在 Verifier 前重新加载 evidence IDs 并核对 owner、active source/index、visibility、checksum。Claim Verifier 每次只接收一个或一小组 Claim 及其 cited subset，输出 entailed/partial/unsupported/contradicted 和可选 narrowed text。一次 repair 只能删除或收窄 Claim，不能新增 evidence ID。
 
-## 14. 迁移与实施顺序
+Citation Validator 确认每条最终 Claim 至少一个 entailed Evidence；Material 使用 Child range/checksum，Repository Markdown 使用 commit/path/lines/checksum，PDF 使用 commit/path/page/checksum，Wiki marker 必须映射当前 Approved Projection 的 Host-verified source。Host 按用户语言渲染 Markdown 和 Citation DTO，模型不能直接决定内部 URL。
 
-Askme 仍在开发阶段，不做旧 GitHub Material 或 `DEEPSEEK_*` 配置兼容。当前 Objective 按以下顺序完成 Wiki 合同收敛，每步都可由 feature flag 停止：
+互相冲突的 Evidence 由 Judge 标记 `conflicted`；Answer 只能说明冲突和各自来源，不能选择“看起来更新”的一方。`partial` 只渲染已支持方面并列出缺口。Answer/Verifier/Validator failure 使用独立 stable error，不返回 insufficient fallback。
 
-1. 建立通用 AI adapter/Profile，替换自定义 DeepSeek client，同时保持现有文档 Chat 回归通过。
-2. 在既有 Repository/Revision/Artifact/Analysis Run 基座上增加 Generated Wiki Markdown、Wiki Citation 与 Approved Markdown projection；保留但停用旧 Claim-only 表，迁移旧 active pointer 后不删除数据。
-3. 交付 GitHub request-time fetch、安全 artifact store 与 Candidate 同步/Wiki 阅读、编辑、预览、批准 UI，先只开放 public test repository。
-4. 构建并锁定 `askme-code-agent` image，交付 Host runner、BoxLite adapter、Pi guest、两个产品 Skill、预算和 Citation validator。
-5. 交付 Router、EvidenceProvider、Conversation Analysis、消息持久化和失败语义，先只开放 Candidate preview。
-6. 交付 PostgreSQL NOTIFY + SSE、取消/reconcile/GC 和 readiness/observability。
-7. 在固定 public/private Repository 验收通过后，增加 Candidate public-deep 开关和公共自动触发；默认关闭，启用后仍受授权、短窗口防滥用、并发与单 run 预算约束，但不设 publication/visitor 日次数。
-8. additive 增加会话推荐问题字段并把 Candidate/Public 读写切换到 `ConversationSuggestionService`；历史 Agent settings 推荐列与历史日配额记录保留但不再参与问答决策。删除 public daily-limit 管理入口，但不做破坏性数据清理。
-9. RAG marker parser additive 接受 canonical/正文两种 Provider 表达并统一为 canonical；source-inspection classifier 只提升唯一且已授权 Repository 的实现细节问题，不改变普通 Wiki 问题和多 Repository 歧义行为。
+## 9. Provider 与配置
 
-Wiki migration 先 additive 增加 Markdown 字段与 Citation 表，再原子切换 consumer；旧 Claim-only active pointer 被清空并标记 outdated，但旧行和 artifact 保留。每个 migration 仍只向前、可在空库重建。回滚优先关闭 `ASKME_CODE_AGENT_ENABLED`、停止 runner和公共开关，保留新表与 artifact 供诊断；不得通过宽范围删除恢复。
+`RuntimeConfig` 新增独立配置：
 
-## 15. 验证策略与实施输入
+- `embedding`: API key/base URL/model/dimensions/timeout/retry/batch/concurrency；
+- `rerank`: API key/base URL/model/provider protocol/timeout/retry/topN；
+- `planner` 与 `verifier`: Chat Profile；
+- `retrieval`: route TopK、weights、RRF k、Parent/Child limit、round limit；
+- `evidence`: max tokens `200000`、output reserve、safety margin；
+- `chunking`: child/parent targets、hard max、min、overlap；
+- `repositoryDocuments`: include/exclude、Markdown/PDF/revision limits。
 
-### 15.1 自动化与运行验证
+环境 allowlist 包含用户已配置的 `ASKME_EMBEDDING_MODEL_API_KEY`、`ASKME_EMBEDDING_MODEL_API_BASE_URL`、`ASKME_EMBEDDING_MODEL`，默认 dimensions 为 1024。Rerank 使用 `ASKME_RERANK_MODEL_API_KEY`、`ASKME_RERANK_MODEL_API_BASE_URL`、`ASKME_RERANK_MODEL=qwen3-rerank` 和 `ASKME_RERANK_PROVIDER_PROTOCOL`，不从 Embedding Secret 静默派生；部署者可以显式把二者设置为相同 key。
 
-1. Unit：URL/ref、filter、archive path、防 zip bomb、visibility、Router schema/reason code、函数实现意图 source-inspection、Repository 实体词与 section 相关性隔离、canonical/方括号 marker Citation、budget、result/Citation validation、projection、config allowlist、会话推荐 context hash/fallback。
-2. PostgreSQL integration：双 owner 隔离、revision activation transaction、Wiki immutability/approval、legacy active 退出、lease/version、cancel/reconcile、historical Citation retention 与 GC。
-3. SDK contract：通用 OpenAI-compatible Chat Completions mock + 真实 smoke，覆盖 timeout/body watchdog、retry、thinking/provider compatibility 与 usage，不记录 raw body。
-4. Guest/image contract：镜像 digest、Skill hash、无动态 install、固定 tools、repository 指令不加载、无 host mount、network deny、credential absence、资源限制与销毁。
-5. Runner E2E：Repository Analysis 与 Conversation Analysis 两种 purpose、优先级保留、crash/lease、invalid Citation 修正、permission cancel 和 cleanup failure；真实问题必须产生并完成 `conversation_analysis`，不能只以 Router 调用或 Repository Wiki run 代替 Deep 验收。
-6. SSE integration：snapshot、version、missed NOTIFY、listener reconnect、heartbeat、auth revoke、proxy buffering 与 terminal resource fetch。
-7. Browser：Candidate sync/Wiki Markdown 阅读编辑预览、普通/深度路由、pending/completed/insufficient/failed/cancelled、public auto trigger、Citation 降权和移动端无阻塞；覆盖 `copybook` 项目概览只显示直接支撑来源，`copybook` 的 `paginate` 剩余格子问题确定性 Deep 并显示精确源码 Citation，Candidate/Public 不受日次数阻断，空会话引导与多轮后推荐问题随所属会话完整上下文更新。
+Embedding/Rerank adapter 使用最小 fetch HTTP contract，不强行把非 Chat endpoint 塞进现有 `openai` Chat adapter。Provider 原始错误正文不进入数据库/UI；只记录 request id（若安全）、latency、token/数量和 stable code。
 
-### 15.2 固定验收输入
+## 10. 权限、强撤销与安全
 
-- Public：`QuantumNous/new-api@ccd535ef8e50cf6e5846a59278c40b7ff59d1b7d`，用于完整 Wiki Markdown、约 10 题 Router/回答/Citation 与 repository prompt injection 边界。
-- Private：`monshunter/copybook@10abc90f0d244485c0983a79f0c79238671bd3f0`，用于一次性 Token、固定 SHA、凭证扫描、撤权和清理。
-- `ASKME_GITHUB_TEST_TOKEN` 只由验收脚本从进程环境或当前用户 `~/.env` 的同名键读取，不执行整个文件；脚本将其作为一次同步请求字段提交后立即 unset。
-- 可用的 OpenAI-compatible base URL/key 和三 Profile model 配置；Askme 不要求知道其实际 provider。
-- 支持 Hypervisor.framework 或 KVM 的 Host、锁定 BoxLite 版本和 `askme-code-agent` image digest。
+检索 SQL 必须从当前业务 owner join：Material 要求 `status=indexed` 和 allowed visibility；Repository 文档要求 Repository 未 disabled、active revision 精确匹配且 visibility allowed；Wiki 要求 active approved projection。`rag_source_versions.visibility` 只用于审计，不作为授权事实源。
 
-Codex 在实现阶段基于固定 public SHA 生成并版本控制基准问题 manifest，记录 expected route、关键事实与最低 Citation，不保存模型逐字答案。用户无需逐题审核；Change Review 以源码、Wiki、确定性 Citation 与真实浏览器 Markdown 渲染结果为 Evidence。
+Repository 设置以整个 Repository 为唯一发布 owner。visibility 从 private 提升后全部白名单文档可用；后续新增/修改自动继承。降低 visibility、删除、publication revoke 或账号停用时，事务先更新业务状态并使相关 source versions revoked，再返回成功；Embedding row 的物理删除异步执行。
+
+历史消息读取先验证其 Evidence 仍授权。Repository 权限降低时，引用该 Repository 且超出新可见性范围的回答在同一事务中持久标记失效；失效 Citation 投影为 revoked，后续恢复 visibility 或重建 source 不清除该标记。回答依赖失效 Evidence 时状态投影 `evidence_revoked`，只能由新问题生成新回答。不复制私有正文到消息或 Trace，避免撤销后仍可从 snapshot 读取。
+
+Prompt Injection 防护使用结构化消息边界、固定 system contract、Evidence delimiter 和工具为空的 Chat calls。材料中的“指令”不经过任何动态注册路径。Planner 不读取 Evidence，Rerank 无工具，Generator/Verifier 只接收 Host 选择的正文；所有输出经过 schema 与 allowlist 校验。
+
+## 11. Retrieval Trace、状态与反馈
+
+每个 query 建立 trace id，并在相同 owner 下追加 stage metadata。UI 只展示：policy/index/commit、Planner terms、route counts、selected evidence ids/title/score、coverage、round、budget、degradation、filter/warning 和 stage latency。Candidate 可以展开自己的 trace；Admin 默认只看聚合/安全 metadata，只有通过既有治理授权进入 tenant 诊断时才看相同安全投影。
+
+Repository 页面把 sync 与 index 分栏：sync state、requested/full SHA、artifact ready；index state、active commit、files indexed/skipped、warning/error、last activated。Material 页面同样区分 extracted/indexing/ready/failed。
+
+Feedback API 只写 `rag_feedback`，不调用 Provider、不更新 policy、不创建 Knowledge Item。离线 eval runner 可以导出匿名 case 候选，但真实用户问题和材料默认不进入仓库 fixture。
+
+## 12. 失败、恢复与观测
+
+| 失败 | 行为 | 恢复 |
+| --- | --- | --- |
+| Embedding 未配置/失败 | Query 降级 lexical；新 source index failed 或 retry | 配置恢复后重跑 source/index version |
+| Rerank 未配置/失败 | RRF + strict Judge | 下次请求自动重试 Provider |
+| Planner invalid | deterministic plan | 不持久失败状态 |
+| Answer/Verifier invalid | message failed，不伪装 none | 用户安全重试，新 trace |
+| Citation invalid/revoked | 不提交最终回答 | 重新检索；不能复用旧 Evidence |
+| Repository file unsupported | ready_with_warnings + skip reason | 调整 glob/limit 或后续 OCR 版本 |
+| Worker crash | lease expiry 后幂等恢复 | 旧 active 继续服务 |
+| 新 global index failed | 保持旧 active index | 修复后新 version 重建 |
+
+指标至少包含 source indexing latency/count/failure、Embedding batch latency/tokens/errors、route hit count/latency、exact vector P50/P95、Rerank latency/errors、coverage distribution、false-none eval、Citation failure、revocation filter 和 actual evidence tokens。日志只使用 id、state、count、duration、stable code，不打印 question、正文、vector、Prompt 或 Secret。
+
+HNSW gate 由 active vector count 和 exact query P95 触发离线评估；实现不自动建 HNSW。达到 `100,000` 或 P95 `>100 ms` 后，只有 Recall@30 不低于 exact 门禁时才能通过新 migration/policy 启用。
+
+## 13. V2 迁移与直接切换
+
+1. Compose DB image 切换为 `pgvector/pgvector:pg18`，migration 安装 `vector` 与 `pg_trgm`。
+2. additive 创建 V2 index/source/parent/child/trace/feedback 表和必要 enum/constraint；业务表不删除。
+3. 创建一个 building index version，Worker 从现有 indexed Materials、Knowledge source、active Approved Wiki 和 approved Repository active revision 重建。
+4. 120 题门禁通过后把 V2 index 标记 active，并把 V1 retrieval code 从运行路径删除；不做双写或 feature flag。
+5. 清空/保留 V1 派生表只按 foreign key 安全性决定；历史消息保留，无法验证的旧 Citation 投影 revoked。
+6. 应用回滚可以恢复前一镜像，但 V1 问答不作为产品兼容目标；数据库回滚不删除 V2 表，旧 active source/index 可供 V2 重建恢复。
+
+本地真实部署必须记录前后 users/materials/knowledge_items/repositories/conversations/messages 数量，证明业务数据未丢失；派生 chunk/vector 数量可以变化。
+
+## 14. Golden Dataset 与验证
+
+仓库 fixture 使用至少三名虚构 Candidate，材料与 Evidence ID 稳定。120 case 以 JSON/JSONL 保存 question、conversation turns、caller、expected coverage/outcome、required/forbidden evidence IDs、可支持目标 Claim 的 acceptable Citation IDs 和 tags；`requiredEvidenceIds` 只约束必须召回的 canonical evidence，不能误作唯一合法 Citation。Eval runner 分两层：
+
+1. deterministic/provider-stub 层验证 permission、query、route、RRF、family dedup、budget、Claim/Citation 和 failure semantics；
+2. configured real Provider 层计算 Recall@30、Rerank Recall@8、Citation precision、false none、hallucination、unauthorized leak 和 outcome classification。
+
+Provider 非确定输出不以逐字答案为 gold；gold 只约束 outcome、Claim key facts 和 Evidence IDs。Prompt Injection、conflict、duplicate family、Repository commit 切换、强撤销和所有降级模式必须有 case。
+
+自动化门禁包括 unit、PostgreSQL integration、migration-from-current-data、provider contract、worker lease、security、API 和 full build。真实验收使用 `nuibizi@qq.com`：验证富途职责中文改写能命中上传简历、回答包含正确 Material Citation、Retrieval Trace 显示非零 route；再验证一个 approved Repository Markdown/PDF 问题及 Repository 撤销后的历史 Citation。
+
+## 15. 隔离源码分析保留边界
+
+现有 `src/server/code-agent`、`analysis_runs`、BoxLite microVM、Pi guest 只读工具、SSE 和 Host Citation 校验继续服务 `deep`。V2 修改只限于：Router 在文档 RAG 后决定是否需要源码检查、最终 Citation 进入统一授权投影、Retrieval Trace 记录 route transition。
+
+Deep run 仍绑定一个 owner、Repository、完整 SHA 和 artifact checksum；每 run 新 microVM，不挂载 Host 工作树，不持有 GitHub Token，不执行 Shell/build/test/install/network。中间 reasoning/tool output 不持久化，cleanup 成功后才提交最终回答；失败不回退成伪成功 RAG。
 
 ## 16. 外部选型依据
 
-- [BoxLite Introduction](https://docs.boxlite.ai/)：BoxLite 以真实 microVM 运行 OCI image，支持 macOS Apple Silicon 与 Linux KVM，符合 Host-native runner 和专用 image 的部署边界。
-- [GHSA-g6ww-w5j2-r7x3](https://github.com/advisories/GHSA-g6ww-w5j2-r7x3)：BoxLite 只读挂载绕过在 `0.9.0` 修复，因此 V1 最低版本不能低于 `0.9.0`；本设计仍不使用 Host mount，以减少对该边界的依赖。
-- [Pi AI README](https://github.com/badlogic/pi-mono/blob/main/packages/ai/README.md)：Pi AI 支持 tool calling、thinking/reasoning、OpenAI-compatible Chat Completions、自定义 model/provider compatibility 和显式 API key 参数，支撑 guest 内存配置与固定只读工具方案。
-- [OpenAI Node SDK](https://github.com/openai/openai-node)：官方 SDK 提供 Chat Completions、错误类型、可配置 retry、timeout 与 request id；Askme adapter 在其上增加稳定领域错误和预算。
-- [openai-node #1825](https://github.com/openai/openai-node/issues/1825)：SDK timeout 可能无法覆盖 stalled response body 的公开问题，设计因此要求调用方 `AbortSignal` 与 hard watchdog，不能只依赖 SDK 默认 timeout。
+- pgvector 官方支持 PostgreSQL 内 exact/approximate nearest-neighbor、cosine distance、filter、FTS + RRF/cross-encoder 混合检索；V2 初始只用 exact。
+- 阿里云百炼官方说明 `qwen3.7-text-embedding` 支持 256–2560 自定义维度和多语言长文本，V2 固定 1024 维避免同索引混维度。
+- 阿里云百炼官方 `qwen3-rerank` 接口返回输入 document index 与请求内 `relevance_score`，因此 adapter 只用它排序当前候选，不把分数当跨请求阈值。

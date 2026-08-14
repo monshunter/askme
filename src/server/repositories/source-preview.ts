@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
+
 import type { Pool } from "pg";
 import { z } from "zod";
 
 import { AppError } from "@/server/errors";
+import { extractPdfPagesFromBytes } from "@/server/materials/text-extraction";
 
-import { readRepositoryArtifactEvidence, type RepositoryArtifactDescriptor } from "./artifact-reader";
+import { readRepositoryArtifactEvidence, readRepositoryArtifactFiles, type RepositoryArtifactDescriptor } from "./artifact-reader";
 import { citationContentHash } from "./dossier-output";
 
 const sourceQuerySchema = z.object({
@@ -22,6 +25,8 @@ type SourceCitationRow = RepositoryArtifactDescriptor & {
   lineStart: number;
   lineEnd: number;
   contentHash: string;
+  sourceContentHash: string | null;
+  citationKind: "legacy" | "rag";
 };
 
 export function parseRepositorySourceQuery(url: URL) {
@@ -62,12 +67,34 @@ export async function loadRepositorySourcePreview(input: {
        AND publication.id=$9 AND publication.status='published' AND settings.public_mode=true AND owner.status='active'`;
   if (input.authorization.mode === "public") values.push(input.authorization.conversationId, input.authorization.publicationId);
   const result = await input.pool.query<SourceCitationRow>(
-    `SELECT repository.id AS "repositoryId",repository.display_name AS "repositoryTitle",revision.id AS "revisionId",
+    `WITH source AS (
+       SELECT citation.message_id,citation.owner_id,citation.repository_id,citation.revision_id,citation.path,
+              citation.line_start,citation.line_end,citation.content_hash,NULL::text AS source_content_hash,'legacy'::text AS citation_kind
+       FROM repository_message_citations citation
+       UNION ALL
+       SELECT citation.message_id,citation.owner_id,citation.source_id,(citation.metadata->>'revisionId')::uuid,citation.metadata->>'path',
+              (citation.metadata#>>'{sourceRange,lineStart}')::integer,(citation.metadata#>>'{sourceRange,lineEnd}')::integer,
+              NULL::text,citation.metadata->>'sourceContentHash','rag'::text
+       FROM rag_message_citations citation
+       JOIN rag_source_versions rag_source ON rag_source.id=citation.source_version_id AND rag_source.owner_id=citation.owner_id AND rag_source.state='active'
+       JOIN rag_index_versions rag_version ON rag_version.id=citation.index_version_id AND rag_version.state='active'
+       WHERE citation.source_kind IN ('repository_markdown','repository_pdf')
+       UNION ALL
+       SELECT citation.message_id,citation.owner_id,(rag_source.metadata->>'repositoryId')::uuid,(rag_source.metadata->>'revisionId')::uuid,
+              source->>'path',(source->>'lineStart')::integer,(source->>'lineEnd')::integer,source->>'contentHash',NULL::text,'legacy'::text
+       FROM rag_message_citations citation
+       JOIN rag_source_versions rag_source ON rag_source.id=citation.source_version_id AND rag_source.owner_id=citation.owner_id AND rag_source.state='active'
+       JOIN rag_index_versions rag_version ON rag_version.id=citation.index_version_id AND rag_version.state='active'
+       CROSS JOIN LATERAL jsonb_array_elements(citation.metadata->'sourceCitations') source
+       WHERE citation.source_kind='approved_wiki'
+     )
+     SELECT repository.id AS "repositoryId",repository.display_name AS "repositoryTitle",revision.id AS "revisionId",
             revision.commit_sha AS "commitSha",revision.filter_fingerprint AS "filterFingerprint",repository.canonical_url AS "canonicalUrl",
             artifact.content_key AS "contentKey",artifact.checksum,artifact.manifest_checksum AS "manifestChecksum",
             artifact.storage_path AS "storagePath",artifact.file_count AS "fileCount",
-            source.path,source.line_start AS "lineStart",source.line_end AS "lineEnd",source.content_hash AS "contentHash"
-     FROM repository_message_citations source
+            source.path,source.line_start AS "lineStart",source.line_end AS "lineEnd",source.content_hash AS "contentHash",
+            source.source_content_hash AS "sourceContentHash",source.citation_kind AS "citationKind"
+     FROM source
      JOIN messages message ON message.id=source.message_id AND message.owner_id=source.owner_id
      JOIN conversations conversation ON conversation.id=message.conversation_id AND conversation.owner_id=message.owner_id
      JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id AND repository.disabled_at IS NULL
@@ -83,10 +110,26 @@ export async function loadRepositorySourcePreview(input: {
   );
   const row = result.rows[0];
   if (!row) throw new AppError("REPOSITORY_SOURCE_NOT_FOUND", "The Repository source Citation is unavailable.", 404);
-  const evidence = await readRepositoryArtifactEvidence(input.artifactRoot, row, [row.path]);
-  const source = evidence.sources.get(row.path);
-  if (source === undefined || citationContentHash(source, row.lineStart, row.lineEnd) !== row.contentHash) {
-    throw new AppError("REPOSITORY_SOURCE_INTEGRITY_FAILED", "The immutable Repository source Citation failed validation.", 500);
+  let source: string | undefined;
+  if (row.citationKind === "rag") {
+    const artifact = await readRepositoryArtifactFiles(input.artifactRoot, row, [row.path]);
+    const bytes = artifact.files.get(row.path);
+    if (!bytes || !row.sourceContentHash || createHash("sha256").update(bytes).digest("hex") !== row.sourceContentHash) {
+      throw new AppError("REPOSITORY_SOURCE_INTEGRITY_FAILED", "The immutable Repository source Citation failed validation.", 500);
+    }
+    if (row.path.toLocaleLowerCase().endsWith(".pdf")) {
+      const pages = await extractPdfPagesFromBytes(bytes);
+      source = pages.map((page) => `# Page ${page.pageNumber}\n\n${page.text}`).join("\n\n");
+    } else {
+      source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    }
+    row.contentHash = citationContentHash(source, row.lineStart, row.lineEnd);
+  } else {
+    const evidence = await readRepositoryArtifactEvidence(input.artifactRoot, row, [row.path]);
+    source = evidence.sources.get(row.path);
+    if (source === undefined || citationContentHash(source, row.lineStart, row.lineEnd) !== row.contentHash) {
+      throw new AppError("REPOSITORY_SOURCE_INTEGRITY_FAILED", "The immutable Repository source Citation failed validation.", 500);
+    }
   }
   return {
     repository: { id: row.repositoryId, title: row.repositoryTitle },

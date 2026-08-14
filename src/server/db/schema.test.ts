@@ -24,6 +24,10 @@ import {
   repositoryMessageCitations,
   repositoryRevisions,
   repositorySyncJobs,
+  ragChildChunks,
+  ragIndexVersions,
+  ragParentChunks,
+  ragSourceVersions,
 } from "./schema";
 
 describe("database schema alignment", () => {
@@ -57,6 +61,9 @@ describe("database schema alignment", () => {
   it("separates Repository revisions, immutable artifacts, generated Wikis and approved projections", () => {
     expect(getTableColumns(repositories).activeRevisionId?.name).toBe("active_revision_id");
     expect(getTableColumns(repositories).activeProjectionId?.name).toBe("active_projection_id");
+    expect(getTableColumns(repositories).ragIndexState?.name).toBe("rag_index_state");
+    expect(getTableColumns(repositories).ragIndexCommitSha?.name).toBe("rag_index_commit_sha");
+    expect(getTableColumns(repositories).ragIndexWarnings?.name).toBe("rag_index_warnings");
     expect(getTableColumns(repositoryRevisions).commitSha?.name).toBe("commit_sha");
     expect(getTableColumns(repositoryRevisions).artifactKey?.name).toBe("artifact_key");
     expect(getTableColumns(repositoryArtifacts).contentKey?.name).toBe("content_key");
@@ -95,5 +102,24 @@ describe("database schema alignment", () => {
     expect(columns.suggestedQuestions?.name).toBe("suggested_questions");
     expect(columns.suggestionsContextHash?.name).toBe("suggestions_context_hash");
     expect(columns.suggestionsUpdatedAt?.name).toBe("suggestions_updated_at");
+  });
+
+  it("owns Hybrid RAG index, source, Parent and Child lifecycle state explicitly", () => {
+    const indexColumns = getTableColumns(ragIndexVersions);
+    expect(indexColumns.state?.name).toBe("state");
+    expect(indexColumns.configFingerprint?.name).toBe("config_fingerprint");
+    expect(indexColumns.embeddingDimensions?.name).toBe("embedding_dimensions");
+    expect(indexColumns.expectedSourceCount?.name).toBe("expected_source_count");
+
+    const sourceColumns = getTableColumns(ragSourceVersions);
+    expect(sourceColumns.sourceRevision?.name).toBe("source_revision");
+    expect(sourceColumns.evidenceFamilyId?.name).toBe("evidence_family_id");
+    expect(sourceColumns.leaseOwner?.name).toBe("lease_owner");
+    expect(sourceColumns.metadata?.name).toBe("metadata");
+
+    expect(getTableColumns(ragParentChunks).structurePath?.name).toBe("structure_path");
+    expect(getTableColumns(ragParentChunks).sourceRange?.name).toBe("source_range");
+    expect(getTableColumns(ragChildChunks).contextualContent?.name).toBe("contextual_content");
+    expect(getTableColumns(ragChildChunks).embedding?.name).toBe("embedding");
   });
 });

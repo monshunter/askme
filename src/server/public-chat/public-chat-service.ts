@@ -2,16 +2,12 @@ import "server-only";
 
 import { performance } from "node:perf_hooks";
 
-import { generateGroundedAnswer } from "@/server/agent/answer-generator";
 import { ensureConversationSuggestions } from "@/server/agent/conversation-suggestions";
 import { recordSuccessfulAiUsage } from "@/server/agent/ai-usage";
-import { retrieveUnifiedEvidence } from "@/server/agent/evidence-provider";
-import { answerCitationCount, persistAnswerCitations, validateAnswerEvidence } from "@/server/agent/message-evidence";
 import { loadQuestionRepositories } from "@/server/agent/question-context";
 import { localizedQuestionMessage } from "@/server/agent/question-language";
 import { recordQuestionRoute } from "@/server/agent/question-route-audit";
 import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository } from "@/server/agent/question-router";
-import { isRepositoryEvidence } from "@/server/agent/retrieval";
 import { recoverStaleAnswers } from "@/server/agent/message-recovery";
 import { OpenAiChatClient } from "@/server/ai/openai-compatible";
 import { queueConversationAnalysisRun } from "@/server/code-agent/analysis-runs";
@@ -19,9 +15,12 @@ import { getRuntimeConfig } from "@/server/config";
 import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
 import { loadPlatformPolicies } from "@/server/admin/settings-service";
+import { answerRagCitationCount, generateVerifiedRagAnswer, persistRagAnswerCitations, validateRagEvidence } from "@/server/rag/rag-answer";
+import { retrieveRagForQuestion } from "@/server/rag/rag-query-service";
+import { persistRetrievalTrace } from "@/server/rag/retrieval-trace";
 
 import type { PublicChatInput, PublicFeedbackInput } from "./public-chat-input";
-import { assessPublicQuestion, isContextDependentPublicQuestion } from "./public-question-policy";
+import { assessPublicQuestion } from "./public-question-policy";
 import { publicAnswerRisk } from "./public-risk";
 import { consumePublicRateLimit } from "./rate-limit";
 import { projectPublicCitations, type RawPublicCitation } from "./public-citation";
@@ -35,6 +34,35 @@ type PublicExchange = {
   assistantStatus: "pending" | "completed" | "failed" | null;
   created: boolean;
 };
+
+const invalidPublicRagCitation = `EXISTS (
+  SELECT 1 FROM rag_message_citations rag_citation
+  LEFT JOIN rag_child_chunks rag_child ON rag_child.id=rag_citation.evidence_id AND rag_child.owner_id=rag_citation.owner_id
+    AND rag_child.index_version_id=rag_citation.index_version_id AND rag_child.source_version_id=rag_citation.source_version_id
+    AND rag_child.content_checksum=rag_citation.content_checksum
+  LEFT JOIN rag_source_versions rag_source ON rag_source.id=rag_citation.source_version_id AND rag_source.owner_id=rag_citation.owner_id
+    AND rag_source.index_version_id=rag_citation.index_version_id
+  LEFT JOIN rag_index_versions rag_version ON rag_version.id=rag_citation.index_version_id
+  LEFT JOIN materials rag_material ON rag_source.source_kind='material' AND rag_material.id=rag_source.source_id AND rag_material.owner_id=rag_source.owner_id
+  LEFT JOIN repositories rag_repository ON rag_source.source_kind<>'material' AND rag_repository.id::text=coalesce(rag_source.metadata->>'repositoryId',rag_source.source_id::text)
+    AND rag_repository.owner_id=rag_source.owner_id
+  LEFT JOIN repository_revisions rag_revision ON rag_revision.id=rag_repository.active_revision_id AND rag_revision.owner_id=rag_repository.owner_id
+  WHERE rag_citation.message_id=message.id AND (
+    rag_child.id IS NULL OR rag_source.state<>'active' OR rag_version.state<>'active'
+    OR (rag_source.source_kind='material' AND (rag_material.id IS NULL OR rag_material.status<>'indexed'
+      OR rag_material.visibility NOT IN ('citation_allowed','public_preview') OR rag_material.content_checksum<>rag_source.source_revision))
+    OR (rag_source.source_kind<>'material' AND (rag_repository.id IS NULL OR rag_repository.disabled_at IS NOT NULL
+      OR rag_repository.visibility NOT IN ('citation_allowed','public_preview')
+      OR (rag_source.source_kind IN ('repository_markdown','repository_pdf') AND (rag_revision.id IS NULL OR rag_revision.commit_sha<>rag_source.metadata->>'commitSha'))))
+    OR (rag_source.source_kind='approved_wiki' AND NOT EXISTS (
+      SELECT 1 FROM repository_dossiers dossier
+      JOIN repository_dossier_projections projection ON projection.id=rag_repository.active_projection_id AND projection.dossier_id=dossier.id AND projection.state='approved'
+      JOIN repository_wiki_pages page ON page.id=rag_source.source_id AND page.dossier_id=dossier.id
+      JOIN repository_wiki_projection_pages projected ON projected.projection_id=projection.id AND projected.page_id=page.id AND projected.dossier_id=dossier.id
+      WHERE dossier.revision_id=rag_repository.active_revision_id AND dossier.owner_id=rag_repository.owner_id
+    ))
+  )
+)`;
 
 async function existingExchange(conversationId: string, clientMessageId: string) {
   const result = await getPool().query<Omit<PublicExchange, "created">>(
@@ -110,6 +138,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
   const messages = await getPool().query<{ citations: RawPublicCitation[] } & Record<string, unknown>>(
     `SELECT message.id,message.role,message.status,
             CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR ${invalidPublicRagCitation}
                    OR EXISTS (
                      SELECT 1 FROM message_citations document_citation
                      LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
@@ -125,6 +154,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
                  THEN 'This answer is no longer available because its source permissions changed.' ELSE message.content END AS content,
             message.model,
             CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR ${invalidPublicRagCitation}
                    OR EXISTS (
                      SELECT 1 FROM message_citations document_citation
                      LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
@@ -164,7 +194,46 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
                 JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id AND repository.disabled_at IS NULL
                 JOIN repository_revisions revision ON revision.id=source.revision_id AND revision.owner_id=source.owner_id
                 WHERE source.message_id=message.id AND repository.visibility IN ('citation_allowed','public_preview')
+                UNION ALL
+                SELECT rag.rank,CASE WHEN rag.source_kind='material' THEN jsonb_build_object(
+                  'kind','document','chunkId',rag.evidence_id,'rank',rag.rank,
+                  'materialId',material.id,'contentChecksum',material.content_checksum,'materialTitle',material.title,'materialKind',material.kind,
+                  'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
+                ) ELSE jsonb_build_object(
+                  'kind','repository','messageId',rag.message_id,'rank',rag.rank,'repositoryId',repository.id,
+                  'repositoryTitle',repository.display_name,'revisionId',revision.id,'commitSha',revision.commit_sha,
+                  'path',rag.metadata->>'path','lineStart',(rag.metadata#>>'{sourceRange,lineStart}')::integer,
+                  'lineEnd',(rag.metadata#>>'{sourceRange,lineEnd}')::integer,'visibility',repository.visibility
+                ) END AS payload
+                FROM rag_message_citations rag
+                JOIN rag_child_chunks child ON child.id=rag.evidence_id AND child.owner_id=rag.owner_id
+                  AND child.index_version_id=rag.index_version_id AND child.source_version_id=rag.source_version_id AND child.content_checksum=rag.content_checksum
+                JOIN rag_source_versions rag_source ON rag_source.id=rag.source_version_id AND rag_source.owner_id=rag.owner_id AND rag_source.state='active'
+                JOIN rag_index_versions rag_version ON rag_version.id=rag.index_version_id AND rag_version.state='active'
+                LEFT JOIN materials material ON rag.source_kind='material' AND material.id=rag.source_id AND material.owner_id=rag.owner_id
+                LEFT JOIN repositories repository ON rag.source_kind<>'material' AND repository.id::text=coalesce(rag_source.metadata->>'repositoryId',rag.source_id::text) AND repository.owner_id=rag.owner_id
+                LEFT JOIN repository_revisions revision ON revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
+                WHERE rag.message_id=message.id AND (
+                  (rag.source_kind='material' AND material.status='indexed' AND material.visibility IN ('citation_allowed','public_preview') AND material.content_checksum=rag_source.source_revision)
+                  OR (rag.source_kind IN ('repository_markdown','repository_pdf') AND repository.disabled_at IS NULL
+                    AND repository.visibility IN ('citation_allowed','public_preview') AND revision.commit_sha=rag_source.metadata->>'commitSha')
+                )
+                UNION ALL
+                SELECT rag.rank*100+source.ordinality, jsonb_build_object(
+                  'kind','repository','messageId',rag.message_id,'rank',rag.rank*100+source.ordinality,'repositoryId',repository.id,
+                  'repositoryTitle',repository.display_name,'revisionId',revision.id,'commitSha',revision.commit_sha,
+                  'path',source.value->>'path','lineStart',(source.value->>'lineStart')::integer,
+                  'lineEnd',(source.value->>'lineEnd')::integer,'visibility',repository.visibility
+                ) AS payload
+                FROM rag_message_citations rag
+                JOIN rag_source_versions rag_source ON rag_source.id=rag.source_version_id AND rag_source.owner_id=rag.owner_id AND rag_source.state='active'
+                JOIN rag_index_versions rag_version ON rag_version.id=rag.index_version_id AND rag_version.state='active'
+                JOIN repositories repository ON repository.id::text=rag_source.metadata->>'repositoryId' AND repository.owner_id=rag.owner_id AND repository.disabled_at IS NULL
+                JOIN repository_revisions revision ON revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
+                CROSS JOIN LATERAL jsonb_array_elements(rag.metadata->'sourceCitations') WITH ORDINALITY source(value,ordinality)
+                WHERE rag.message_id=message.id AND rag.source_kind='approved_wiki' AND repository.visibility IN ('citation_allowed','public_preview')
               ) item
+              WHERE message.source_invalidated_at IS NULL
             ),'[]'::jsonb) AS citations
      FROM messages message
      WHERE message.conversation_id=$1 AND message.owner_id=$2
@@ -180,7 +249,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
 }
 
 type AnswerResult =
-  | Awaited<ReturnType<typeof generateGroundedAnswer>>
+  | Awaited<ReturnType<typeof generateVerifiedRagAnswer>>
   | { outcome: "refused"; answer: string; refusalCode: string; citations: []; usage: { inputTokens: number | null; outputTokens: number | null } };
 
 async function persistPublicAnswer(
@@ -195,7 +264,7 @@ async function persistPublicAnswer(
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    if (result.outcome === "answered") await validateAnswerEvidence(client, ownerId, "public_answer", result.citations);
+    if (result.outcome === "answered") await validateRagEvidence(client, ownerId, "public_answer", result.citations);
     const errorCode = result.outcome === "answered" ? null : result.outcome === "refused" ? result.refusalCode : "INSUFFICIENT_EVIDENCE";
     const updated = await client.query(
       `UPDATE messages SET status='completed',content=$3,model=$4,latency_ms=$5,error_code=$6
@@ -203,7 +272,7 @@ async function persistPublicAnswer(
       [exchange.assistantMessageId, ownerId, result.answer, result.outcome === "answered" ? model : null, latencyMs, errorCode],
     );
     if (updated.rowCount !== 1) throw new AppError("ANSWER_ALREADY_SETTLED", "The answer request was already settled.", 409);
-    await persistAnswerCitations(client, ownerId, exchange.assistantMessageId, result.citations);
+    await persistRagAnswerCitations(client, ownerId, exchange.assistantMessageId, result.citations);
     if (result.outcome === "answered") {
       await client.query(
         `INSERT INTO ai_usage(owner_id,purpose,model,input_tokens,output_tokens,latency_ms,outcome)
@@ -215,9 +284,9 @@ async function persistPublicAnswer(
     await client.query(
       `INSERT INTO audit_events(actor_role,action,target_type,target_id,outcome,request_id,metadata)
        VALUES ('interviewer','public.chat.answer','message',$1,$2,$3,$4::jsonb)`,
-      [exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ publicationId, conversationId: exchange.conversationId, citationCount: answerCitationCount(result.citations) })],
+      [exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ publicationId, conversationId: exchange.conversationId, citationCount: answerRagCitationCount(result.citations) })],
     );
-    const risk = publicAnswerRisk(result.outcome, errorCode, answerCitationCount(result.citations));
+    const risk = publicAnswerRisk(result.outcome, errorCode, answerRagCitationCount(result.citations));
     if (risk) {
       await client.query(
         `INSERT INTO content_flags(publication_id,message_id,category,severity,safe_summary)
@@ -289,16 +358,19 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
     failureModel = config.ai.profiles.router.model;
     const previousQuestions = await priorAllowedQuestions(conversation.id, exchange.userMessageId);
     const assessment = assessPublicQuestion(input.question);
-    let evidence = assessment.allowed
-      ? await retrieveUnifiedEvidence(getPool(), conversation.ownerId, "public_answer", { query: assessment.question, limit: 8 })
-      : [];
-    if (
-      assessment.allowed
-      && evidence.length === 0
-      && isContextDependentPublicQuestion(input.question)
-      && previousQuestions.at(-1)
-    ) {
-      evidence = await retrieveUnifiedEvidence(getPool(), conversation.ownerId, "public_answer", { query: previousQuestions.at(-1)!, limit: 8 });
+    const retrievalStartedAt = performance.now();
+    const retrieval = assessment.allowed
+      ? await retrieveRagForQuestion({
+          pool: getPool(), config, ownerId: conversation.ownerId, consumer: "public_answer", question: assessment.question,
+          conversation: previousQuestions.map((question) => ({ role: "user" as const, content: question })),
+        })
+      : null;
+    const evidence = retrieval?.candidates ?? [];
+    if (retrieval) {
+      await persistRetrievalTrace(getPool(), {
+        ownerId: conversation.ownerId, conversationId: conversation.id, messageId: createdExchange.assistantMessageId,
+        callerMode: "public_answer", config, result: retrieval, latencyMs: performance.now() - retrievalStartedAt,
+      });
     }
     const settingsResult = await getPool().query<{ answerTone: "professional" | "concise" | "conversational"; privacySafeMode: boolean }>(
       "SELECT answer_tone AS \"answerTone\",privacy_safe_mode AS \"privacySafeMode\" FROM agent_settings WHERE owner_id=$1",
@@ -313,7 +385,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
       const routerStartedAt = performance.now();
       const decision = await routeQuestion({
         question: assessment.question,
-        evidenceSummaries: evidence.map((item) => isRepositoryEvidence(item) ? `${item.repositoryTitle}: ${item.content}` : `${item.materialTitle}: ${item.content}`),
+        evidenceSummaries: evidence.map((item) => `${item.title}: ${item.parentContent}`),
         repositories,
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId: conversation.ownerId, purpose: "public.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
@@ -350,13 +422,16 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
     }
     failureModel = config.ai.profiles.rag.model;
     const result: AnswerResult = assessment.allowed
-      ? await generateGroundedAnswer(
-          input.question,
+      ? await generateVerifiedRagAnswer({
+          question: input.question,
           evidence,
+          coverage: retrieval?.coverage ?? "none",
+          unsupportedAspects: retrieval?.unsupportedAspects ?? [],
           settings,
-          new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
-          previousQuestions.map((question) => ({ role: "user" as const, content: question })),
-        )
+          generatorClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
+          verifierClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.verifier }),
+          validateEvidence: (citations) => validateRagEvidence(getPool(), conversation.ownerId, "public_answer", citations),
+        })
       : { outcome: "refused", answer: assessment.message, refusalCode: assessment.code, citations: [], usage: { inputTokens: null, outputTokens: null } };
     if (result.outcome === "insufficient_evidence" && assessment.allowed) {
       const repositories = await loadQuestionRepositories({
@@ -402,6 +477,11 @@ export async function savePublicFeedback(slug: string, visitorToken: string | un
       `INSERT INTO answer_feedback(message_id,actor_key,value) VALUES ($1,$2,$3)
        ON CONFLICT (message_id,actor_key) DO UPDATE SET value=excluded.value RETURNING value`,
       [messageId, actorKey, input.value],
+    );
+    await client.query(
+      `INSERT INTO rag_feedback(message_id,owner_id,actor_key,value) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (message_id,actor_key) DO UPDATE SET value=excluded.value,updated_at=now()`,
+      [messageId, conversation.ownerId, actorKey, input.value],
     );
     if (policies.negativeFeedbackAutoFlag && input.value === "down" && previous.rows[0]?.value !== "down") {
       await client.query(

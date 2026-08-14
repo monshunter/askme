@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { AppError } from "@/server/errors";
 import type { EvidenceChunk } from "@/server/knowledge/chunking";
 import type { KnowledgeOrganization } from "@/server/knowledge/organizer";
+import { enqueueMaterialSourceForOpenIndexes } from "@/server/rag/index-coordinator";
 
 import type { IngestionLease } from "./ingestion-jobs";
 
@@ -88,6 +89,7 @@ export async function persistIngestionResult(
        WHERE id=$1 AND owner_id=$2`,
       [lease.material.id, lease.material.ownerId, organization.materialSummary],
     );
+    await enqueueMaterialSourceForOpenIndexes(client, lease.material.id, lease.material.ownerId);
     await client.query(
       `UPDATE ingestion_jobs
        SET status='completed',lease_owner=NULL,lease_expires_at=NULL,last_error_code=NULL,last_error_message=NULL,completed_at=now(),updated_at=now()

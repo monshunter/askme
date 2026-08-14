@@ -37,6 +37,7 @@ const api: Record<string, ApiSurface> = {
   "/api/admin/candidates/[candidateId]": { methods: ["PATCH"], evidence: ["smoke:admin"] },
   "/api/admin/invitations": { methods: ["POST"], evidence: ["smoke:admin"] },
   "/api/admin/overview": { methods: ["GET"], evidence: ["smoke:admin"] },
+  "/api/admin/rag-traces": { methods: ["GET"], evidence: ["smoke:admin"] },
   "/api/admin/reports": { methods: ["GET"], evidence: ["smoke:admin"] },
   "/api/admin/repositories": { methods: ["GET"], evidence: ["smoke:analysis-governance", "browser:admin"] },
   "/api/admin/repositories/[repositoryId]": { methods: ["PATCH"], evidence: ["smoke:analysis-governance", "browser:admin"] },
@@ -105,7 +106,7 @@ const requiredEntrypoints = [
   "smoke:privacy-api", "smoke:public-chat", "smoke:publication", "smoke:repository-retention", "smoke:repository-api",
   "smoke:repository-dossier", "smoke:repository-dossier-api", "smoke:analysis-scheduler", "smoke:analysis-sse",
   "smoke:analysis-governance", "smoke:code-agent-sandbox", "smoke:repository-analysis-runner", "smoke:fixed-repository-wiki", "smoke:runtime-state",
-  "smoke:upload", "verify:docker-lifecycle",
+  "smoke:rag-index-foundation", "smoke:upload", "verify:docker-lifecycle",
 ].sort();
 
 async function walk(root: string, filename: string): Promise<string[]> {

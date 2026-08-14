@@ -1,6 +1,9 @@
 import type { Pool, PoolClient } from "pg";
 
+import { getRuntimeConfig } from "@/server/config";
 import { AppError } from "@/server/errors";
+import { enqueueRepositoryDocumentSources } from "@/server/rag/repository-document-index";
+import { enqueueApprovedWikiSourcesForOpenIndexes } from "@/server/rag/index-coordinator";
 
 import { readRepositoryArtifactEvidence, type RepositoryArtifactDescriptor } from "./artifact-reader";
 import {
@@ -375,7 +378,11 @@ export async function approveCandidateRepositoryDossier(input: {
       [input.ownerId, projectionId, input.requestId ?? null, JSON.stringify({ repositoryId: input.repositoryId, revisionId: current.revisionId, dossierId: input.dossierId })],
     );
     await client.query("COMMIT");
-    return { dossierId: input.dossierId, projectionId, ...activated.rows[0] };
+    const [ragIndex, wikiIndexVersions] = await Promise.all([
+      enqueueRepositoryDocumentSources(input.pool, getRuntimeConfig(), input.ownerId, input.repositoryId),
+      enqueueApprovedWikiSourcesForOpenIndexes(input.pool, input.ownerId, input.repositoryId),
+    ]);
+    return { dossierId: input.dossierId, projectionId, ...activated.rows[0], ragIndex, wikiIndexVersions };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

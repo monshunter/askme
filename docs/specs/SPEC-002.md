@@ -1,238 +1,283 @@
-# SPEC-002：代码仓库 Wiki 与深度分析 V1 产品合同
+# SPEC-002：职业知识与代码仓库 Agent V2 产品合同
 
-Boundary ID：`askme-repository-code-agent-v1`
+Boundary ID：`askme-hybrid-agentic-rag-v2`
 
-Owner boundary：Askme V1 的代码仓库同步、Repository Wiki、问答路由、深度源码分析、授权投影与验收行为。
+Owner boundary：Askme Candidate 职业知识检索、Repository 文档知识、Agent 问答、Citation、源码 Deep Analysis、权限投影与评估门禁。
 
 Status：`approved`
 
-创建 Plan：[PLAN-014](../plans/PLAN-014.md)；当前修订 Plan：[PLAN-016](../plans/PLAN-016.md)
-
-批准依据：[REVIEW-072](../reviews/REVIEW-072.md)
+当前交付 Plan：[PLAN-020](../plans/PLAN-020.md)
 
 ## 1. 目标与替代边界
 
-Askme 允许 Candidate 将 GitHub 代码仓库的一个不可变 revision 转化为一组经过审核、可直接阅读和导出的 Repository Wiki Markdown 文档，并允许 Candidate 或已发布 Agent 的访问者在授权范围内获得带源码 Citation 的回答。小型或单一主题仓库可以只生成一个 Markdown；大型或多子系统仓库由分析 Agent 按内容结构生成多个有导航关系的 Markdown。Wiki 的首要价值是帮助读者建立对整个仓库的系统心智模型，而不是罗列少量“当前代码写了什么”的离散事实。普通问题优先使用文档与已批准 Wiki；只有需要核对 Wiki 未覆盖的原始代码时才启动受隔离、受预算约束的代码分析 Agent。
+Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为可检索、可排序、可验证、可撤销的证据。Candidate Preview 与 Public Chat 使用同一权限优先的 Hybrid Agentic RAG V2：先理解问题，再并行召回精确词、全文、向量和结构化证据，经过融合、独立重排、覆盖判断和 Claim 验证后生成带 Citation 的回答。
 
-本合同是后续实现代码仓库能力的唯一产品事实 owner，并对 [SPEC-001](SPEC-001.md) 作如下定向替代：
+“没有更多证据”只允许表示核心问题在当前授权 Evidence 中确实没有支持，不能被中文分词失败、索引未就绪、Provider 故障、回答模型失败或 Citation 校验失败冒充。
 
-- GitHub 仓库不再属于 `Source Material`，也不再生成 Source Material Chunk 或进入源码 RAG；
-- `materials.kind` 只保留文件、Website 与 Notion 等文档型来源，Repository 使用独立领域模型；
-- `SPEC-001` 中已完成的 GitHub Source Material 与 DeepSeek 专用配置验收只保留为历史交付事实，不约束新实现；
-- 文件、Website、Notion、既有 Knowledge Item、发布、公共 Chat、四级可见性和 Admin 治理的其他行为继续由 `SPEC-001` 拥有。
+本合同直接替代此前 `SPEC-002` 的 V1 文档检索边界：
 
-Askme 尚处于开发阶段，本次不提供旧 GitHub material 数据的兼容、迁移或回填合同；具体实施可以重建本地开发数据，但任何真实破坏性操作仍需单独授权。
+- V2 使用 PostgreSQL 18 + pgvector，不保留 V1 全文检索回答链路、双写、功能开关或兼容回退；
+- 安全白名单内的 Repository Markdown 与可直接提取文本的 PDF 可以进入长期索引；原始源码仍不得进入持久 Embedding；
+- Approved Wiki、Knowledge Item 和原始证据建立血缘，不得把同一事实的派生副本当成多份独立 Evidence；
+- 账号、原始材料、Knowledge Item、Repository、权限与会话等业务数据必须保留，V1 chunk、FTS 和其他派生检索数据允许清空重建；
+- Repository Wiki 与隔离 Deep Analysis 的现有只读源码边界继续有效，除非本合同明确替代。
+
+文件、Website、Notion、Knowledge Item、四级可见性、Candidate 发布和 Admin 治理的通用行为继续由 [SPEC-001](SPEC-001.md) 拥有。
 
 ## 2. 角色与术语
 
-### 2.1 角色
+- **Candidate**：Source、Repository、visibility、publication、索引状态、Retrieval Trace 和反馈的 owner。
+- **Interviewer / Visitor**：只能在当前 Candidate publication 和 Evidence visibility 允许的范围内问答和读取 Citation。
+- **Platform Admin**：查看全局索引与 Provider 健康、失败和安全审计，不通过管理能力绕过 tenant 权限读取正文。
+- **Parent Chunk**：保留完整语义结构的证据上下文，例如一段完整任职经历、一个文档章节或一个 PDF 小节。
+- **Child Chunk**：用于关键词和向量召回的较小片段，Citation 绑定其原始来源范围。
+- **Index Version**：固定 chunking、Embedding model/dimension、contextual prefix 和 distance metric 的派生索引版本。
+- **Evidence**：Host 能定位、实时授权并校验 checksum 的 Material Child、Repository Document Child 或 Approved Wiki section。
+- **Evidence Family**：原始 Evidence 与其 Knowledge Item、Wiki 等派生投影的血缘集合。
+- **Retrieval Policy Version**：Query Planning、TopK、RRF、Rerank、Evidence budget 和阈值的版本；改变该版本不要求重新 Embedding。
+- **Coverage**：`full | partial | none | conflicted`；权限/安全拒绝使用独立 `refused`，系统故障使用 `failed`。
+- **Retrieval Trace**：仅 Candidate/Admin 可见的查询规划、各路召回、排序、覆盖、降级和过滤诊断。
 
-- **Candidate**：Repository、revision、Wiki 审核投影、公开能力开关与配额策略的 owner。
-- **Interviewer / Visitor**：访问已发布 Candidate Agent 的匿名访客；只有 Candidate 开启仓库深度分析且当前权限与配额允许时，才可自动触发深度分析。
-- **Platform Admin**：通过确定性管理页面、API、worker 和 controller 治理运行状态、配额与禁用策略；V1 不存在 Admin 专用的 System Operations Agent。
+## 3. V2 范围与非目标
 
-### 2.2 核心术语
+V2 索引以下来源：
 
-- **Repository**：独立于 Source Material 的 GitHub.com 代码仓库记录。
-- **Revision**：同步时由 ref 解析出的完整 Git commit SHA；成功同步后不可变。
-- **Repository Artifact**：一个 Revision 经安全过滤和限额校验后的只读内容归档。
-- **Repository Wiki**：Repository Analysis Run 对一个 Revision 生成的 1–N 个 Markdown 仓库理解文档与导航 manifest，包含架构与模块关系、关键工作流、运行方式、扩展点、限制、Mermaid 图和可验证源码 Citation；不是源码副本，也不声称完成代码审计。
-- **Generated Version**：Agent 在隔离输出目录写入且不可编辑的原始 Wiki Markdown 文件、导航 manifest、结构化 Citation、coverage 与运行版本信息。
-- **Approved Projection**：Candidate 审核并批准的 Wiki 文档投影；V1 允许逐文档编辑 Markdown，但不能修改或伪造 Host 验证的 Citation 目标，也不能提升 Repository visibility。
-- **Deep Analysis Run**：针对一个会话问题和一个 Revision 临时启动的源码分析任务。
-- **Citation**：至少包含 repository、完整 commit SHA、path、line range 与内容 hash 的可验证源码引用。
+1. 状态为 `indexed` 的上传文件、Website 和 Notion 等文档材料；
+2. Candidate-edited Knowledge Item 及其链接的 `knowledge_evidence`；
+3. Candidate 已批准的 Repository Wiki section；
+4. 成功同步的不可变 Repository active commit 中，安全白名单允许且 Repository 已批准用于 Agent 的 Markdown/PDF。
 
-## 3. V1 范围与非目标
+V2 不提供扫描 PDF OCR、原始源码 Embedding、AST/call graph 向量化、跨 Candidate 检索、自动修改上游 Repository、在线训练、反馈驱动的实时权重修改、GitHub webhook 自动同步或新的生产计费能力。
 
-V1 只支持 GitHub.com 的公开或私有仓库，通过 GitHub API 按完整 SHA 获取 archive。Candidate 必须显式发起首次同步或重新同步；Askme 不执行 webhook、短轮询、定时同步、后台自动跟随分支或实时 `git pull`。
+Repository 原始源码只允许由既有隔离 Deep Analysis 在一个成功同步的不可变 Revision 内只读分析；分析中间结论、reasoning、工具输出和临时文件不得进入长期 RAG。
 
-V1 不支持 GitLab、Gitea、自托管 GitHub、SSH clone、submodule、Git LFS、跨仓库联合分析、源码写入、自动修复、Pull Request、代码执行、编译测试、浏览器、网络搜索、MCP 或 Candidate 提供的第三方 Skill。一个 Repository Analysis Run 或 Deep Analysis Run 只读取一个 Repository 的一个 Revision。
+## 4. 结构优先的 Parent–Child 索引
 
-代码仓库始终只读。Askme、Pi、BoxLite guest 和模型均不得修改 Repository Artifact 或把修改回写到上游仓库。
+### 4.1 切分行为
 
-## 4. Repository 同步与不可变 Revision
+系统必须先识别文档结构，再按 token 上限切分：
 
-Candidate 的代码仓库页面以卡片目录罗列所有已添加 Repository，并在“已添加仓库”标题右侧提供唯一的“+ 添加仓库”入口；页面主体不平铺新增表单，也不提供目录级手动刷新按钮。Candidate 点击该入口后，才在模态弹窗中填写首次同步表单；重新同步与重新分析仍是各 Repository 卡片内的独立动作。
+- Child 目标范围为 `350–500 tokens`，默认目标约 `420`，hard max `650`；低于 `80` 的片段与相邻语义段合并；
+- Parent 目标范围为 `900–1,500 tokens`；
+- 标题、段落、列表、表格、Markdown section、HTML section、DOCX heading、PDF 页与段、PPTX slide、XLSX sheet/table、Knowledge Item 和 Approved Wiki section 是优先边界；
+- 正常语义边界不重叠；只有单个结构单元超过 hard max 时才允许 `40–64 tokens` overlap；
+- 简历中同一公司/岗位的名称、任职时间、职责和成果必须保留在同一 Parent，不得把“富途控股/岗位”与其职责拆成失去上下文的 Child；
+- contextual prefix 只进入 Embedding 输入，必须版本化；Citation 始终绑定未经 prefix 改写的原始文本。
 
-1. Candidate 提交 GitHub repository URL、branch/tag/SHA ref 和私有仓库需要的临时 Token；服务端解析并记录完整 SHA，再下载该 SHA 对应的 archive。
-2. Token 只在当前同步请求的内存路径中使用，不进入数据库、Repository Artifact、日志、错误、环境文件、BoxLite 或持久凭证目录。重新同步私有仓库时 Candidate 必须重新提供 Token。
-3. 同步必须先完成 archive 大小、解压大小、文件数、路径、文件类型和安全过滤校验；失败 revision 不可成为 active。
-4. `private` Revision 通过 archive 校验后进入 `stored`，不启动 Agent，也不成为问答证据。`agent_only`、`citation_allowed` 或 `public_preview` 的新 Revision 依次经过 `staging → analyzing → review_pending → active`；任一步失败时保留旧 active Revision，新 Revision 只有 Wiki 生成成功且 Candidate 批准后才原子替换为 active。
-5. 运行中的分析固定读取启动时绑定的 Revision。历史回答继续引用当时的完整 SHA；只要仍有消息 Citation 引用，物理 artifact 不得被垃圾回收。
-6. 删除、撤销发布、账号暂停或权限降低必须立即使后续授权失败；物理 artifact 可以延迟 GC，但不能继续对用户可见。
+所有 token 计数使用同一确定性 tokenizer/计数边界。索引记录必须保存 source、owner、visibility、Parent/Child、原始范围、checksum、evidence family 和 index version。
 
-默认过滤 `.git`、`node_modules`、`vendor`、`.next`、`dist`、`build`、`target`、`coverage`、`.cache`、`venv`、`.venv`、`__pycache__`、环境文件、密钥/凭证文件、二进制/NUL 文件、特殊文件、symlink、hardlink 与 device。默认保留源码、文档、manifest、lockfile、Docker、Kubernetes、Terraform、migration、测试和 `.github/workflows`。Candidate 可以在同步请求中增加排除规则，但 V1 不提供按文件 visibility。
+### 4.2 Embedding 与版本
 
-默认输入上限如下，均允许由开发者配置收紧或放宽：
+Embedding 使用独立 Provider，默认模型为 `qwen3.7-text-embedding`、`1024` dimensions、cosine distance。`embedding_version` 至少包含 provider、model、dimension 和 contextual-prefix version；`index_version` 另含 chunking version、metric 和创建时间。
 
-| 项目 | 默认上限 |
+新 index 经过 `building → ready → active`，失败为 `failed`，被替代版本为 `superseded`。一次检索只能使用一个 active index version，禁止混合不同 Embedding 版本。来源 revision 的新索引只有全部必要派生数据成功后才能原子激活；失败时旧 active 可继续服务。来源删除、权限降低或发布撤销不等待 GC，必须立即让所有版本不可检索。
+
+V2 默认在经过 owner、visibility、source state 和 version 过滤后的候选集执行 pgvector exact cosine search。只有 active vector 达到 `100,000` 或 exact search P95 超过 `100 ms`，并通过 exact/HNSW recall 对照后，才允许启用 HNSW。
+
+## 5. Repository Markdown/PDF
+
+### 5.1 发现与容量
+
+Repository 只读取 Candidate 显式同步成功的不可变 commit。默认自动发现：
+
+- `README*.md`；
+- Repository 根目录 Markdown；
+- `docs/**/*.md`；
+- `docs/**/*.pdf`。
+
+include/exclude glob 可配置。默认排除 `.git`、dependency、cache、build、coverage、generated output、secret/credential、symlink、特殊文件和现有 Repository archive 安全过滤规则拒绝的路径。
+
+默认容量值均可配置：
+
+| 对象 | 默认上限 |
 | --- | --- |
-| 下载 archive | 100 MiB |
-| 解压内容 | 500 MiB |
-| 文件数 | 50,000 |
-| 单个文本文件 | 2 MiB |
-| path 长度 | 1,024 bytes |
-| 单条 Citation | 200 lines |
-| 文本编码 | UTF-8 |
+| 单个 Markdown | `2 MiB` |
+| 单个 PDF | `50 MiB / 500 页` |
+| 单个 Repository revision 提取文本 | `5,000,000 tokens` |
 
-## 5. Repository Wiki
+超限、不支持或无法直接提取文本的文件不得截断或静默忽略；系统记录稳定原因，并使 revision 成为 `ready_with_warnings`。无法提取文本的 PDF 使用 `unsupported_no_extractable_text`，V2 不启动 OCR。
 
-每个允许 Agent 使用的新 Revision 必须先由 Repository Analysis Run 对原始 artifact 做一次有界但面向全仓库理解的深度分析，再生成持久 Wiki；`private` Revision 只存储 artifact，提升到可分析 visibility 时才开始该流程。Askme 不对源码创建 Chunk、embedding、向量索引、AST、call graph 或按语言适配的索引；Approved Wiki 是代码仓库唯一持久语义索引。
+### 5.2 Repository 级批准与版本
 
-Repository Analysis 必须先盘点目录、语言、manifest、入口、配置、测试与运维文件，再识别主要子系统并为每个主要子系统检查代表性实现。不能在只读 README、入口文件和少量 router 后就结束，也不能把固定 4–6 条 Claim 当作 Wiki。对大型仓库允许抽样，但必须以架构边界和关键工作流为抽样单位；报告要明确未深入区域，不能把“检查了若干文件”表述成全仓库覆盖。
+Repository 首次同步默认 private。Candidate 按整个 Repository 批准，不按文件批准；批准后，安全白名单内现有及未来新增、修改的 Markdown/PDF 自动继承 Repository visibility。删除文件必须立即使对应 Evidence 失效。
 
-最终产物是一个由 1–N 个 `.md` 文件组成的自包含 Wiki bundle。Agent 根据仓库规模和内容边界决定单文档或多文档：一个主题可以保持单文件，多个主要子系统、独立工作流或明显的运维/扩展边界应拆成有序页面；不能按固定模板机械拆页，也不能把本应连续的短段落切成大量空洞页面。整个 bundle 至少具备以下阅读结构；不适用的章节可以合并，但不能用空标题或空页面凑数：
+普通问答只使用最新成功同步且完成索引的 active commit。旧 commit 索引可以暂留用于原子回滚，但不参与普通检索；只有用户明确询问历史版本时，才允许按完整 commit 限定检索。
 
-1. 项目定位、目标用户、核心能力和技术栈；
-2. 一张帮助读者建立心智模型的 Mermaid 架构或关键流程图；
-3. 仓库结构与主要模块地图，说明职责、依赖方向和入口；
-4. 至少两个从入口到关键副作用或输出的端到端工作流；
-5. 外部接口、数据与状态、安全/权限边界；
-6. 配置、构建、测试、部署、运行和观测方式；
-7. 扩展点、维护导航、已知限制、证据不足和未覆盖区域；
-8. Host 验证的源码引用索引。
+“Repository 同步成功”和“RAG 索引可用”是独立状态。Candidate 至少能看到：
 
-Wiki 必须解释组件为什么存在、如何协作、请求或数据如何流动、读者应从哪里开始继续阅读；只罗列文件名、接口名或局部实现事实不满足完成条件。每个页面必须有唯一相对 path、标题、导航顺序和至少一个实质章节；跨页链接只能指向当前 bundle 中声明的 Markdown path。Markdown 可以包含表格、列表、代码标识和 Mermaid，但不能包含可执行 HTML、外部脚本、Secret、模型 reasoning 或工具逐步输出。
+`syncing → synced/indexing → ready | ready_with_warnings | failed`
 
-Pi 只通过 Askme 提供的受限 Wiki writer 向 `/workspace/output/wiki/` 写入 Markdown；Repository Artifact 挂载点继续只读。最终 stdout/control envelope 只返回 `title`、`summary`、页面 manifest、结构化 `citations` 与 `coverage`，不重复携带完整 Markdown。Host Controller 在销毁 microVM 前通过 BoxLite `copyOut` 取回该输出目录，然后只接受 manifest 声明的普通 `.md` 文件；symlink、路径逃逸、隐藏文件、非 UTF-8、未声明文件、文件数/单文件/总大小越界均拒绝。
+反馈同时展示 active commit、已索引/跳过文件数和稳定失败原因。新 revision 索引失败时旧 active commit 可以继续服务，但必须明确标记资料可能滞后。
 
-每个 Markdown 正文通过稳定标记 `[S1]`、`[S2]` 引用结构化 Citation；每个事实章节至少引用一个当前 Revision 的有效 Citation，所有正文标记必须唯一映射到一个页面和源码范围，未定义标记拒绝。同一已验证 Citation 被多个页面复用时，Host 为各页面确定性分配独立 marker，不改变其 path、range 或 hash；模型额外返回但正文未使用的 Citation 不进入 Generated Version，由 Host 在验证和持久化前确定性剔除。Host 在发布或导出时生成可读的源码引用列表，Citation 至少固定完整 SHA、path、line range 与内容 hash。
+## 6. Query Planning 与混合召回
 
-Generated Version 不可编辑，保存 Agent 原始页面文件、导航 manifest、citations、coverage、完整 SHA、artifact checksum、镜像 digest、Skill hash、prompt version、model profile 与实际 model。Candidate 通过独立 Approved Projection 逐页审核 Markdown；编辑后的投影不得增加未被 Generated Version 引用的 `[S*]` 标记、删除所有限制说明、嵌入危险 HTML、制造 bundle 外链接或绕过 Repository visibility。审核动作保留审计事件。
+### 6.1 Query Planning
 
-Candidate 批准 Approved Projection 后，该 Wiki 与状态为 `indexed` 的上传文件、Website、Notion 资料处于同一知识来源层：统一 EvidenceProvider 可以同时检索两者，Candidate Preview 与已发布 Public Chat 都从同一授权 evidence packet 回答并持久化 Citation。区别只在来源投影：资料 Citation 指向 Material/Chunk，Wiki Citation 指向 Approved Wiki section 及其不可变 Repository source range。未审核的 Generated Wiki、原始源码正文和实时 Deep Analysis 结果都不得进入这条长期知识检索链路。
+每次问题先经过确定性处理：Unicode 规范化、中文词边界、实体/精确短语、CJK n-gram、中英混合和会话指代补全。不得把连续中文整句当作单个 PostgreSQL lexeme。
 
-职业知识库页面必须投影同一个长期知识来源层，不能只展示 `knowledge_items`。每个具有 current active Revision 与 Approved Projection 的 Repository 在“代码仓库”分类中显示为一条只读知识条目，条目详情在同一 Repository 下展示其 1–N 个 Wiki 页面、当前完整 SHA、visibility、coverage 与源码 Citation；分类和“全部”计数按 Repository 条目计数，不按 Wiki 页面数膨胀。搜索必须覆盖 Repository 名称、Wiki 标题、摘要、页面标题和 Approved Markdown。pending、仅 Generated、superseded、disabled、private 或 active pointer 不完整的 Wiki 不得进入列表、计数、搜索或详情；新分析在批准前继续显示旧 active Wiki。
+结构化 Query Planner 最多输出：standalone query、entities、must terms、should terms、两个 semantic queries 和 desired evidence type。Planner 不能选择 tenant、提升 visibility、扩大来源或改变工具能力。Planner 失败时使用确定性查询继续。
 
-统一知识列表必须显式区分资料派生 Knowledge Item 与 Repository Wiki。Candidate 可以继续编辑 Knowledge Item，但 Repository Wiki 在职业知识库中保持只读，任何编辑都只能从 Repository 审核页写 Approved Projection，且不能修改 Generated Version 或源码 Citation。现有 `type=repository` Knowledge Item 仍表示由文档资料整理出的仓库类职业知识，不得被误当作 Repository 聚合或覆盖；同一分类可以同时包含这类 Knowledge Item 和 active Repository Wiki，并由来源类型清楚区分。
+### 6.2 多路召回与融合
 
-Candidate 或授权 Public Visitor 点击可预览的 Repository Citation 时，当前页面必须打开来源阅读弹窗，以 Markdown 结构显示 Repository、固定完整 SHA、文件、行号和源码代码块；不得把 JSON API 地址作为新窗口导航目标。来源 API 仍返回结构化授权数据，UI 在每次打开时重新请求并接受即时权限复核；关闭弹窗后焦点返回原 Citation。
+权限过滤后默认并行执行：
 
-生成后的 Wiki 可以在 Candidate 中以导航树 + Markdown 阅读/编辑/预览方式显示 `pending review`；单页 Wiki 不显示多余层级，不再把每个 Claim 渲染成独立表单卡片。公共 Agent 只使用 Candidate 已批准的 Approved Projection。新 Revision 必须重新分析、重新审核；在新投影批准前，旧 active Revision 的 Approved Wiki 继续服务问答。
+| Route | 默认 TopK | RRF weight |
+| --- | ---: | ---: |
+| exact phrase/entity | 20 | 1.5 |
+| PostgreSQL FTS + `pg_trgm` lexical | 30 | 1.0 |
+| pgvector exact cosine | 30 | 1.0 |
+| Knowledge Item / structured fields | 20 | 1.2 |
 
-Wiki 必须记录 eligible file 总数、实际检查文件数与路径、已覆盖的主要区域、跳过原因，以及分析属于 targeted 或 broad。Candidate 可以查看 coverage，但 coverage 是诚实边界提示，不是主内容。任何输出不得声称完成全仓库逐文件阅读、全 API 枚举、编译测试或安全审计，除非存在对应运行 Evidence。
+系统使用 weighted RRF，默认 `k=60`。所有 TopK、weight、RRF k、阈值和每 Parent Child 数都必须配置化。候选按 stable ID/checksum 去重，默认同一 Parent 最多保留三个 Child。
 
-Repository Artifact、过滤规则或 Revision 变化必须生成新 Wiki。镜像、产品 Skill、system prompt 或 model profile 变化只将旧 Wiki 标记为 `analysis_outdated`，不使其自动失效，也不触发全量自动重跑；Candidate 或 Admin 可以对同一 Revision 发起重跑并重新审核。严重安全或正确性问题允许 Admin 通过确定性治理能力禁用相关 Wiki 或运行能力。
+Knowledge Item 只作为检索锚点；命中后必须展开到 `knowledge_evidence` 对应的 Material Child。未经来源支撑的 Candidate 编辑不能独立成为最终 Claim Evidence。Approved Wiki 可以作为最终 Evidence，但必须保留 Host 验证的 `[S*]` 原始来源血缘。
 
-## 6. 文档检索与问答路由
+## 7. Rerank、Evidence Pack 与有界补检
 
-Askme 的知识检索只保存和检索文档型资料、Knowledge Item 与 Approved Wiki，不保存或检索源码正文。V1 使用 PostgreSQL 结构化字段、全文搜索和必要的直接 Wiki section 加载，不引入向量数据库。
+RRF 候选交给独立 Rerank Provider，默认模型为 `qwen3-rerank`。Rerank 与 Chat LLM 必须使用独立 Profile、配置、超时、重试和 usage 记录；允许部署者显式复用同一上游 API key，但不能共享行为状态。
 
-每次问题按以下顺序决策：
+Evidence fusion 必须遵守：
 
-1. 确定性门禁检查身份、publication、owner、Repository visibility、公开深度分析开关、问题范围、短窗口滥用防护、并发和单次运行预算；任何 LLM 不能绕过这些门禁。问答 `conversation_analysis` 不按 Askme 内部日次数配额拒绝，未来是否可用只由独立 Token/积分余额合同决定；该合同未引入前不设置次数门禁。
-2. 在允许的文档、Knowledge Item 和 Approved Wiki section 中进行初始检索。Repository 名称用于确定目标 Repository，不得同时作为 section 相关性的主要内容词；跨语言或词法证据无法回答时不能把“同仓库”当作“已找到答案”。
-3. 轻量 Router 输出 `rag`、`deep` 或 `refuse`，并附稳定 reason code、confidence 和唯一 repository id。Host 必须持久化不含问题正文的 requested/effective route、reason code、confidence、repository id 与 evidence count，供当前运行验收和故障审计。低 confidence 先尝试普通回答；证据仍不足且门禁允许时才升级为 `deep`。当问题明确要求函数、类、调用链、分支或边界条件的实现行为，且 Host 已唯一确定一个允许深度分析的 Repository 时，Host 必须以 `source_inspection_required` 收敛到 `deep`，不能因 Wiki 只提到符号名称就误判为 RAG 已充分。
-4. `rag` 使用检索到的文档或 Wiki section 回答；`deep` 创建异步 Deep Analysis Run 读取绑定 Revision 的原始 artifact；`refuse` 返回明确边界说明。RAG、Deep、证据不足与拒绝反馈都必须使用当前用户问题的主要语言；源码、标识符和既有专有名词可以保持原文，但不得把中文问答整体回答成英文或在没有语义需要时中英混写。
+- 同一 `evidence_family` 只计一份独立证据，不能因原始材料、Knowledge Item 和 Wiki 重复出现而提高置信度；
+- 来源互相矛盾时输出 `conflicted`，同时保留冲突双方 Citation，不按来源类型或时间静默覆盖；
+- Evidence Pack 的默认 hard ceiling 为 `200,000 tokens`，不是填充目标；覆盖充分时提前停止；
+- effective budget 是配置上限与 `model context - system - conversation - output reserve - safety margin` 的较小值；
+- 每次记录 configured/effective/actual evidence tokens。
 
-一个问题涉及多个 Repository 且无法唯一确定目标时，Askme 必须请用户明确选择，不猜测、不并行启动多个 sandbox。公共访客只可看到当前 publication 允许展示的项目名称。
+Evidence Judge 输出 `full | partial | none | conflicted`：
 
-普通回答与深度回答都必须区分 `answered`、`insufficient` 与 `refused`。深度分析启动后如果失败，不得伪装成成功的 RAG fallback；系统应保留失败状态和安全重试入口。
+- `full`：核心方面均有充分 Evidence；
+- `partial`：只回答被支持方面，并明确列出不支持方面；
+- `none`：核心方面均无支持；
+- `conflicted`：一个或多个核心事实存在不可消解冲突；
+- `refused`：权限、publication、滥用或安全门禁拒绝；
+- `failed`：Provider、Answer、Citation 等系统失败。
 
-RAG Answer 选择 Repository Wiki Evidence 时，必须同时返回该 Evidence 中实际支撑最终回答的一个或多个 `[S*]` marker。JSON 的 canonical marker 值为不带方括号的 `S1`、`S2`；Provider 兼容返回正文形式的 `[S1]` 时，Host 必须先确定性规范化为 `S1`，再做去重和允许集合校验，其他拼写、越界或规范化后重复仍然拒绝。Host 只验证并持久化这些 marker 对应的源码范围；同一 section 中未被回答选择的其他 marker 不得出现在“实际使用来源”。模型只选择 section、Host 自动展开 section 全部 Citation 的旧行为不再允许。回答无法把事实绑定到精确 marker 时必须返回证据不足或失败，不能用同仓库、同页面或内容 hash 有效代替事实关联。
+初检不完整时，Judge 可以基于 unsupported aspects 产生一次定向补检。一个问题最多两轮检索；补检不得扩大授权来源，结果必须与第一轮去重。第二轮失败后只能基于第一轮输出 partial/none，不能无界重试。
 
-### 6.1 会话推荐问题
+## 8. Claim 验证与 Citation
 
-推荐问题属于具体 Candidate Preview 或 Public Conversation，不属于全局 Agent Settings。空会话的推荐应根据当前可授权的 Repository 与职业知识生成引导性问题，优先帮助访问者了解项目、经历、技能和可验证成果；不能随机轮换一组与当前入口无关的问题。
+Answer Generator 必须先生成结构化 coverage、claims、aspectId、evidenceIds 和 unsupported aspects。Host 先校验每个 evidence ID 的 owner、visibility、active version、checksum 和来源状态，再交给独立 Claim Verifier。
 
-每次回答进入终态后，系统必须使用该 conversation 当前全部已落库且仍可见的用户与 Assistant 消息，以及当前授权的知识主题，通过 LLM 重新生成与最后一条用户问题相同语言的后续问题。后续推荐应延续真实已讨论主题、避免重复已问问题、避免暗示证据中不存在的事实，并优先提出能够推进当前聊天进度、继续澄清或深入验证的问题；它们与产生它们的 conversation context version 一同保存。刷新只让 LLM 为同一上下文生成相关替代问题，不得切换到无关的预定义题库。RAG 与 Deep 回答均遵守同一更新语义；仅当 LLM 失败、超时或输出不合格时允许使用当前会话主题的确定性 fallback，且推荐失败不得使已完成回答失败。
+Claim Verifier 只读取该 Claim 引用的 Evidence subset，输出 `entailed | partially_entailed | unsupported | contradicted`。Host 删除 unsupported/contradicted Claim，收窄 partially_entailed Claim，最多允许一次受控修复。最终 Markdown 由 Host 渲染；Citation Validator 失败时不得持久化或输出无 Citation 替代答案。
 
-## 7. 权限与 Citation 投影
+Citation 形态：
 
-Repository 的 visibility 在一个 Revision 内统一生效，沿用以下四级语义：
+- Material：Material/Child ID 与稳定 checksum；
+- Repository Markdown：`repository/path@full_commit_sha#Lx-Ly`；
+- Repository PDF：`repository/path@full_commit_sha#page=N`；
+- Approved Wiki：section 与 Host 验证的 `[S*]` Repository source range。
 
-| Visibility | Repository Analysis / Wiki | Candidate Agent | 公共回答 | 公共 Citation |
-| --- | --- | --- | --- | --- |
-| `private` | 不启用 | 不可用 | 不可用 | 不可见 |
-| `agent_only` | 可生成并审核 | 可使用 | 不可用 | 不可见 |
-| `citation_allowed` | 可生成并审核 | 可使用 | 可使用 | 只显示允许的来源名称，不显示 commit、path、lines、snippet 或地址 |
-| `public_preview` | 可生成并审核 | 可使用 | 可使用 | 可显示 commit、path、lines，并打开当前不可变源码视图 |
+Candidate/Public Citation 统一打开 Askme 内部稳定阅读页，并在每次读取时重新授权。Public GitHub Repository 可以附加外部源链接；private Repository 不得暴露 GitHub Token、临时 clone URL 或未批准内容。
 
-Pi 在 sandbox 内始终使用精确 repository、commit、path、lines 与 hash；最终 API 根据当前访问者权限重新投影。visibility 降低、publication 撤销或账号状态变化后，历史公共消息的 Citation 也必须按当前权限重新投影，不能依赖消息创建时的公开快照。
+## 9. 权限、Prompt Injection 与强撤销
 
-## 8. Deep Analysis Run 生命周期
+owner、account status、publication、visibility、source state、active revision 和 index version 过滤必须发生在 exact、FTS、trigram 和 vector 检索之前。任何 LLM、Embedding、Rerank 或 Repository 内容不能扩大该集合。
 
-每个 Deep Analysis Run 创建一个全新的临时 BoxLite microVM；生命周期按 run 而不是用户或会话划分，完成、失败或取消后必须清理，不跨 tenant 暖复用。基础镜像与只读缓存可以复用，但任何 guest 文件、凭证、上下文或进程不得跨 run 保留。
+Repository visibility 继续使用 `private | agent_only | citation_allowed | public_preview`：
 
-持久 run 状态至少包括 `pending`、`running`、`completed`、`failed`、`cancelled`，并与回答 outcome `answered`、`insufficient`、`refused` 分离。权限撤销、publication 失效或用户取消使仍未完成的 run 进入 `cancelled`；租约过期和 runner 中断由确定性 reconcile 恢复或终止。
-
-最终用户问题、Assistant 最终消息、通过验证的 Citation 和最小 run metadata 可以持久化。模型中间 reasoning、工具逐步输出、临时文件和 guest 凭证不得持久化，也不得进入浏览器事件流、审计或日志。实时深度分析结论只属于当前会话，不写入 Wiki、Knowledge Item、RAG 或其他长期资料。
-
-浏览器通过 SSE 观察 run。连接和重连先获得数据库当前快照，随后按单调 `analysis_runs.version` 接收状态事件；SSE 只推送 run id、version、状态和完成提示，客户端在完成后重新获取经过授权的最终资源。V1 不使用短轮询或 WebSocket，也不传输 reasoning、源码内容或 Secret。
-
-## 9. AI Profile 与可配置性
-
-V1 默认使用三个可独立配置的 Profile：
-
-| Profile | 默认模型 | 默认模式 | 用途 |
+| Visibility | Candidate Agent | Public answer | Public Citation |
 | --- | --- | --- | --- |
-| Router | `deepseek-v4-flash` | non-thinking | 问题复杂度与策略路由 |
-| RAG Answer | `deepseek-v4-flash` | non-thinking | 文档与 Approved Wiki 回答 |
-| Code Agent | `deepseek-v4-pro` | thinking/high | Repository Analysis 与 Deep Analysis |
+| `private` | 不可用 | 不可用 | 不可见 |
+| `agent_only` | 可用 | 不可用 | 不可见 |
+| `citation_allowed` | 可用 | 可用 | 只显示允许的来源名称 |
+| `public_preview` | 可用 | 可用 | 可显示授权片段、commit、path 和范围 |
 
-模型名、base URL、timeout、retry、token、thinking/reasoning 和 provider compatibility 选项必须能由配置或环境变量覆盖。Askme 只依赖开发者提供的 OpenAI-compatible Chat Completions endpoint 与 API key，不判断 endpoint 是原生模型厂商还是外部 AI Gateway，也不负责上游 API key 的签发和管理。
+GitHub public 不等于 Askme public；Repository 在 Askme 中默认 private，必须由 Candidate 显式设置整个 Repository visibility。
 
-## 10. 配额、预算与失败反馈
+所有材料、Markdown、PDF、Wiki 与 Repository 指令文件均是不可信数据。即使内容要求忽略规则、调用工具、读取其他 tenant 或泄露 Secret，系统也只能把它当作证据正文，不得改变 system prompt、检索范围、权限、模型配置或工具能力。
 
-公共访问者只有在 Candidate 开启公开深度分析且 publication、visibility、短窗口滥用防护、并发与单次运行预算均允许时，才可自动触发 Deep Analysis Run，不需要逐问题 Human Gate。Askme 不以 Candidate、publication、visitor、Repository 或全局日运行次数限制 Agent 问答，也不以每个公开会话的每日问题数限制问答；未来 Token/积分余额与计费是独立业务合同，未引入前不能由次数配额替代。短窗口请求速率、运行并发、sandbox 资源和单次 timeout/round/tool/token 预算继续由 Host 强制。Repository Wiki 的离线生成仍可使用独立运维资源控制，但不得影响 Conversation Deep 准入。
+权限撤销使用强撤销：
 
-Deep Analysis Run 默认预算：创建 microVM 30 秒、分析 120 秒、清理 30 秒；最多 50 个 LLM rounds、80 次工具调用、1 MiB 聚合工具输出、单次读取 64 KiB 或 500 lines、单次搜索 200 hits；Code Agent 默认模型最大输入上下文为 1,000,000 tokens、单次模型输出上限为 200,000 tokens；microVM 资源为 1 vCPU、1 GiB memory、2 GiB disk。Repository Analysis 的默认 80 次调用以前 48 次 `ls/find/grep/read` 为软边界：大型仓库达到至少 30 个真实 examined paths 后 guest 移除这些 source tools，只保留最多 32 次 `write_wiki`；不足 30 时拒绝过早写作并允许继续读取，但 source tools 最迟在 60 次时移除，硬保留至少 20 次写入与页面修正。修正 session 不重复 examined-path 门禁，Controller 合并首轮和修正轮真实 coverage。默认并发为 visitor 1、publication 2、runner global 2。
+- 后续问答立即停止使用失效 Repository/Source；
+- 历史 Citation 重新按当前权限投影，撤销后不再展示片段；
+- 依赖失效 Evidence 的历史回答持久标记 `evidence_revoked`，不再作为可验证答案传播；后续恢复 visibility 或重建 source 不得让旧回答和 Citation 自动复活；
+- 审计只保留必要 evidence ID、commit、checksum 和事件，不建立可绕过权限的正文副本。
 
-Repository Analysis Run 与 Deep Analysis Run 使用同一隔离运行时，但前者为支持大型仓库 Wiki 默认最长 20 分钟且为低优先级，后者仍为 120 秒并保持高优先级；全局并发 2 时至少为实时 Deep Analysis 保留一个 slot。所有默认值允许开发者配置。guest 非零退出且实际耗时到达 deadline 时，Host 必须返回稳定 `CODE_AGENT_ANALYSIS_TIMEOUT`，不得降级为不可诊断的通用 guest failure。
+## 10. 源码 Deep Analysis
 
-用户必须能区分等待、证据不足、拒绝、超时、上游 AI 失败、sandbox 失败、短窗口限流、取消和清理失败；服务端使用稳定错误码，不向 UI 暴露内部路径、Token、prompt、tool output 或 provider 原始敏感错误。
+实现级源码问题在文档 RAG 无法回答且 Host 唯一确定一个授权 Repository 时，可以进入现有 `deep` 路由。每个 Deep Analysis Run 只读取一个成功同步的不可变 Revision，在新的临时 BoxLite microVM 内运行只读工具；不得写 Repository、执行项目代码、安装依赖、访问网络或加载 Repository 自带指令。
 
-## 11. 安全不变量
+Deep run 的 `pending | running | completed | failed | cancelled` 与回答 outcome 分离。最终回答和 Host 验证 Citation 可以进入会话；reasoning、工具逐步输出、临时分析文件和中间结论不得持久化或进入 RAG。Deep 失败必须显示真实失败，不得伪装成 RAG none。
 
-1. Agent 只读取 Askme 已成功同步的不可变 Revision；sandbox 不持有 GitHub Token、Git credential 或 live repository access。
-2. Candidate 仓库中的 `AGENTS.md`、`.agents/skills`、`.pi`、prompt 和其他指令文件只能作为待分析数据，不能改变 Pi system prompt、工具、Skill、模型、预算或安全策略。
-3. Pi 只加载 Askme 随产品镜像发布的明确 Skill 和只读工具；V1 不提供 shell、write/edit、网络搜索、browser、MCP 或第三方 Skill。
-4. API key 的正常路径是由 Host 在创建 run 时通过 Pi 内存运行时配置注入 guest；进程环境、临时文件或 Pi 持久凭证目录只能作为当前 microVM 内的备用路径，并随 microVM 销毁。Host 和 tenant 之间不得共享持久凭证目录。
-5. 最终 Citation 必须在 Host 侧重新验证 Revision、path、line range、hash、排除规则和访问权限；首次无效时可在预算内要求一次修正，仍无效则 run 失败。
+多 Repository 无法唯一确定时必须要求用户选择，不猜测、不并行启动多个 sandbox。SSE 只发送 run id、version、状态和完成提示，不泄露源码、reasoning 或 Secret。
 
-## 12. 验收基线
+## 11. Provider、配置与降级
 
-公共内容质量验收固定使用：
+V2 使用可独立配置的 Query Planner Chat、Embedding、Rerank、RAG Answer、Claim Verifier 与 Code Agent Profile。模型名、base URL、API key、timeout、retry、token/context budget 和 provider compatibility 均由受控配置读取，Secret 不进入日志、Trace、数据库、文档或 Commit。
 
-- Repository：`https://github.com/QuantumNous/new-api`
-- Revision：`ccd535ef8e50cf6e5846a59278c40b7ff59d1b7d`
+默认降级：
 
-私有仓库安全验收固定使用：
+- Planner 失败：确定性查询；
+- Embedding 失败：exact + lexical + structured；
+- Rerank 失败：使用 RRF，Evidence Judge 提高充分性要求；
+- 第二轮失败：第一轮 partial/none；
+- Answer 或 Claim Verifier 失败：显式 failed；
+- Citation Validator 失败：拒绝输出。
 
-- Repository：`https://github.com/monshunter/copybook`
-- Revision：`10abc90f0d244485c0983a79f0c79238671bd3f0`
-- Token：验收脚本优先读取进程环境 `ASKME_GITHUB_TEST_TOKEN`，缺失时只解析当前用户 `~/.env` 中同名键；不得 `source` 整个文件。Token 只作为一次性同步请求凭证提交给 Askme，不成为 Web、worker、runner 或 sandbox 的常驻配置。
+模型能力可以降级，Evidence 与权限边界不能降级。Candidate 能看到 `basic retrieval mode` 等安全状态提示。
 
-任一固定 SHA 无法获取时，验收必须失败，不能静默切换为最新 `main`。固定 public Revision 必须先生成一个可直接阅读的完整 Wiki bundle：Agent 根据仓库内容决定页面数量，覆盖主要模块与关键工作流、包含至少一张有效 Mermaid 图、合计不少于 8 个实质章节、检查不少于 30 个且跨主要子系统的代表性文件，并由 Host 从 sandbox `copyOut` 后验证全部文件和 `[S*]` Citation。随后整理约 10 个基准问题，覆盖 Wiki 普通检索、必须深度分析、Router 边界、证据不足和权限投影；每题记录期望 route、关键事实和最低 Citation 条件，不要求答案逐字匹配，也不要求用户预先编写或逐题审核标准答案。
+## 12. Retrieval Trace 与反馈
 
-## 13. 验收标准
+Candidate/Admin 可以查看一次问答的 Retrieval Trace：
 
-- [x] `AC-REPO-001` GitHub.com 公开与私有 Repository 均能在显式同步时解析并固定完整 SHA，失败不会替换旧 active Revision。
-- [x] `AC-REPO-002` 私有 Token 只存在于一次同步请求内；数据库、artifact、日志、错误、BoxLite 和持久凭证目录均无 Token。
-- [x] `AC-REPO-003` archive 过滤、解压安全、路径与默认容量限制拒绝越界输入，artifact 保持只读且不包含被排除内容。
-- [x] `AC-WIKI-001` 每个可分析新 Revision 在 sandbox 隔离输出目录生成 1–N 个结构化、可阅读和可导出的 Wiki Markdown；Host 在 cleanup 前安全 copy-out，并验证导航、架构/流程 Mermaid、模块与工作流说明、源码 Citation 和诚实 coverage，不创建源码 Chunk、embedding、AST 或向量索引。
-- [x] `AC-WIKI-002` Generated Version 不可编辑；Candidate 以导航树和逐页 Markdown 阅读、编辑和预览 Approved Projection，危险内容、越界链接、无效 Citation 或新增无证据引用不可批准，UI 不再呈现 Claim 卡片编辑器。
-- [x] `AC-WIKI-003` Approved Wiki 与已索引上传资料进入同一统一知识检索链路，供 Candidate Preview 和授权 Public Chat 使用；未审核 Wiki 不可检索，新 Revision 未批准时继续使用旧 active Revision，运行版本变化只标记 `analysis_outdated`。
-- [x] `AC-KB-003` 职业知识库的列表、代码仓库分类、计数、搜索和详情统一投影当前 active Approved Repository Wiki；每个 Repository 只计一条、详情可读 1–N 个 Wiki 页面且保持只读，未审核或未授权 Wiki 不可见，同时 Candidate Preview 与授权 Public Chat 能在后续问题中使用同一 Wiki 与源码 Citation。
-- [x] `AC-ROUTE-001` 确定性门禁先于 Router，Router 只能在 `rag`、`deep`、`refuse` 中选择且不能扩大 repository 或 visibility 权限。
-- [x] `AC-ROUTE-002` 普通文档/Wiki 问题不启动 sandbox；需要原始代码的问题在证据不足时升级为一个 Revision 的 Deep Analysis Run。
-- [x] `AC-ROUTE-003` 多 Repository 歧义要求用户选择，证据不足、拒绝和失败不伪装成成功回答或无提示 RAG fallback。
-- [x] `AC-RUN-001` 每个深度 run 使用新的临时 BoxLite microVM，guest 状态、进程和凭证在结束后销毁且不跨 tenant 复用。
-- [x] `AC-RUN-002` Pi 只加载 Askme 产品 Skill 和只读工具，Repository 中的指令文件无法改变运行时行为，代码仓库无法被写入。
-- [x] `AC-RUN-003` Host 对最终结构、Citation、预算、权限和清理结果完成确定性校验；无效 Citation 修正一次后仍失败则不发布答案。
-- [x] `AC-ASYNC-001` SSE 基于数据库 version 快照和事件恢复 pending/running/终态，不使用短轮询、WebSocket，也不泄露 reasoning、源码或 Secret。
-- [x] `AC-PRIV-004` 四级 Repository visibility 同时约束 Wiki、Candidate/Public 回答和 Citation 投影；降权与撤销立即作用于历史公共消息。
-- [x] `AC-AI-002` Router、RAG Answer 与 Code Agent Profile 可独立配置，默认模型符合合同，并可通过通用 OpenAI-compatible Chat Completions endpoint 工作。
-- [x] `AC-COST-001` 超时、round、工具、输出、读取、搜索、token、microVM 资源、并发和 Repository Wiki 运维资源控制均由服务端强制，公共自动深度分析不能绕过；Agent 问答不设置日次数配额。
-- [x] `AC-HISTORY-001` 最终会话消息、有效 Citation 和最小 run metadata 可恢复；中间 reasoning/tool output 不持久化，深度结论不进入 Wiki、RAG 或 Knowledge Item。
-- [x] `AC-ACCEPT-001` 固定 `new-api` Revision 完成约 10 题路由、事实与 Citation 验收，固定 private Revision 完成一次性 Token、不可变 SHA、撤权和清理验收。
-- [x] `AC-ANSWER-001` RAG 回答只持久化模型实际选择且能支撑最终陈述的 Repository `[S*]` 源码范围；Repository 名称与无关 section marker 不会膨胀来源，固定 copybook 项目概览问题不展示入口组件来源。
-- [x] `AC-ANSWER-002` RAG Provider 返回 `S7` 或 `[S7]` 均规范化为同一有效 marker，非法与重复 marker 仍失败；固定 copybook `paginate` 剩余格子问题确定性进入真实 Conversation Deep，并返回实现行为与有效源码 Citation。
-- [x] `AC-DEEP-001` Candidate 与 Public 的真实问题可以产生可审计 `deep` 有效路由和 `conversation_analysis`，由 worker 在新 microVM 读取固定 Revision 原始源码并提交有效 Citation；验收不能由 Router mock、Wiki `repository_analysis` 或 readiness 代替。
-- [x] `AC-USAGE-001` Agent 问答和 Conversation Deep 不读取或消耗 Askme 日次数配额，Admin 不再配置公开会话每日问题数；短窗口滥用防护、并发和单次运行预算仍有效。
-- [x] `AC-SUGGEST-001` 空会话展示基于当前授权知识的引导问题；每次 RAG/Deep 回答后，Candidate 与 Public 推荐均随同一 conversation 的完整可见上下文更新并保存 context version，刷新不退回无关预定义轮换。
-- [x] `AC-LANGUAGE-001` 中文问题得到中文回答和中文推荐，英文问题得到英文回答和英文推荐；RAG、Deep、证据不足、拒绝与 refresh 均遵守，源码标识符与专有名词除外。
+- retrieval policy、active index、source revision/commit；
+- Planner 的实体、关键词和 semantic queries；
+- exact/lexical/vector/structured 各路命中数；
+- RRF/Rerank 后的 evidence ID、分数和筛选原因；
+- Coverage、补检、降级、跳过、权限过滤与索引告警。
 
-## 14. 已批准的后续延迟项
+Trace 不向 Interviewer 展示，不包含 system prompt、Embedding vector、未授权正文或 Provider 敏感原始错误。
 
-以下内容不阻塞 V1，只有出现真实需要时才重新决策：独立 AI processing consent 记录、对象存储、多 Web 实例事件分发、向量检索、跨仓库分析、按文件 visibility、其他 Git provider、计费、warm sandbox 和代码写入能力。
+点赞、点踩和 Candidate 纠正只作为离线评估标签。它们不能在线修改 RRF 权重、Knowledge Item、Evidence、Embedding 或模型。任何检索策略变化必须产生新的 `retrieval_policy_version` 并重新通过发布门禁。
+
+## 13. Golden Dataset 与发布门禁
+
+仓库内维护完全合成、无真实个人信息的三名虚构 Candidate 材料和 120 个问题：
+
+| 类型 | 数量 |
+| --- | ---: |
+| 精确事实 | 30 |
+| 中文改写 | 25 |
+| 中英混合/缩写 | 15 |
+| 多轮指代 | 15 |
+| partial | 15 |
+| none | 10 |
+| 权限/越界 | 10 |
+
+材料覆盖全部 visibility、Material/Knowledge Item/Approved Wiki/Repository Markdown/PDF、重复血缘、冲突、长文档、Prompt Injection 和 Provider 降级。每个 case 标注 expected outcome、coverage、required/forbidden evidence IDs、可选 acceptable Citation IDs 和 tags；required ID 用于 Recall，Citation precision 接受所有能直接支持目标 Claim 且未被禁止的标注证据。
+
+V2 发布必须满足：
+
+- initial Recall@30 `>=95%`；
+- rerank evidence Recall@8 `>=90%`；
+- Citation precision `=100%`；
+- answerable 被误判 none `<=5%`；
+- unanswerable 虚构回答 `=0`；
+- 未授权泄露 `=0`；
+- outcome classification `>=95%`。
+
+指标必须按语言、来源、问题类型和降级模式分段。真实账号和个人材料只用于非持久最终验收，不进入仓库 Golden Dataset。
+
+## 14. 验收标准
+
+- [x] `AC-RAG2-001` 中文精确问题、改写和中英混合问题均能召回富途等完整任职 Parent/Child，不再因连续中文 lexeme 导致零召回。
+- [x] `AC-RAG2-002` Material、Knowledge anchor、Approved Wiki 和 Repository 文档经过 exact/lexical/vector/structured、RRF 与独立 Rerank，且所有 TopK、权重、阈值和 evidence budget 可配置。
+- [x] `AC-RAG2-003` pgvector 使用固定 1024 维 Embedding version、过滤后 exact cosine 和原子 active index；重建派生索引不删除业务数据，也不混合不同版本。
+- [x] `AC-RAG2-004` Parent–Child 切分遵守结构、token、上下文和范围约束，简历公司/岗位/职责不会失去关联。
+- [x] `AC-RAG2-005` Evidence Judge 正确区分 full、partial、none、conflicted、refused 和 failed，最多进行一次不扩大权限的定向补检。
+- [x] `AC-RAG2-006` Claim Verifier 删除或收窄无支持/矛盾 Claim，Citation Validator 只允许当前授权、active、checksum 有效的 Evidence。
+- [x] `AC-RAG2-007` Embedding、Rerank、Planner 和第二轮失败按合同安全降级；Answer/Verifier/Citation 失败不伪装成“证据不足”。
+- [x] `AC-REPO-DOC-001` Repository 级批准后，白名单内当前和未来 Markdown/PDF 自动索引并继承 visibility；源码与扫描 PDF 不进入 Embedding。
+- [x] `AC-REPO-DOC-002` Repository sync 与 index readiness 独立可见，超限/不支持文件产生 ready_with_warnings 和稳定原因，新索引失败不混用 commit。
+- [x] `AC-REPO-DOC-003` Repository Citation 固定完整 commit、path、line/page 和 checksum；Askme 阅读页实时授权，权限降低执行强撤销。
+- [x] `AC-EVIDENCE-001` Evidence family 防止派生副本重复增信；冲突来源不静默覆盖并同时显示双方 Citation。
+- [x] `AC-SEC-RAG-001` Prompt Injection、Repository 指令和恶意材料不能改变权限、Prompt、Provider、工具或检索范围，未授权泄露为零。
+- [x] `AC-TRACE-001` Candidate/Admin 能查看不含敏感正文和向量的 Retrieval Trace，Interviewer 不可访问。
+- [x] `AC-FEEDBACK-001` 用户反馈只进入离线标签，策略改变以新 retrieval policy version 通过门禁后发布。
+- [x] `AC-EVAL-001` 120 题合成 Golden Dataset 达到全部召回、排序、Citation、拒答、权限和 outcome 阈值。
+- [x] `AC-ACCEPT-002` 保留业务数据部署后，目标账号的富途经历和已批准 Repository 文档问题在真实浏览器返回正确回答、有效 Citation 和可解释 Trace。
+
+## 15. 已批准的延迟项
+
+OCR、HNSW 默认启用、其他 Git provider、跨 Repository Deep Analysis、原始源码 Embedding、在线训练、自动反馈调权、计费和生产多 Region 不阻塞 V2。HNSW 只有达到本合同容量/延迟阈值并通过 recall 对照时才可提前启用。

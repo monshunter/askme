@@ -3,6 +3,8 @@ import { requestPublicRepositoryAnalysisCancellation, requestRepositoryAnalysisC
 import { queueRepositoryAnalysisRun } from "@/server/code-agent/analysis-runs";
 import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
+import { enqueueRepositoryDocumentSources, invalidateRepositoryAnswers, revokeRepositoryDocumentSources } from "@/server/rag/repository-document-index";
+import { enqueueApprovedWikiSourcesForOpenIndexes } from "@/server/rag/index-coordinator";
 
 import { FileSystemRepositoryArtifactStore } from "./artifact-store";
 import type { RepositoryResyncInput, RepositorySyncInput } from "./repository-input";
@@ -27,6 +29,12 @@ export type CandidateRepository = {
   };
   activeRevision: null | { id: string; commitSha: string };
   activeProjectionId: string | null;
+  ragIndexState: "not_indexed" | "indexing" | "ready" | "ready_with_warnings" | "failed" | "stale";
+  ragIndexCommitSha: string | null;
+  ragIndexedFileCount: number;
+  ragSkippedFileCount: number;
+  ragIndexWarnings: string[];
+  ragIndexErrorCode: string | null;
   latestAnalysisRun: null | {
     id: string;
     state: "pending" | "running" | "completed" | "failed" | "cancelled";
@@ -45,6 +53,9 @@ export async function listCandidateRepositories(ownerId: string) {
     `SELECT repository.id,repository.canonical_url AS "canonicalUrl",repository.display_name AS "displayName",
             repository.visibility,repository.public_deep_analysis_enabled AS "publicDeepAnalysisEnabled",
             repository.disabled_at AS "disabledAt",repository.active_projection_id AS "activeProjectionId",
+            repository.rag_index_state AS "ragIndexState",repository.rag_index_commit_sha AS "ragIndexCommitSha",
+            repository.rag_indexed_file_count AS "ragIndexedFileCount",repository.rag_skipped_file_count AS "ragSkippedFileCount",
+            repository.rag_index_warnings AS "ragIndexWarnings",repository.rag_index_error_code AS "ragIndexErrorCode",
             repository.created_at AS "createdAt",repository.updated_at AS "updatedAt",
             CASE WHEN latest.id IS NULL THEN NULL ELSE jsonb_build_object(
               'id',latest.id,'requestedRef',latest.requested_ref,'commitSha',latest.commit_sha,'state',latest.state,
@@ -84,7 +95,9 @@ async function runSync(ownerId: string, input: RepositorySyncInput, requestId?: 
   const current = await pool.query<CandidateRepository>(
     `SELECT repository.id,repository.canonical_url AS "canonicalUrl",repository.display_name AS "displayName",repository.visibility,
             repository.public_deep_analysis_enabled AS "publicDeepAnalysisEnabled",repository.disabled_at AS "disabledAt",
-            repository.active_projection_id AS "activeProjectionId",repository.created_at AS "createdAt",repository.updated_at AS "updatedAt",
+            repository.active_projection_id AS "activeProjectionId",repository.rag_index_state AS "ragIndexState",repository.rag_index_commit_sha AS "ragIndexCommitSha",
+            repository.rag_indexed_file_count AS "ragIndexedFileCount",repository.rag_skipped_file_count AS "ragSkippedFileCount",
+            repository.rag_index_warnings AS "ragIndexWarnings",repository.rag_index_error_code AS "ragIndexErrorCode",repository.created_at AS "createdAt",repository.updated_at AS "updatedAt",
             jsonb_build_object('id',revision.id,'requestedRef',revision.requested_ref,'commitSha',revision.commit_sha,'state',revision.state,
               'errorCode',revision.error_code,'fileCount',revision.file_count,'extractedBytes',revision.extracted_bytes,'createdAt',revision.created_at) AS "latestRevision",
             NULL::jsonb AS "activeRevision"
@@ -150,7 +163,13 @@ export async function updateCandidateRepositoryVisibility(ownerId: string, repos
     );
     updatedRepository = updated.rows[0];
     if (!updatedRepository) throw new AppError("REPOSITORY_NOT_FOUND", "The Repository was not found.", 404);
-    if (visibility === "private") await requestRepositoryAnalysisCancellationInTransaction(client, ownerId, repositoryId, "visibility_revoked");
+    if (visibility === "private" || visibility === "agent_only") {
+      await invalidateRepositoryAnswers(client, ownerId, repositoryId, visibility);
+    }
+    if (visibility === "private") {
+      await requestRepositoryAnalysisCancellationInTransaction(client, ownerId, repositoryId, "visibility_revoked");
+      await revokeRepositoryDocumentSources(client, ownerId, repositoryId);
+    }
     else if (visibility === "agent_only" && previousVisibility !== "agent_only") await requestPublicRepositoryAnalysisCancellation(client, ownerId, repositoryId, "visibility_revoked");
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
@@ -165,6 +184,11 @@ export async function updateCandidateRepositoryVisibility(ownerId: string, repos
     client.release();
   }
   if (visibility === "private") return { ...updatedRepository, analysisRun: null };
+  const config = getRuntimeConfig();
+  const [ragIndex, wikiIndexVersions] = await Promise.all([
+    enqueueRepositoryDocumentSources(getPool(), config, ownerId, repositoryId),
+    enqueueApprovedWikiSourcesForOpenIndexes(getPool(), ownerId, repositoryId),
+  ]);
   const latest = await getPool().query<{ revisionId: string }>(
     `SELECT id AS "revisionId" FROM repository_revisions
      WHERE repository_id=$1 AND owner_id=$2 AND state='stored'
@@ -172,17 +196,16 @@ export async function updateCandidateRepositoryVisibility(ownerId: string, repos
     [repositoryId, ownerId],
   );
   const revisionId = latest.rows[0]?.revisionId;
-  if (!revisionId) return { ...updatedRepository, analysisRun: null };
-  const config = getRuntimeConfig();
+  if (!revisionId) return { ...updatedRepository, ragIndex, wikiIndexVersions, analysisRun: null };
   try {
     const analysisRun = await queueRepositoryAnalysisRun({
       pool: getPool(), config, ownerId, repositoryId, revisionId, actorRole: "candidate", requestId,
       forceNewGeneration: previousVisibility === "private",
     });
-    return { ...updatedRepository, analysisRun };
+    return { ...updatedRepository, ragIndex, wikiIndexVersions, analysisRun };
   } catch (error) {
     if (error instanceof AppError) {
-      return { ...updatedRepository, analysisRun: { state: "unavailable" as const, errorCode: error.code } };
+      return { ...updatedRepository, ragIndex, wikiIndexVersions, analysisRun: { state: "unavailable" as const, errorCode: error.code } };
     }
     throw error;
   }

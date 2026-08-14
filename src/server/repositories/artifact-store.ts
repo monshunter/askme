@@ -20,13 +20,14 @@ const DEFAULT_EXCLUDED_SEGMENTS = new Set([
 ]);
 const DEFAULT_BINARY_EXTENSIONS = new Set([
   ".7z", ".a", ".avi", ".bin", ".bmp", ".class", ".dll", ".dylib", ".eot", ".exe", ".gif", ".gz", ".ico", ".jar", ".jpeg", ".jpg",
-  ".mov", ".mp3", ".mp4", ".o", ".otf", ".pdf", ".png", ".so", ".tar", ".tif", ".tiff", ".ttf", ".wav", ".webm", ".webp", ".woff", ".woff2", ".zip",
+  ".mov", ".mp3", ".mp4", ".o", ".otf", ".png", ".so", ".tar", ".tif", ".tiff", ".ttf", ".wav", ".webm", ".webp", ".woff", ".woff2", ".zip",
 ]);
 const DEFAULT_LIMITS = {
   maxArchiveBytes: 100 * 1024 * 1024,
   maxExtractedBytes: 500 * 1024 * 1024,
   maxFiles: 50_000,
   maxFileBytes: 2 * 1024 * 1024,
+  maxPdfBytes: 50 * 1024 * 1024,
   maxPathBytes: 1_024,
 };
 
@@ -215,15 +216,21 @@ export class FileSystemRepositoryArtifactStore implements RepositoryArtifactStor
         skipped.binary += 1;
         continue;
       }
+      const isPdf = path.extname(relativePath).toLowerCase() === ".pdf";
+      const maxFileBytes = isPdf ? this.limits.maxPdfBytes : this.limits.maxFileBytes;
       const expectedBytes = declaredSize(entry);
-      if (expectedBytes !== null && expectedBytes > this.limits.maxFileBytes) throw new AppError("REPOSITORY_FILE_TOO_LARGE", "A repository file exceeds the configured limit.", 413);
+      if (expectedBytes !== null && expectedBytes > maxFileBytes) throw new AppError("REPOSITORY_FILE_TOO_LARGE", "A repository file exceeds the configured limit.", 413);
       const bytes = await entry.async("uint8array");
-      if (bytes.byteLength > this.limits.maxFileBytes) throw new AppError("REPOSITORY_FILE_TOO_LARGE", "A repository file exceeds the configured limit.", 413);
+      if (bytes.byteLength > maxFileBytes) throw new AppError("REPOSITORY_FILE_TOO_LARGE", "A repository file exceeds the configured limit.", 413);
       if (expectedBytes === null) {
         extractedBytes += bytes.byteLength;
         if (extractedBytes > this.limits.maxExtractedBytes) throw new AppError("REPOSITORY_EXTRACTED_TOO_LARGE", "The repository archive exceeds the configured extracted-size limit.", 413);
       }
-      if (!isText(bytes)) {
+      if (isPdf && Buffer.from(bytes.subarray(0, 5)).toString("ascii") !== "%PDF-") {
+        skipped.binary += 1;
+        continue;
+      }
+      if (!isPdf && !isText(bytes)) {
         skipped.binary += 1;
         continue;
       }

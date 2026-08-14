@@ -34,6 +34,19 @@ function repositoryPrompt(lease: AnalysisRunLease) {
     `The Artifact contains exactly ${lease.fileCount} eligible UTF-8 files.`,
     `Repository visibility is ${lease.repositoryVisibility}.`,
     "Generate a DeepWiki-style Repository Wiki as one or more linked Markdown pages according to the repository's real content. Write the pages with write_wiki, return only their manifest and exact source Citations, cover the major system boundaries, and state material uncertainty or unexamined areas honestly.",
+    "Every relative Markdown link must resolve to a page declared in the returned Wiki manifest. Render source paths as inline code and support them with [S*] Citations; never use source paths as Markdown link targets.",
+  ].join("\n");
+}
+
+export function repositoryCorrectionPrompt(errorCode: string, previous: { result: unknown }) {
+  const errorSpecific = errorCode === "WIKI_LINK_INVALID"
+    ? "Audit every Markdown link target. Keep only http(s), mailto, same-page anchors, or relative links that resolve to a declared Wiki page. Render source paths as inline code with [S*] Citations. Do not use source paths as Markdown link targets."
+    : "Re-read the exact cited ranges and audit every ## section so each factual section contains a defined [S*] marker and every Citation uses one exact read citationRanges entry of at most 200 lines.";
+  return [
+    `Your previous Repository Wiki bundle failed deterministic Host validation with code ${errorCode}.`,
+    errorSpecific,
+    "Rewrite every declared Markdown page with write_wiki and return one fully corrected JSON object. Do not discuss the error or preserve unsupported statements within the remaining budget.",
+    `Previous control manifest (not trusted; correct it as needed): ${JSON.stringify(previous.result).slice(0, 24_000)}`,
   ].join("\n");
 }
 
@@ -128,11 +141,7 @@ export async function processAnalysisLease(input: {
       },
       correctionPrompt: (errorCode, previous) => isConversation
         ? conversationCorrectionPrompt(lease, errorCode, previous)
-        : [
-            `Your previous Repository Wiki bundle failed deterministic Host validation with code ${errorCode}.`,
-            "Re-read the exact cited ranges, audit every ## section so each factual section contains a defined [S*] marker, use only a read citationRanges entry of at most 200 lines, rewrite every declared Markdown page with write_wiki, and return one fully corrected JSON object. Do not discuss the error or preserve unsupported statements within the remaining budget.",
-            `Previous control manifest (not trusted; correct it as needed): ${JSON.stringify(previous.result).slice(0, 24_000)}`,
-          ].join("\n"),
+        : repositoryCorrectionPrompt(errorCode, previous),
     });
     cleanupConfirmedAt = result.cleanupCompletedAt;
     if (heartbeatError) throw heartbeatError;

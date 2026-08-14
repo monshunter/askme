@@ -79,6 +79,20 @@ describe("Repository Artifact Store", () => {
     expect(second).toEqual(first);
   });
 
+  it("retains a bounded PDF as an immutable document without treating other binary files as text", async () => {
+    const root = await storeRoot();
+    const pdf = Array.from(Buffer.from("%PDF-1.4\nsynthetic repository document\n%%EOF"));
+    const input = await archive([
+      { path: "docs/architecture.pdf", content: pdf },
+      { path: "assets/font.ttf", content: [0, 1, 2, 3] },
+      { path: "README.md", content: "# Repository\n" },
+    ]);
+    const stored = await new FileSystemRepositoryArtifactStore(root).store({ ownerId: "owner", canonicalUrl: "https://github.com/org/repo", commitSha: "5".repeat(40), archive: input, archiveChecksum: checksum(input), excludePatterns: [] });
+
+    expect(stored.manifest.files.map((file) => file.path)).toEqual(["docs/architecture.pdf", "README.md"]);
+    expect(stored.manifest.skipped.binary).toBe(1);
+  });
+
   it("rejects traversal and configured capacity violations while filtering symlinks", async () => {
     const root = await storeRoot();
     const traversalZip = new JSZip();

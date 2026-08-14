@@ -152,19 +152,21 @@ try {
   const candidates = await api<{ items: Array<{ id: string; status: string }>; total: number }>(`/api/admin/candidates?search=${encodeURIComponent(candidateDisplayName)}`, { cookie: adminCookie });
   const agents = await api<{ items: Array<{ id: string; status: string }>; total: number }>(`/api/admin/agents?search=${slug}`, { cookie: adminCookie });
   const reviews = await api<{ items: Array<{ id: string; safeSummary: string }>; total: number }>(`/api/admin/reviews?search=${encodeURIComponent(candidateId.slice(0, 8))}`, { cookie: adminCookie });
+  const ragTraces = await api<{ items: unknown[]; limit: number }>("/api/admin/rag-traces?limit=5", { cookie: adminCookie });
   const report = await api<{ hasData: boolean; trend: unknown[] }>("/api/admin/reports?range=7d", { cookie: adminCookie });
   const safeSearch = await api<{ candidates: unknown[]; agents: unknown[]; reviews: unknown[] }>(`/api/admin/search?q=${encodeURIComponent(candidateDisplayName)}`, { cookie: adminCookie });
   const privateSearch = await api<{ candidates: unknown[]; agents: unknown[]; reviews: unknown[] }>(`/api/admin/search?q=${encodeURIComponent(privateMarker)}`, { cookie: adminCookie });
-  for (const result of [overview, candidates, agents, reviews, report, safeSearch, privateSearch]) assert(result.response.ok, `Admin read API failed with ${result.response.status}`);
+  for (const result of [overview, candidates, agents, reviews, ragTraces, report, safeSearch, privateSearch]) assert(result.response.ok, `Admin read API failed with ${result.response.status}`);
   assert(overview.payload.data?.recentAgents.some((item) => item.id === publicationId), "Overview did not project the fixture Agent");
   assert(overview.payload.data?.reviewQueue.some((item) => item.id === resolveFlagId), "Overview did not project the review queue");
   assert(candidates.payload.data?.items.some((item) => item.id === candidateId) && candidates.payload.data.total === 1, "Candidate search was not backed by the fixture account");
   assert(agents.payload.data?.items.some((item) => item.id === publicationId) && agents.payload.data.total === 1, "Agent search was not backed by the fixture publication");
   assert(reviews.payload.data?.items.some((item) => item.id === resolveFlagId && item.safeSummary === safeSummary), "Content Review did not use the safe summary");
+  assert(ragTraces.payload.data?.limit === 5, "RAG Trace Admin projection did not enforce the requested bounded limit");
   assert(report.payload.data?.hasData === true && (report.payload.data.trend.length ?? 0) === 7, "Reports did not project the real seven-day fixture trend");
   assert((safeSearch.payload.data?.candidates.length ?? 0) === 1, "Global search did not find the Candidate projection");
   assert((privateSearch.payload.data?.candidates.length ?? 0) + (privateSearch.payload.data?.agents.length ?? 0) + (privateSearch.payload.data?.reviews.length ?? 0) === 0, "Global search crossed the private-content boundary");
-  const safeProjection = [overview.payload, candidates.payload, agents.payload, reviews.payload, report.payload, safeSearch.payload, {
+  const safeProjection = [overview.payload, candidates.payload, agents.payload, reviews.payload, ragTraces.payload, report.payload, safeSearch.payload, {
     candidates: privateSearch.payload.data?.candidates,
     agents: privateSearch.payload.data?.agents,
     reviews: privateSearch.payload.data?.reviews,

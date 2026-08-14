@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { AppError } from "@/server/errors";
 
-import { readRepositoryArtifactEvidence } from "./artifact-reader";
+import { readRepositoryArtifactEvidence, readRepositoryArtifactFiles } from "./artifact-reader";
 import { FileSystemRepositoryArtifactStore } from "./artifact-store";
 
 const roots: string[] = [];
@@ -58,6 +58,14 @@ describe("Repository Artifact reader", () => {
     expect(result.sources.get("src/index.ts")).toBe("export const answer = 42;\n");
     expect(result.sources.has("README.md")).toBe(false);
     expect(result.artifactSkipped.default_excluded).toBe(1);
+  });
+
+  it("returns verified binary bytes only through the explicit immutable file reader", async () => {
+    const { root, stored } = await fixture();
+    const result = await readRepositoryArtifactFiles(root, descriptor(stored), ["README.md"]);
+
+    expect(result.files.get("README.md")?.toString("utf8")).toBe("# Repository\n");
+    expect(result.manifestFiles.find((file) => file.path === "README.md")?.contentHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("rejects unknown requested paths and tampered manifests", async () => {

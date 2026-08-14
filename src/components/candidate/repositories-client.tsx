@@ -19,6 +19,12 @@ type Repository = {
   latestRevision: null | { id: string; requestedRef: string; commitSha: string; state: "staging" | "stored" | "failed" | "collected"; errorCode: string | null; fileCount: number; extractedBytes: number; createdAt: string };
   activeRevision: null | { id: string; commitSha: string };
   activeProjectionId: string | null;
+  ragIndexState: "not_indexed" | "indexing" | "ready" | "ready_with_warnings" | "failed" | "stale";
+  ragIndexCommitSha: string | null;
+  ragIndexedFileCount: number;
+  ragSkippedFileCount: number;
+  ragIndexWarnings: string[];
+  ragIndexErrorCode: string | null;
   latestAnalysisRun: null | { id: string; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string; analysisGeneration: number; safeErrorCode: string | null; createdAt: string; finishedAt: string | null };
   createdAt: string;
   updatedAt: string;
@@ -59,7 +65,7 @@ const copy = {
     kicker: "Repository knowledge", title: "Code Repositories", intro: "Pin one immutable GitHub revision, review its generated Wiki, and approve it as Agent knowledge.",
     connect: "Add a Repository", connectCopy: "Pin a GitHub branch, tag, or full commit SHA. Private repositories need a one-time Token.", directory: "Added Repositories", close: "Close add Repository dialog", cancel: "Cancel", url: "GitHub Repository URL", ref: "Branch, tag, or full SHA", token: "Temporary Token (private repositories only)",
     tokenNote: "The Token is sent only with this sync request and is never stored.", excludes: "Additional excludes (one glob per line)", visibility: "Visibility", submit: "Sync revision", syncing: "Syncing and filtering archive…",
-    empty: "No code Repository has been synced yet.", latest: "Latest stored revision", active: "Active approved revision", pending: "Wiki review has not activated this revision yet.",
+    empty: "No code Repository has been synced yet.", latest: "Latest stored revision", active: "Active approved revision", pending: "Wiki review has not activated this revision yet.", ragIndex: "Agent document index",
     again: "Sync again", save: "Save visibility", saving: "Saving…", success: "Repository revision stored.", refresh: "Refresh", failed: "The Repository request failed.",
     review: "Review Wiki", noDossier: "No generated Repository Wiki is ready for review.", coverage: "Analysis coverage", examined: "examined", eligible: "eligible files", targeted: "Targeted analysis does not claim full-repository coverage.",
     pages: "Wiki pages", preview: "Preview", edit: "Edit Markdown", savePage: "Save page", approve: "Approve as knowledge", approving: "Approving…", approved: "Wiki approved and added to Agent knowledge.", citations: "Source citations", outdated: "Analysis provenance is outdated; the active Wiki remains available until you approve a rerun.", analysis: "Repository analysis", rerun: "Rerun analysis", queued: "Repository analysis queued.", publicDeep: "Allow public deep analysis", publicDeepNote: "Visitors may start a bounded source analysis only while this Repository and the Agent remain public.",
@@ -68,7 +74,7 @@ const copy = {
     kicker: "代码仓库知识", title: "代码仓库", intro: "固定一个不可变的 GitHub revision，审核生成的 Wiki，并在批准后将其加入智能体知识库。",
     connect: "添加仓库", connectCopy: "固定 GitHub 分支、标签或完整 commit SHA；私有仓库需要一次性 Token。", directory: "已添加仓库", close: "关闭添加仓库弹窗", cancel: "取消", url: "GitHub 仓库 URL", ref: "分支、标签或完整 SHA", token: "临时 Token（仅私有仓库需要）",
     tokenNote: "Token 只随本次同步请求发送，系统不会保存。", excludes: "额外排除规则（每行一个 glob）", visibility: "可见性", submit: "同步 revision", syncing: "正在同步并过滤 archive…",
-    empty: "还没有同步代码仓库。", latest: "最新存储 revision", active: "当前已批准 revision", pending: "该 revision 尚未通过 Wiki 审核并激活。",
+    empty: "还没有同步代码仓库。", latest: "最新存储 revision", active: "当前已批准 revision", pending: "该 revision 尚未通过 Wiki 审核并激活。", ragIndex: "Agent 文档索引",
     again: "再次同步", save: "保存可见性", saving: "正在保存…", success: "Repository revision 已存储。", refresh: "刷新", failed: "代码仓库请求失败。",
     review: "审核 Wiki", noDossier: "暂无可审核的 Repository Wiki。", coverage: "分析覆盖", examined: "已检查", eligible: "个 eligible 文件", targeted: "本次是定向分析，不声称覆盖整个仓库。",
     pages: "Wiki 页面", preview: "预览", edit: "编辑 Markdown", savePage: "保存页面", approve: "批准并加入知识库", approving: "正在批准…", approved: "Wiki 已批准并加入智能体知识库。", citations: "源码 Citation", outdated: "分析运行版本已过期；在批准重跑结果前，当前 active Wiki 继续可用。", analysis: "仓库分析", rerun: "重新分析", queued: "仓库分析已进入队列。", publicDeep: "允许公共深度分析", publicDeepNote: "仅在该仓库与智能体保持公开时，访客才能启动有界源码分析。",
@@ -257,7 +263,7 @@ export function RepositoriesClient({ initialRepositories, locale }: { initialRep
           {repositories.length === 0 ? <div className="empty-state paper-card"><Github size={28} /><p>{strings.empty}</p></div> : repositories.map((repository) => (
           <article className="paper-card repository-card" key={repository.id}>
             <header><span className="round-icon"><Github size={19} /></span><div><h2>{repository.displayName}</h2><a href={repository.canonicalUrl} target="_blank" rel="noreferrer">{repository.canonicalUrl}</a></div><span className={`status-pill ${repository.latestRevision?.state ?? "staging"}`}>{repository.latestRevision?.state ?? "staging"}</span></header>
-            {repository.latestRevision ? <dl><div><dt>{strings.latest}</dt><dd><code>{repository.latestRevision.commitSha}</code><small>{repository.latestRevision.requestedRef} · {repository.latestRevision.fileCount} files · {formatBytes(repository.latestRevision.extractedBytes, locale)}</small></dd></div><div><dt>{strings.active}</dt><dd>{repository.activeRevision ? <code>{repository.activeRevision.commitSha}</code> : <small>{strings.pending}</small>}</dd></div></dl> : null}
+            {repository.latestRevision ? <dl><div><dt>{strings.latest}</dt><dd><code>{repository.latestRevision.commitSha}</code><small>{repository.latestRevision.requestedRef} · {repository.latestRevision.fileCount} files · {formatBytes(repository.latestRevision.extractedBytes, locale)}</small></dd></div><div><dt>{strings.active}</dt><dd>{repository.activeRevision ? <code>{repository.activeRevision.commitSha}</code> : <small>{strings.pending}</small>}</dd></div><div><dt>{strings.ragIndex}</dt><dd><span className={`status-pill ${repository.ragIndexState}`}>{repository.ragIndexState}</span><small>{repository.ragIndexCommitSha ? repository.ragIndexCommitSha.slice(0, 12) : "—"} · {repository.ragIndexedFileCount} indexed · {repository.ragSkippedFileCount} skipped{repository.ragIndexErrorCode ? ` · ${repository.ragIndexErrorCode}` : ""}</small>{repository.ragIndexWarnings.length > 0 ? <small>{repository.ragIndexWarnings.join(", ")}</small> : null}</dd></div></dl> : null}
             <div className="repository-card-actions">
               <label><span>{strings.visibility}</span><select value={repository.visibility} disabled={busy === repository.id} onChange={(event) => void changeVisibility(repository, event.target.value as Visibility)}>{(Object.keys(visibilityLabels) as Visibility[]).map((value) => <option key={value} value={value}>{visibilityLabels[value][language]}</option>)}</select></label>
               <label className="checkbox-label repository-public-deep"><input type="checkbox" checked={repository.publicDeepAnalysisEnabled} disabled={busy !== null || !["citation_allowed", "public_preview"].includes(repository.visibility)} onChange={(event) => void changePublicDeep(repository, event.target.checked)} /><span><strong>{strings.publicDeep}</strong><small>{strings.publicDeepNote}</small></span></label>

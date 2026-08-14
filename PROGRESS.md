@@ -143,3 +143,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-019：闭环公开身份补全与 Agent 发布可达性](docs/plans/PLAN-019.md)
 ---
+
+---
+ID: OBJ-015
+Objective: 交付真实 Hybrid Agentic RAG V2，提升职业资料与仓库文档问答的召回、证据精度和可诊断性
+Status: 已完成
+Plans:
+- [x] [PLAN-020：交付真实 Hybrid Agentic RAG V2](docs/plans/PLAN-020.md)
+---

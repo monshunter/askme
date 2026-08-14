@@ -19,27 +19,32 @@ function requireText(text: string) {
   return normalized;
 }
 
-async function extractPdf(bytes: Buffer) {
+export async function extractPdfPagesFromBytes(bytes: Buffer) {
   let task: ReturnType<typeof getDocument> | null = null;
   let document: Awaited<ReturnType<typeof getDocument>["promise"]> | null = null;
   try {
     task = getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
     document = await task.promise;
-    const pages: string[] = [];
+    const pages: Array<{ pageNumber: number; text: string }> = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
       const content = await page.getTextContent();
       const text = content.items.map((item) => ("str" in item ? item.str : "")).join(" ");
-      if (text.trim()) pages.push(text);
+      if (text.trim()) pages.push({ pageNumber, text: requireText(text) });
       page.cleanup();
     }
-    return requireText(pages.join("\n\n"));
+    if (pages.length === 0) throw new AppError("MATERIAL_TEXT_EMPTY", "The material does not contain extractable text.", 422);
+    return pages;
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError("MATERIAL_PDF_INVALID", "The PDF could not be read.", 422);
   } finally {
     await task?.destroy();
   }
+}
+
+async function extractPdf(bytes: Buffer) {
+  return (await extractPdfPagesFromBytes(bytes)).map((page) => page.text).join("\n\n");
 }
 
 function xmlText(xml: string, paragraphClosings: RegExp) {

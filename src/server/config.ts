@@ -26,6 +26,60 @@ const ALLOWED_KEYS = new Set([
   "ASKME_AI_CODE_MAX_RETRIES",
   "ASKME_AI_CODE_MAX_TOKENS",
   "ASKME_AI_CODE_CONTEXT_WINDOW",
+  "ASKME_AI_PLANNER_MODEL",
+  "ASKME_AI_PLANNER_THINKING",
+  "ASKME_AI_PLANNER_TIMEOUT_MS",
+  "ASKME_AI_PLANNER_MAX_RETRIES",
+  "ASKME_AI_PLANNER_MAX_TOKENS",
+  "ASKME_AI_PLANNER_CONTEXT_WINDOW",
+  "ASKME_AI_VERIFIER_MODEL",
+  "ASKME_AI_VERIFIER_THINKING",
+  "ASKME_AI_VERIFIER_TIMEOUT_MS",
+  "ASKME_AI_VERIFIER_MAX_RETRIES",
+  "ASKME_AI_VERIFIER_MAX_TOKENS",
+  "ASKME_AI_VERIFIER_CONTEXT_WINDOW",
+  "ASKME_EMBEDDING_MODEL_API_KEY",
+  "ASKME_EMBEDDING_MODEL_API_BASE_URL",
+  "ASKME_EMBEDDING_MODEL",
+  "ASKME_EMBEDDING_DIMENSIONS",
+  "ASKME_EMBEDDING_TIMEOUT_MS",
+  "ASKME_EMBEDDING_MAX_RETRIES",
+  "ASKME_EMBEDDING_BATCH_SIZE",
+  "ASKME_EMBEDDING_CONCURRENCY",
+  "ASKME_RERANK_MODEL_API_KEY",
+  "ASKME_RERANK_MODEL_API_BASE_URL",
+  "ASKME_RERANK_MODEL",
+  "ASKME_RERANK_PROVIDER_PROTOCOL",
+  "ASKME_RERANK_TIMEOUT_MS",
+  "ASKME_RERANK_MAX_RETRIES",
+  "ASKME_RERANK_TOP_N",
+  "ASKME_RAG_POLICY_VERSION",
+  "ASKME_RAG_EXACT_TOP_K",
+  "ASKME_RAG_LEXICAL_TOP_K",
+  "ASKME_RAG_VECTOR_TOP_K",
+  "ASKME_RAG_STRUCTURED_TOP_K",
+  "ASKME_RAG_EXACT_WEIGHT",
+  "ASKME_RAG_LEXICAL_WEIGHT",
+  "ASKME_RAG_VECTOR_WEIGHT",
+  "ASKME_RAG_STRUCTURED_WEIGHT",
+  "ASKME_RAG_RRF_K",
+  "ASKME_RAG_MAX_CHILDREN_PER_PARENT",
+  "ASKME_RAG_RETRIEVAL_MAX_ROUNDS",
+  "ASKME_RAG_EVIDENCE_MAX_TOKENS",
+  "ASKME_RAG_OUTPUT_RESERVE_TOKENS",
+  "ASKME_RAG_SAFETY_MARGIN_TOKENS",
+  "ASKME_RAG_CHILD_TARGET_TOKENS",
+  "ASKME_RAG_CHILD_MIN_TOKENS",
+  "ASKME_RAG_CHILD_HARD_MAX_TOKENS",
+  "ASKME_RAG_PARENT_MIN_TOKENS",
+  "ASKME_RAG_PARENT_MAX_TOKENS",
+  "ASKME_RAG_OVERLAP_TOKENS",
+  "ASKME_REPOSITORY_DOCUMENT_INCLUDE",
+  "ASKME_REPOSITORY_DOCUMENT_EXCLUDE",
+  "ASKME_REPOSITORY_MARKDOWN_MAX_BYTES",
+  "ASKME_REPOSITORY_PDF_MAX_BYTES",
+  "ASKME_REPOSITORY_PDF_MAX_PAGES",
+  "ASKME_REPOSITORY_REVISION_MAX_TOKENS",
   "ASKME_CODE_AGENT_IMAGE",
   "ASKME_CODE_AGENT_IMAGE_DIGEST",
   "ASKME_CODE_AGENT_ROOTFS_PATH",
@@ -67,7 +121,7 @@ const ALLOWED_KEYS = new Set([
 type EnvSource = Record<string, string | undefined>;
 
 export type AiProfile = {
-  id: "router" | "rag" | "code";
+  id: "router" | "rag" | "code" | "planner" | "verifier";
   model: string;
   thinking: "off" | "low" | "medium" | "high";
   contextWindow: number;
@@ -98,6 +152,64 @@ export type RuntimeConfig = {
       router: AiProfile;
       rag: AiProfile;
       code: AiProfile;
+      planner: AiProfile;
+      verifier: AiProfile;
+    };
+  };
+  embedding: {
+    apiKey: string | null;
+    baseUrl: string | null;
+    model: string;
+    dimensions: number;
+    timeoutMs: number;
+    maxRetries: number;
+    batchSize: number;
+    concurrency: number;
+  };
+  rerank: {
+    apiKey: string | null;
+    baseUrl: string | null;
+    model: string;
+    protocol: "cohere-compatible" | "dashscope-compatible";
+    timeoutMs: number;
+    maxRetries: number;
+    topN: number;
+  };
+  rag: {
+    policyVersion: string;
+    retrieval: {
+      exactTopK: number;
+      lexicalTopK: number;
+      vectorTopK: number;
+      structuredTopK: number;
+      exactWeight: number;
+      lexicalWeight: number;
+      vectorWeight: number;
+      structuredWeight: number;
+      rrfK: number;
+      maxChildrenPerParent: number;
+      maxRounds: number;
+    };
+    evidence: {
+      maxTokens: number;
+      outputReserveTokens: number;
+      safetyMarginTokens: number;
+    };
+    chunking: {
+      childTargetTokens: number;
+      childMinTokens: number;
+      childHardMaxTokens: number;
+      parentMinTokens: number;
+      parentMaxTokens: number;
+      overlapTokens: number;
+    };
+    repositoryDocuments: {
+      include: string[];
+      exclude: string[];
+      maxMarkdownBytes: number;
+      maxPdfBytes: number;
+      maxPdfPages: number;
+      maxRevisionTokens: number;
     };
   };
   codeAgent: {
@@ -204,6 +316,35 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
     }
     return value;
   };
+  const decimal = (key: string, fallback: number, minimum: number, maximum: number) => {
+    const raw = read(key);
+    if (raw === null) return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < minimum || value > maximum) {
+      throw new Error(`${key} must be a number between ${minimum} and ${maximum}`);
+    }
+    return value;
+  };
+  const providerUrl = (key: string) => {
+    const raw = read(key);
+    if (raw === null) return null;
+    try {
+      const parsed = new URL(raw);
+      if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.username || parsed.password || parsed.search || parsed.hash) {
+        throw new Error("unsafe provider URL");
+      }
+      return parsed.toString().replace(/\/+$/, "");
+    } catch {
+      throw new Error(`${key} must be an absolute HTTP(S) URL without credentials, query, or fragment`);
+    }
+  };
+  const csv = (key: string, fallback: string[]) => {
+    const raw = read(key);
+    if (raw === null) return fallback;
+    const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
+    if (values.length === 0 || values.length > 64) throw new Error(`${key} must contain between 1 and 64 comma-separated patterns`);
+    return values;
+  };
   const thinking = (key: string, fallback: AiProfile["thinking"]) => {
     const value = read(key) ?? fallback;
     if (value !== "off" && value !== "low" && value !== "medium" && value !== "high") {
@@ -245,6 +386,30 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
   if (codeAgentHeartbeatMs * 2 > codeAgentLeaseMs) {
     throw new Error("ASKME_CODE_AGENT_HEARTBEAT_MS must not exceed half of ASKME_CODE_AGENT_LEASE_MS");
   }
+  const embeddingApiKey = read("ASKME_EMBEDDING_MODEL_API_KEY");
+  const embeddingBaseUrl = providerUrl("ASKME_EMBEDDING_MODEL_API_BASE_URL");
+  if (Boolean(embeddingApiKey) !== Boolean(embeddingBaseUrl)) {
+    throw new Error("ASKME_EMBEDDING_MODEL_API_KEY and ASKME_EMBEDDING_MODEL_API_BASE_URL must be configured together");
+  }
+  const rerankApiKey = read("ASKME_RERANK_MODEL_API_KEY");
+  const rerankBaseUrl = providerUrl("ASKME_RERANK_MODEL_API_BASE_URL");
+  if (Boolean(rerankApiKey) !== Boolean(rerankBaseUrl)) {
+    throw new Error("ASKME_RERANK_MODEL_API_KEY and ASKME_RERANK_MODEL_API_BASE_URL must be configured together");
+  }
+  const rerankProtocol = read("ASKME_RERANK_PROVIDER_PROTOCOL") ?? "dashscope-compatible";
+  if (rerankProtocol !== "cohere-compatible" && rerankProtocol !== "dashscope-compatible") {
+    throw new Error("ASKME_RERANK_PROVIDER_PROTOCOL must be cohere-compatible or dashscope-compatible");
+  }
+  const embeddingDimensions = integer("ASKME_EMBEDDING_DIMENSIONS", 1_024, 1_024, 1_024);
+  const childMinTokens = integer("ASKME_RAG_CHILD_MIN_TOKENS", 80, 40, 500);
+  const childTargetTokens = integer("ASKME_RAG_CHILD_TARGET_TOKENS", 420, 80, 650);
+  const childHardMaxTokens = integer("ASKME_RAG_CHILD_HARD_MAX_TOKENS", 650, 80, 1_000);
+  if (childMinTokens > childTargetTokens || childTargetTokens > childHardMaxTokens) {
+    throw new Error("ASKME RAG child token bounds must satisfy min <= target <= hard max");
+  }
+  const parentMinTokens = integer("ASKME_RAG_PARENT_MIN_TOKENS", 900, 650, 2_000);
+  const parentMaxTokens = integer("ASKME_RAG_PARENT_MAX_TOKENS", 1_500, 900, 4_000);
+  if (parentMinTokens > parentMaxTokens) throw new Error("ASKME RAG parent token bounds must satisfy min <= max");
 
   return {
     databaseUrl: read("DATABASE_URL"),
@@ -258,6 +423,64 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
         router: profile("router", "ASKME_AI_ROUTER_MODEL", "deepseek-v4-flash", "off", 15_000, 800, 1_000_000),
         rag: profile("rag", "ASKME_AI_RAG_MODEL", "deepseek-v4-flash", "off", 45_000, 4_000, 1_000_000),
         code: profile("code", "ASKME_AI_CODE_MODEL", "deepseek-v4-pro", "high", 120_000, 200_000, 1_000_000),
+        planner: profile("planner", "ASKME_AI_PLANNER_MODEL", "deepseek-v4-flash", "off", 15_000, 1_200, 1_000_000),
+        verifier: profile("verifier", "ASKME_AI_VERIFIER_MODEL", "deepseek-v4-flash", "off", 30_000, 2_000, 1_000_000),
+      },
+    },
+    embedding: {
+      apiKey: embeddingApiKey,
+      baseUrl: embeddingBaseUrl,
+      model: read("ASKME_EMBEDDING_MODEL") ?? "qwen3.7-text-embedding",
+      dimensions: embeddingDimensions,
+      timeoutMs: integer("ASKME_EMBEDDING_TIMEOUT_MS", 20_000, 1_000, 300_000),
+      maxRetries: integer("ASKME_EMBEDDING_MAX_RETRIES", 1, 0, 3),
+      batchSize: integer("ASKME_EMBEDDING_BATCH_SIZE", 16, 1, 128),
+      concurrency: integer("ASKME_EMBEDDING_CONCURRENCY", 2, 1, 16),
+    },
+    rerank: {
+      apiKey: rerankApiKey,
+      baseUrl: rerankBaseUrl,
+      model: read("ASKME_RERANK_MODEL") ?? "qwen3-rerank",
+      protocol: rerankProtocol,
+      timeoutMs: integer("ASKME_RERANK_TIMEOUT_MS", 20_000, 1_000, 300_000),
+      maxRetries: integer("ASKME_RERANK_MAX_RETRIES", 1, 0, 3),
+      topN: integer("ASKME_RERANK_TOP_N", 8, 1, 100),
+    },
+    rag: {
+      policyVersion: read("ASKME_RAG_POLICY_VERSION") ?? "hybrid-rag-v2",
+      retrieval: {
+        exactTopK: integer("ASKME_RAG_EXACT_TOP_K", 20, 1, 200),
+        lexicalTopK: integer("ASKME_RAG_LEXICAL_TOP_K", 30, 1, 200),
+        vectorTopK: integer("ASKME_RAG_VECTOR_TOP_K", 30, 1, 200),
+        structuredTopK: integer("ASKME_RAG_STRUCTURED_TOP_K", 20, 1, 200),
+        exactWeight: decimal("ASKME_RAG_EXACT_WEIGHT", 1.5, 0.1, 10),
+        lexicalWeight: decimal("ASKME_RAG_LEXICAL_WEIGHT", 1, 0.1, 10),
+        vectorWeight: decimal("ASKME_RAG_VECTOR_WEIGHT", 1, 0.1, 10),
+        structuredWeight: decimal("ASKME_RAG_STRUCTURED_WEIGHT", 1.2, 0.1, 10),
+        rrfK: integer("ASKME_RAG_RRF_K", 60, 1, 1_000),
+        maxChildrenPerParent: integer("ASKME_RAG_MAX_CHILDREN_PER_PARENT", 3, 1, 20),
+        maxRounds: integer("ASKME_RAG_RETRIEVAL_MAX_ROUNDS", 2, 1, 2),
+      },
+      evidence: {
+        maxTokens: integer("ASKME_RAG_EVIDENCE_MAX_TOKENS", 200_000, 1_000, 200_000),
+        outputReserveTokens: integer("ASKME_RAG_OUTPUT_RESERVE_TOKENS", 8_000, 1_000, 200_000),
+        safetyMarginTokens: integer("ASKME_RAG_SAFETY_MARGIN_TOKENS", 4_000, 0, 200_000),
+      },
+      chunking: {
+        childTargetTokens,
+        childMinTokens,
+        childHardMaxTokens,
+        parentMinTokens,
+        parentMaxTokens,
+        overlapTokens: integer("ASKME_RAG_OVERLAP_TOKENS", 48, 40, 64),
+      },
+      repositoryDocuments: {
+        include: csv("ASKME_REPOSITORY_DOCUMENT_INCLUDE", ["README*.md", "*.md", "docs/**/*.md", "docs/**/*.pdf"]),
+        exclude: csv("ASKME_REPOSITORY_DOCUMENT_EXCLUDE", ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/coverage/**"]),
+        maxMarkdownBytes: integer("ASKME_REPOSITORY_MARKDOWN_MAX_BYTES", 2 * 1024 * 1024, 1_024, 32 * 1024 * 1024),
+        maxPdfBytes: integer("ASKME_REPOSITORY_PDF_MAX_BYTES", 50 * 1024 * 1024, 1_024, 512 * 1024 * 1024),
+        maxPdfPages: integer("ASKME_REPOSITORY_PDF_MAX_PAGES", 500, 1, 5_000),
+        maxRevisionTokens: integer("ASKME_REPOSITORY_REVISION_MAX_TOKENS", 5_000_000, 1_000, 20_000_000),
       },
     },
     codeAgent: {

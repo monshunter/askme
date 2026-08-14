@@ -55,6 +55,21 @@ type RepositoryCitation = {
   visibility: Visibility;
 };
 type Citation = DocumentCitation | RepositoryCitation;
+type RetrievalTrace = {
+  id: string;
+  policyVersion: string;
+  indexVersionId: string | null;
+  planner: { entities?: string[]; mustTerms?: string[]; shouldTerms?: string[]; semanticQueryCount?: number; desiredEvidenceTypes?: string[]; unsupportedAspects?: string[] };
+  routeCounts: Array<{ exact: number; lexical: number; vector: number; structured: number }>;
+  selectedEvidence: Array<{ evidenceId: string; sourceKind: string; title: string; path: string | null; score: number; routeRanks: Record<string, number> }>;
+  coverage: string;
+  roundCount: number;
+  degradations: string[];
+  configuredEvidenceTokens: number;
+  effectiveEvidenceTokens: number;
+  actualEvidenceTokens: number;
+  latencyMs: number;
+};
 type AgentMessage = {
   id: string;
   role: "user" | "assistant";
@@ -67,6 +82,7 @@ type AgentMessage = {
   feedback: "up" | "down" | null;
   citations: Citation[];
   analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null;
+  retrievalTrace: RetrievalTrace | null;
 };
 type PreviewThread = {
   conversation: { id: string; createdAt: string; lastActivityAt: string };
@@ -324,6 +340,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
               <li key={citation.chunkId}><span className="citation-rank">{citation.rank}</span><span className="citation-file"><FileText size={19} /></span><div><CandidateSourceLink materialId={citation.materialId} title={citation.materialTitle} kind={citation.materialKind} mimeType={citation.mimeType} externalUrl={citation.externalUrl} locale={locale} /><small>{citation.materialKind.toUpperCase()} · {visibilityLabel(citation.visibility, locale)}</small><p>{citation.excerpt}</p></div></li>
             ))}</ol>
           )}
+          {activeAnswer?.retrievalTrace ? <details className="retrieval-trace-panel"><summary>{locale === "zh-CN" ? "检索 Trace" : "Retrieval trace"}</summary><dl><div><dt>Coverage</dt><dd>{activeAnswer.retrievalTrace.coverage}</dd></div><div><dt>Rounds</dt><dd>{activeAnswer.retrievalTrace.roundCount}</dd></div><div><dt>Policy</dt><dd><code>{activeAnswer.retrievalTrace.policyVersion}</code></dd></div><div><dt>Routes</dt><dd>{activeAnswer.retrievalTrace.routeCounts.map((route, index) => <code key={index}>#{index + 1} E{route.exact}/L{route.lexical}/V{route.vector}/S{route.structured}</code>)}</dd></div><div><dt>Evidence</dt><dd>{activeAnswer.retrievalTrace.selectedEvidence.map((item) => <code key={item.evidenceId}>{item.sourceKind} · {item.title}</code>)}</dd></div><div><dt>Budget</dt><dd>{activeAnswer.retrievalTrace.actualEvidenceTokens}/{activeAnswer.retrievalTrace.effectiveEvidenceTokens}</dd></div>{activeAnswer.retrievalTrace.degradations.length > 0 ? <div><dt>Degradation</dt><dd>{activeAnswer.retrievalTrace.degradations.join(", ")}</dd></div> : null}</dl></details> : null}
           <Link className="knowledge-deep-link" href="/workspace/knowledge"><FileText size={17} /> {t("agent.citations.viewAll")} <ChevronRight size={17} /></Link>
         </aside>
       </div>

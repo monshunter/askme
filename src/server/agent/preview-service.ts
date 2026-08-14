@@ -10,20 +10,20 @@ import { getRuntimeConfig } from "@/server/config";
 import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
 
-import { generateGroundedAnswer } from "./answer-generator";
+import type { AnswerConversationMessage } from "./answer-generator";
 import { deduplicateDocumentSources } from "./citation-dedup";
 import { ensureConversationSuggestions } from "./conversation-suggestions";
 import { recordSuccessfulAiUsage } from "./ai-usage";
-import { retrieveUnifiedEvidence } from "./evidence-provider";
-import { answerCitationCount, persistAnswerCitations, validateAnswerEvidence } from "./message-evidence";
 import type { ChatInput, FeedbackInput } from "./agent-input";
 import { recoverStaleAnswers } from "./message-recovery";
 import { assessAgentQuestion } from "./question-policy";
-import { isRepositoryEvidence } from "./retrieval";
 import { loadQuestionRepositories } from "./question-context";
 import { localizedQuestionMessage } from "./question-language";
 import { recordQuestionRoute } from "./question-route-audit";
 import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository } from "./question-router";
+import { answerRagCitationCount, generateVerifiedRagAnswer, persistRagAnswerCitations, validateRagEvidence } from "@/server/rag/rag-answer";
+import { retrieveRagForQuestion } from "@/server/rag/rag-query-service";
+import { persistRetrievalTrace } from "@/server/rag/retrieval-trace";
 
 type ExchangeRow = {
   conversationId: string;
@@ -32,13 +32,28 @@ type ExchangeRow = {
   assistantStatus: "pending" | "completed" | "failed" | null;
 };
 
-type PreviewAnswerResult = Awaited<ReturnType<typeof generateGroundedAnswer>> | {
+type PreviewAnswerResult = Awaited<ReturnType<typeof generateVerifiedRagAnswer>> | {
   outcome: "refused";
   answer: string;
   refusalCode: string;
   citations: [];
   usage: { inputTokens: number | null; outputTokens: number | null };
 };
+
+async function priorConversationMessages(conversationId: string, currentUserMessageId: string): Promise<AnswerConversationMessage[]> {
+  const result = await getPool().query<AnswerConversationMessage>(
+    `SELECT role,content FROM (
+       SELECT message.role,message.content,message.created_at,message.id
+       FROM messages message
+       JOIN messages current ON current.id=$2 AND current.conversation_id=message.conversation_id AND current.owner_id=message.owner_id
+       WHERE message.conversation_id=$1 AND message.status='completed'
+         AND (message.created_at<current.created_at OR (message.created_at=current.created_at AND message.id<>current.id))
+       ORDER BY message.created_at DESC,message.id DESC LIMIT 6
+     ) context ORDER BY created_at,id`,
+    [conversationId, currentUserMessageId],
+  );
+  return result.rows;
+}
 
 type RawPreviewDocumentCitation = {
   kind: "document";
@@ -53,6 +68,33 @@ type RawPreviewRepositoryCitation = {
 } & Record<string, unknown>;
 
 type RawPreviewCitation = RawPreviewDocumentCitation | RawPreviewRepositoryCitation;
+
+const invalidPreviewRagCitation = `EXISTS (
+  SELECT 1 FROM rag_message_citations rag_citation
+  LEFT JOIN rag_child_chunks rag_child ON rag_child.id=rag_citation.evidence_id AND rag_child.owner_id=rag_citation.owner_id
+    AND rag_child.index_version_id=rag_citation.index_version_id AND rag_child.source_version_id=rag_citation.source_version_id
+    AND rag_child.content_checksum=rag_citation.content_checksum
+  LEFT JOIN rag_source_versions rag_source ON rag_source.id=rag_citation.source_version_id AND rag_source.owner_id=rag_citation.owner_id
+    AND rag_source.index_version_id=rag_citation.index_version_id
+  LEFT JOIN rag_index_versions rag_version ON rag_version.id=rag_citation.index_version_id
+  LEFT JOIN materials rag_material ON rag_source.source_kind='material' AND rag_material.id=rag_source.source_id AND rag_material.owner_id=rag_source.owner_id
+  LEFT JOIN repositories rag_repository ON rag_source.source_kind<>'material' AND rag_repository.id::text=coalesce(rag_source.metadata->>'repositoryId',rag_source.source_id::text)
+    AND rag_repository.owner_id=rag_source.owner_id
+  LEFT JOIN repository_revisions rag_revision ON rag_revision.id=rag_repository.active_revision_id AND rag_revision.owner_id=rag_repository.owner_id
+  WHERE rag_citation.message_id=message.id AND (
+    rag_child.id IS NULL OR rag_source.state<>'active' OR rag_version.state<>'active'
+    OR (rag_source.source_kind='material' AND (rag_material.id IS NULL OR rag_material.status<>'indexed' OR rag_material.visibility='private' OR rag_material.content_checksum<>rag_source.source_revision))
+    OR (rag_source.source_kind<>'material' AND (rag_repository.id IS NULL OR rag_repository.disabled_at IS NOT NULL OR rag_repository.visibility='private'
+      OR (rag_source.source_kind IN ('repository_markdown','repository_pdf') AND (rag_revision.id IS NULL OR rag_revision.commit_sha<>rag_source.metadata->>'commitSha'))))
+    OR (rag_source.source_kind='approved_wiki' AND NOT EXISTS (
+      SELECT 1 FROM repository_dossiers dossier
+      JOIN repository_dossier_projections projection ON projection.id=rag_repository.active_projection_id AND projection.dossier_id=dossier.id AND projection.state='approved'
+      JOIN repository_wiki_pages page ON page.id=rag_source.source_id AND page.dossier_id=dossier.id
+      JOIN repository_wiki_projection_pages projected ON projected.projection_id=projection.id AND projected.page_id=page.id AND projected.dossier_id=dossier.id
+      WHERE dossier.revision_id=rag_repository.active_revision_id AND dossier.owner_id=rag_repository.owner_id
+    ))
+  )
+)`;
 
 function projectPreviewCitations(citations: RawPreviewCitation[]) {
   const documents = deduplicateDocumentSources(citations.filter((citation): citation is RawPreviewDocumentCitation => citation.kind === "document"));
@@ -180,6 +222,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
   const messages = await pool.query<{ citations: RawPreviewCitation[] } & Record<string, unknown>>(
     `SELECT message.id,message.role,message.status,
             CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR ${invalidPreviewRagCitation}
                    OR EXISTS (
                      SELECT 1 FROM message_citations document_citation
                      LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
@@ -195,6 +238,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
                  THEN 'This answer is no longer available because its source permissions changed.' ELSE message.content END AS content,
             message.model,
             CASE WHEN message.source_invalidated_at IS NOT NULL
+                   OR ${invalidPreviewRagCitation}
                    OR EXISTS (
                      SELECT 1 FROM message_citations document_citation
                      LEFT JOIN chunks document_chunk ON document_chunk.id=document_citation.chunk_id AND document_chunk.owner_id=document_citation.owner_id
@@ -213,6 +257,13 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
             (SELECT jsonb_build_object('id',run.id,'version',run.version,'state',run.state,'phase',run.phase)
              FROM analysis_runs run WHERE run.assistant_message_id=message.id AND run.owner_id=message.owner_id
              ORDER BY run.created_at DESC,run.id DESC LIMIT 1) AS "analysisRun",
+            (SELECT jsonb_build_object(
+               'id',trace.id,'policyVersion',trace.policy_version,'indexVersionId',trace.index_version_id,
+               'planner',trace.planner,'routeCounts',trace.route_counts,'selectedEvidence',trace.selected_evidence,
+               'coverage',trace.coverage,'roundCount',trace.round_count,'degradations',trace.degradations,
+               'configuredEvidenceTokens',trace.configured_evidence_tokens,'effectiveEvidenceTokens',trace.effective_evidence_tokens,
+               'actualEvidenceTokens',trace.actual_evidence_tokens,'latencyMs',trace.latency_ms,'createdAt',trace.created_at)
+             FROM rag_query_traces trace WHERE trace.message_id=message.id AND trace.owner_id=message.owner_id LIMIT 1) AS "retrievalTrace",
             coalesce((
               SELECT jsonb_agg(item.payload ORDER BY item.rank) FROM (
                 SELECT citation.rank,jsonb_build_object(
@@ -234,7 +285,46 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
                 JOIN repositories repository ON repository.id=source.repository_id AND repository.owner_id=source.owner_id AND repository.disabled_at IS NULL
                 JOIN repository_revisions revision ON revision.id=source.revision_id AND revision.owner_id=source.owner_id
                 WHERE source.message_id=message.id AND repository.visibility<>'private'
+                UNION ALL
+                SELECT rag.rank,CASE WHEN rag.source_kind='material' THEN jsonb_build_object(
+                  'kind','document','chunkId',rag.evidence_id,'rank',rag.rank,
+                  'materialId',material.id,'contentChecksum',material.content_checksum,'materialTitle',material.title,'materialKind',material.kind,
+                  'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
+                ) ELSE jsonb_build_object(
+                  'kind','repository','messageId',rag.message_id,'rank',rag.rank,'repositoryId',repository.id,
+                  'repositoryTitle',repository.display_name,'revisionId',revision.id,'commitSha',revision.commit_sha,
+                  'path',rag.metadata->>'path','lineStart',(rag.metadata#>>'{sourceRange,lineStart}')::integer,
+                  'lineEnd',(rag.metadata#>>'{sourceRange,lineEnd}')::integer,'visibility',repository.visibility
+                ) END AS payload
+                FROM rag_message_citations rag
+                JOIN rag_child_chunks child ON child.id=rag.evidence_id AND child.owner_id=rag.owner_id
+                  AND child.index_version_id=rag.index_version_id AND child.source_version_id=rag.source_version_id AND child.content_checksum=rag.content_checksum
+                JOIN rag_source_versions rag_source ON rag_source.id=rag.source_version_id AND rag_source.owner_id=rag.owner_id AND rag_source.state='active'
+                JOIN rag_index_versions rag_version ON rag_version.id=rag.index_version_id AND rag_version.state='active'
+                LEFT JOIN materials material ON rag.source_kind='material' AND material.id=rag.source_id AND material.owner_id=rag.owner_id
+                LEFT JOIN repositories repository ON rag.source_kind<>'material' AND repository.id::text=coalesce(rag_source.metadata->>'repositoryId',rag.source_id::text) AND repository.owner_id=rag.owner_id
+                LEFT JOIN repository_revisions revision ON revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
+                WHERE rag.message_id=message.id AND (
+                  (rag.source_kind='material' AND material.status='indexed' AND material.visibility<>'private' AND material.content_checksum=rag_source.source_revision)
+                  OR (rag.source_kind IN ('repository_markdown','repository_pdf') AND repository.disabled_at IS NULL AND repository.visibility<>'private'
+                    AND revision.commit_sha=rag_source.metadata->>'commitSha')
+                )
+                UNION ALL
+                SELECT rag.rank*100+source.ordinality, jsonb_build_object(
+                  'kind','repository','messageId',rag.message_id,'rank',rag.rank*100+source.ordinality,'repositoryId',repository.id,
+                  'repositoryTitle',repository.display_name,'revisionId',revision.id,'commitSha',revision.commit_sha,
+                  'path',source.value->>'path','lineStart',(source.value->>'lineStart')::integer,
+                  'lineEnd',(source.value->>'lineEnd')::integer,'visibility',repository.visibility
+                ) AS payload
+                FROM rag_message_citations rag
+                JOIN rag_source_versions rag_source ON rag_source.id=rag.source_version_id AND rag_source.owner_id=rag.owner_id AND rag_source.state='active'
+                JOIN rag_index_versions rag_version ON rag_version.id=rag.index_version_id AND rag_version.state='active'
+                JOIN repositories repository ON repository.id::text=rag_source.metadata->>'repositoryId' AND repository.owner_id=rag.owner_id AND repository.disabled_at IS NULL
+                JOIN repository_revisions revision ON revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
+                CROSS JOIN LATERAL jsonb_array_elements(rag.metadata->'sourceCitations') WITH ORDINALITY source(value,ordinality)
+                WHERE rag.message_id=message.id AND rag.source_kind='approved_wiki' AND repository.visibility<>'private'
               ) item
+              WHERE message.source_invalidated_at IS NULL
             ),'[]'::jsonb) AS citations
      FROM messages message
      WHERE message.conversation_id=$1 AND message.owner_id=$2
@@ -256,14 +346,14 @@ async function persistAnswer(
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    if (result.outcome === "answered") await validateAnswerEvidence(client, ownerId, "candidate_preview", result.citations);
+    if (result.outcome === "answered") await validateRagEvidence(client, ownerId, "candidate_preview", result.citations);
     const updated = await client.query(
       `UPDATE messages SET status='completed',content=$3,model=$4,latency_ms=$5,error_code=$6
        WHERE id=$1 AND owner_id=$2 AND status='pending'`,
       [exchange.assistantMessageId, ownerId, result.answer, result.outcome === "answered" ? model : null, latencyMs, result.outcome === "answered" ? null : result.outcome.toUpperCase()],
     );
     if (updated.rowCount !== 1) throw new AppError("ANSWER_ALREADY_SETTLED", "The answer request was already settled.", 409);
-    await persistAnswerCitations(client, ownerId, exchange.assistantMessageId, result.citations);
+    await persistRagAnswerCitations(client, ownerId, exchange.assistantMessageId, result.citations);
     if (result.outcome === "answered") {
       await client.query(
         `INSERT INTO ai_usage(owner_id,purpose,model,input_tokens,output_tokens,latency_ms,outcome)
@@ -275,7 +365,7 @@ async function persistAnswer(
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
        VALUES ($1,'candidate','agent.preview.answer','message',$2,$3,$4,$5::jsonb)`,
-      [ownerId, exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ conversationId: exchange.conversationId, citationCount: answerCitationCount(result.citations) })],
+      [ownerId, exchange.assistantMessageId, result.outcome, requestId ?? null, JSON.stringify({ conversationId: exchange.conversationId, citationCount: answerRagCitationCount(result.citations) })],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -343,13 +433,23 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     );
     const settings = settingsResult.rows[0] ?? { answerTone: "professional" as const, privacySafeMode: true };
     const assessment = assessAgentQuestion(input.question);
-    const evidence = assessment.allowed ? await retrieveUnifiedEvidence(getPool(), ownerId, "candidate_preview", { query: assessment.question, limit: 8 }) : [];
+    const retrievalStartedAt = performance.now();
+    const retrieval = assessment.allowed
+      ? await retrieveRagForQuestion({ pool: getPool(), config, ownerId, consumer: "candidate_preview", question: assessment.question, conversation: await priorConversationMessages(exchange.conversationId, exchange.userMessageId) })
+      : null;
+    const evidence = retrieval?.candidates ?? [];
+    if (retrieval) {
+      await persistRetrievalTrace(getPool(), {
+        ownerId, conversationId: exchange.conversationId, messageId: exchange.assistantMessageId,
+        callerMode: "candidate_preview", config, result: retrieval, latencyMs: performance.now() - retrievalStartedAt,
+      });
+    }
     if (assessment.allowed) {
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
       const routerStartedAt = performance.now();
       const decision = await routeQuestion({
         question: assessment.question,
-        evidenceSummaries: evidence.map((item) => isRepositoryEvidence(item) ? `${item.repositoryTitle}: ${item.content}` : `${item.materialTitle}: ${item.content}`),
+        evidenceSummaries: evidence.map((item) => `${item.title}: ${item.parentContent}`),
         repositories,
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
@@ -384,12 +484,16 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       }
     }
     failureModel = config.ai.profiles.rag.model;
-    const result = await generateGroundedAnswer(
-      input.question,
+    const result = await generateVerifiedRagAnswer({
+      question: input.question,
       evidence,
+      coverage: retrieval?.coverage ?? "none",
+      unsupportedAspects: retrieval?.unsupportedAspects ?? [],
       settings,
-      new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
-    );
+      generatorClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
+      verifierClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.verifier }),
+      validateEvidence: (citations) => validateRagEvidence(getPool(), ownerId, "candidate_preview", citations),
+    });
     if (result.outcome === "insufficient_evidence" && assessment.allowed) {
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
       if (repositories.length === 1 && repositories[0]!.deepAllowed) {
@@ -431,6 +535,11 @@ export async function saveCandidateFeedback(ownerId: string, messageId: string, 
        ON CONFLICT (message_id,actor_key) DO UPDATE SET value=excluded.value
        RETURNING value`,
       [messageId, actorKey, input.value],
+    );
+    await client.query(
+      `INSERT INTO rag_feedback(message_id,owner_id,actor_key,value) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (message_id,actor_key) DO UPDATE SET value=excluded.value,updated_at=now()`,
+      [messageId, ownerId, actorKey, input.value],
     );
     await client.query(
       `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)

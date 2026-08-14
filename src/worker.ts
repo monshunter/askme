@@ -9,6 +9,7 @@ import { claimNextIngestionJob } from "./server/jobs/ingestion-jobs";
 import { processIngestionLease } from "./server/jobs/process-ingestion";
 import { maintainEphemeralPublicState } from "./server/jobs/public-retention";
 import { startWorkerHeartbeat } from "./server/jobs/worker-heartbeat";
+import { claimNextRagSource, failRagSourceLease, processRagSourceLease } from "./server/rag/source-indexer";
 
 const POLL_INTERVAL_MS = 1_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -52,34 +53,47 @@ async function main() {
     while (!stopping) {
       try {
         const lease = await claimNextIngestionJob(pool, workerId, 120_000);
-        if (!lease) {
+        if (lease) {
+          try {
+            const result = await processIngestionLease(pool, lease, config);
+            console.info(
+              JSON.stringify({
+                event: "worker.material.indexed",
+                workerId,
+                jobId: lease.jobId,
+                materialId: lease.material.id,
+                attempt: lease.attempt,
+                chunkCount: result.chunkCount,
+                knowledgeItemCount: result.knowledgeItemIds.length,
+              }),
+            );
+          } catch (error) {
+            const safeError = toAppError(error);
+            try {
+              const decision = await failIngestionJob(pool, lease, safeError, config.ai.profiles.rag.model);
+              console.warn(
+                JSON.stringify({ event: "worker.material.failed", workerId, jobId: lease.jobId, materialId: lease.material.id, attempt: lease.attempt, errorCode: decision.code, outcome: decision.outcome }),
+              );
+            } catch (reconcileError) {
+              const reconcile = toAppError(reconcileError);
+              console.error(JSON.stringify({ event: "worker.material.reconcile_failed", workerId, jobId: lease.jobId, materialId: lease.material.id, errorCode: reconcile.code }));
+            }
+          }
+          continue;
+        }
+
+        const ragLease = await claimNextRagSource(pool, workerId, 120_000);
+        if (!ragLease) {
           await wait(POLL_INTERVAL_MS);
           continue;
         }
         try {
-          const result = await processIngestionLease(pool, lease, config);
-          console.info(
-            JSON.stringify({
-              event: "worker.material.indexed",
-              workerId,
-              jobId: lease.jobId,
-              materialId: lease.material.id,
-              attempt: lease.attempt,
-              chunkCount: result.chunkCount,
-              knowledgeItemCount: result.knowledgeItemIds.length,
-            }),
-          );
+          const result = await processRagSourceLease(pool, ragLease, config);
+          console.info(JSON.stringify({ event: "worker.rag-source.indexed", workerId, sourceVersionId: ragLease.sourceVersionId, sourceKind: ragLease.sourceKind, ...result }));
         } catch (error) {
           const safeError = toAppError(error);
-          try {
-            const decision = await failIngestionJob(pool, lease, safeError, config.ai.profiles.rag.model);
-            console.warn(
-              JSON.stringify({ event: "worker.material.failed", workerId, jobId: lease.jobId, materialId: lease.material.id, attempt: lease.attempt, errorCode: decision.code, outcome: decision.outcome }),
-            );
-          } catch (reconcileError) {
-            const reconcile = toAppError(reconcileError);
-            console.error(JSON.stringify({ event: "worker.material.reconcile_failed", workerId, jobId: lease.jobId, materialId: lease.material.id, errorCode: reconcile.code }));
-          }
+          const reconciled = await failRagSourceLease(pool, ragLease, safeError);
+          console.warn(JSON.stringify({ event: "worker.rag-source.failed", workerId, sourceVersionId: ragLease.sourceVersionId, sourceKind: ragLease.sourceKind, errorCode: safeError.code, reconciled }));
         }
       } catch (error) {
         const safeError = toAppError(error);

@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   foreignKey,
   index,
   integer,
@@ -56,6 +57,18 @@ export const repositoryClaimCategory = pgEnum("repository_claim_category", [
 export const analysisRunPurpose = pgEnum("analysis_run_purpose", ["repository_analysis", "conversation_analysis"]);
 export const analysisRunState = pgEnum("analysis_run_state", ["pending", "running", "completed", "failed", "cancelled"]);
 export const analysisOutcome = pgEnum("analysis_outcome", ["answered", "insufficient", "refused"]);
+export const ragIndexState = pgEnum("rag_index_state", ["building", "ready", "active", "failed", "superseded"]);
+export const ragSourceKind = pgEnum("rag_source_kind", ["material", "approved_wiki", "repository_markdown", "repository_pdf"]);
+export const ragSourceState = pgEnum("rag_source_state", ["queued", "processing", "ready", "ready_with_warnings", "active", "failed", "superseded", "revoked"]);
+
+const vector1024 = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(1024)";
+  },
+  toDriver(value) {
+    return `[${value.join(",")}]`;
+  },
+});
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -233,6 +246,116 @@ export const knowledgeEvidence = pgTable(
   ],
 );
 
+export const ragIndexVersions = pgTable(
+  "rag_index_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    state: ragIndexState("state").default("building").notNull(),
+    configFingerprint: text("config_fingerprint").notNull(),
+    chunkingVersion: text("chunking_version").notNull(),
+    embeddingProvider: text("embedding_provider").notNull(),
+    embeddingModel: text("embedding_model").notNull(),
+    embeddingDimensions: integer("embedding_dimensions").notNull(),
+    contextPrefixVersion: text("context_prefix_version").notNull(),
+    distanceMetric: text("distance_metric").notNull(),
+    expectedSourceCount: integer("expected_source_count").default(0).notNull(),
+    failureCode: text("failure_code"),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("rag_index_versions_state_idx").on(table.state, table.createdAt),
+    uniqueIndex("rag_index_versions_one_active_idx").on(table.state).where(sql`${table.state} = 'active'`),
+    uniqueIndex("rag_index_versions_open_fingerprint_idx").on(table.configFingerprint).where(sql`${table.state} in ('building','ready','active')`),
+  ],
+);
+
+export const ragSourceVersions = pgTable(
+  "rag_source_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    sourceKind: ragSourceKind("source_kind").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    sourceRevision: text("source_revision").notNull(),
+    indexVersionId: uuid("index_version_id").references(() => ragIndexVersions.id, { onDelete: "cascade" }).notNull(),
+    state: ragSourceState("state").default("queued").notNull(),
+    visibility: visibility("visibility").notNull(),
+    evidenceFamilyId: text("evidence_family_id").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    warningCodes: jsonb("warning_codes").$type<string[]>().default([]).notNull(),
+    parentCount: integer("parent_count").default(0).notNull(),
+    childCount: integer("child_count").default(0).notNull(),
+    tokenCount: integer("token_count").default(0).notNull(),
+    failureCode: text("failure_code"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("rag_source_versions_identity_unique").on(table.indexVersionId, table.ownerId, table.sourceKind, table.sourceId, table.sourceRevision),
+    uniqueIndex("rag_source_versions_id_owner_index_unique").on(table.id, table.ownerId, table.indexVersionId),
+    index("rag_source_versions_lease_idx").on(table.state, table.leaseExpiresAt, table.createdAt),
+    index("rag_source_versions_source_idx").on(table.ownerId, table.sourceKind, table.sourceId, table.state),
+  ],
+);
+
+export const ragParentChunks = pgTable(
+  "rag_parent_chunks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    indexVersionId: uuid("index_version_id").references(() => ragIndexVersions.id, { onDelete: "cascade" }).notNull(),
+    sourceVersionId: uuid("source_version_id").notNull(),
+    stableKey: text("stable_key").notNull(),
+    position: integer("position").notNull(),
+    content: text("content").notNull(),
+    tokenCount: integer("token_count").notNull(),
+    structurePath: text("structure_path").notNull(),
+    sourceRange: jsonb("source_range").$type<Record<string, unknown>>().default({}).notNull(),
+    contentChecksum: text("content_checksum").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.sourceVersionId, table.ownerId, table.indexVersionId], foreignColumns: [ragSourceVersions.id, ragSourceVersions.ownerId, ragSourceVersions.indexVersionId] }).onDelete("cascade"),
+    uniqueIndex("rag_parent_chunks_stable_unique").on(table.sourceVersionId, table.stableKey),
+    uniqueIndex("rag_parent_chunks_id_scope_unique").on(table.id, table.ownerId, table.indexVersionId, table.sourceVersionId),
+    index("rag_parent_chunks_source_idx").on(table.sourceVersionId, table.position),
+  ],
+);
+
+export const ragChildChunks = pgTable(
+  "rag_child_chunks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    indexVersionId: uuid("index_version_id").references(() => ragIndexVersions.id, { onDelete: "cascade" }).notNull(),
+    sourceVersionId: uuid("source_version_id").notNull(),
+    parentId: uuid("parent_id").notNull(),
+    stableKey: text("stable_key").notNull(),
+    position: integer("position").notNull(),
+    content: text("content").notNull(),
+    contextualContent: text("contextual_content").notNull(),
+    tokenCount: integer("token_count").notNull(),
+    sourceRange: jsonb("source_range").$type<Record<string, unknown>>().default({}).notNull(),
+    contentChecksum: text("content_checksum").notNull(),
+    embedding: vector1024("embedding").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.sourceVersionId, table.ownerId, table.indexVersionId], foreignColumns: [ragSourceVersions.id, ragSourceVersions.ownerId, ragSourceVersions.indexVersionId] }).onDelete("cascade"),
+    foreignKey({ columns: [table.parentId, table.ownerId, table.indexVersionId, table.sourceVersionId], foreignColumns: [ragParentChunks.id, ragParentChunks.ownerId, ragParentChunks.indexVersionId, ragParentChunks.sourceVersionId] }).onDelete("cascade"),
+    uniqueIndex("rag_child_chunks_stable_unique").on(table.sourceVersionId, table.stableKey),
+    uniqueIndex("rag_child_chunks_id_scope_unique").on(table.id, table.ownerId, table.indexVersionId, table.sourceVersionId),
+    index("rag_child_chunks_parent_idx").on(table.parentId, table.position),
+    index("rag_child_chunks_source_idx").on(table.sourceVersionId, table.position),
+  ],
+);
+
 export const privacyConfirmations = pgTable("privacy_confirmations", {
   ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).primaryKey(),
   policyRevision: integer("policy_revision").notNull(),
@@ -353,6 +476,69 @@ export const messageCitations = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.messageId, table.chunkId] })],
+);
+
+export const ragMessageCitations = pgTable(
+  "rag_message_citations",
+  {
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }).notNull(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    evidenceId: uuid("evidence_id").notNull(),
+    indexVersionId: uuid("index_version_id").notNull(),
+    sourceVersionId: uuid("source_version_id").notNull(),
+    sourceKind: ragSourceKind("source_kind").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    rank: integer("rank").notNull(),
+    contentChecksum: text("content_checksum").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.evidenceId] }),
+    uniqueIndex("rag_message_citations_message_rank_unique").on(table.messageId, table.rank),
+    index("rag_message_citations_owner_source_idx").on(table.ownerId, table.sourceKind, table.sourceId),
+  ],
+);
+
+export const ragQueryTraces = pgTable(
+  "rag_query_traces",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }).notNull(),
+    callerMode: text("caller_mode").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    indexVersionId: uuid("index_version_id"),
+    planner: jsonb("planner").$type<Record<string, unknown>>().default({}).notNull(),
+    routeCounts: jsonb("route_counts").$type<Array<Record<string, number>>>().default([]).notNull(),
+    selectedEvidence: jsonb("selected_evidence").$type<Array<Record<string, unknown>>>().default([]).notNull(),
+    coverage: text("coverage").notNull(),
+    roundCount: integer("round_count").default(0).notNull(),
+    degradations: jsonb("degradations").$type<string[]>().default([]).notNull(),
+    configuredEvidenceTokens: integer("configured_evidence_tokens").default(0).notNull(),
+    effectiveEvidenceTokens: integer("effective_evidence_tokens").default(0).notNull(),
+    actualEvidenceTokens: integer("actual_evidence_tokens").default(0).notNull(),
+    latencyMs: integer("latency_ms").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("rag_query_traces_message_unique").on(table.messageId), index("rag_query_traces_owner_created_idx").on(table.ownerId, table.createdAt)],
+);
+
+export const ragFeedback = pgTable(
+  "rag_feedback",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }).notNull(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    actorKey: text("actor_key").notNull(),
+    value: text("value").notNull(),
+    correction: text("correction"),
+    labels: jsonb("labels").$type<string[]>().default([]).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("rag_feedback_message_actor_unique").on(table.messageId, table.actorKey), index("rag_feedback_owner_created_idx").on(table.ownerId, table.createdAt)],
 );
 
 export const answerFeedback = pgTable(
@@ -487,6 +673,12 @@ export const repositories = pgTable(
     activeRevisionId: uuid("active_revision_id"),
     activeProjectionId: uuid("active_projection_id"),
     analysisGeneration: integer("analysis_generation").default(0).notNull(),
+    ragIndexState: text("rag_index_state").default("not_indexed").notNull(),
+    ragIndexCommitSha: text("rag_index_commit_sha"),
+    ragIndexedFileCount: integer("rag_indexed_file_count").default(0).notNull(),
+    ragSkippedFileCount: integer("rag_skipped_file_count").default(0).notNull(),
+    ragIndexWarnings: jsonb("rag_index_warnings").$type<string[]>().default([]).notNull(),
+    ragIndexErrorCode: text("rag_index_error_code"),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     ...timestamps,
   },
