@@ -218,11 +218,11 @@ flowchart TD
   T -->|no and denied| I["Insufficient"]
 ```
 
-门禁先确定 caller mode、owner/publication、唯一 Repository、visibility、Candidate public-deep setting、短窗口 rate、并发和 question scope；Conversation Analysis 不读取或消费按日问题次数。Router 输入只包含问题、允许的文档/Wiki section 摘要和候选 repository id；Zod schema 只接受 `rag|deep|refuse`、稳定 reason code、confidence、repositoryId。repositoryId 必须来自 Host 候选集合。Host 在进入 RAG、排队 Deep 或拒绝前确定 effective route 并写安全路由审计；RAG Evidence 不足后升级 Deep 时再写一条稳定的 escalation event。
+门禁先确定 caller mode、owner/publication、唯一 Repository、visibility、Candidate public-deep setting、短窗口 rate、并发和 question scope；Conversation Analysis 不读取或消费按日问题次数。Router 输入只包含问题、允许的文档/Wiki section 摘要和候选 repository id；Zod schema 只接受 `rag|deep|refuse`、稳定 reason code、confidence、repositoryId。repositoryId 必须来自 Host 候选集合。Host 在进入 RAG、排队 Deep 或拒绝前确定 effective route 并写安全路由审计；RAG Evidence 不足后升级 Deep 时再写一条稳定的 escalation event。Host 另有窄化的 source-inspection classifier：问题同时包含明确代码符号和实现行为、边界、分支或调用链意图，且唯一目标 Repository 允许 Deep 时，effective route 固定为 `deep/source_inspection_required`，Router 的 RAG 选择不能覆盖该决定。
 
 Document Retrieval 继续使用 PostgreSQL 的结构化查询与全文搜索；个人资料规模允许在预算内直接加载少量全文。`ApprovedWikiEvidenceProvider` 在请求内切分并排序 Markdown section，与 `DocumentEvidenceProvider` 返回统一 evidence DTO；Wiki marker 对应的内部源码 Citation 仍由专用 projector 处理。Repository display name/owner/repo alias 只用于识别问题指向的 Repository，不得作为 section 正文相关性词，否则 `copybook` 与 `CopybookPreview` 这类字符串碰撞会把无关入口文件提升为证据；剔除实体词后无正文关键词命中时，只回退到 Overview/Summary 等项目级 section。V1 不引入 vector database。
 
-`rag` 路径由 Business AI Adapter 生成同步或短时流式回答；Host 根据当前用户问题确定 `zh-CN|en` 并在 system contract 中要求回答、证据不足与拒绝反馈使用同一主要语言。结构化输出必须对每条 Repository Evidence 同时返回实际使用的 `[S*]` marker，Host 只接受该 Evidence 自带 marker 的子集，并只持久化被选择的源码 Citation。Document Evidence 继续按 evidence index 引用。`deep` 路径把同一语言要求写入 Code Q&A Skill，最终 Host 仍校验结构与 Citation；它先创建 pending assistant message + run，HTTP 返回 accepted/run id，浏览器转为 SSE 观察。run 完成后 Web 重新读取最终 message；run 失败不再次调用 RAG 生成看似成功的替代答案。
+`rag` 路径由 Business AI Adapter 生成同步或短时流式回答；Host 根据当前用户问题确定 `zh-CN|en` 并在 system contract 中要求回答、证据不足与拒绝反馈使用同一主要语言。结构化输出要求 `sourceMarkers` 使用 canonical `S1` 值；parser 同时接受 Provider 常见的正文形式 `[S1]`，先去掉单层方括号并按 canonical 值检查格式、规范化后唯一性和 Evidence 允许集合，再只持久化被选择的源码 Citation。其他宽松纠错、未知 marker 或重复值均 fail closed。Document Evidence 继续按 evidence index 引用。`deep` 路径把同一语言要求写入 Code Q&A Skill，最终 Host 仍校验结构与 Citation；它先创建 pending assistant message + run，HTTP 返回 accepted/run id，浏览器转为 SSE 观察。run 完成后 Web 重新读取最终 message；run 失败不再次调用 RAG 生成看似成功的替代答案。
 
 ## 8. Agent Runner、BoxLite 与 Pi guest
 
@@ -390,6 +390,7 @@ Askme 仍在开发阶段，不做旧 GitHub Material 或 `DEEPSEEK_*` 配置兼�
 6. 交付 PostgreSQL NOTIFY + SSE、取消/reconcile/GC 和 readiness/observability。
 7. 在固定 public/private Repository 验收通过后，增加 Candidate public-deep 开关和公共自动触发；默认关闭，启用后仍受授权、短窗口防滥用、并发与单 run 预算约束，但不设 publication/visitor 日次数。
 8. additive 增加会话推荐问题字段并把 Candidate/Public 读写切换到 `ConversationSuggestionService`；历史 Agent settings 推荐列与历史日配额记录保留但不再参与问答决策。删除 public daily-limit 管理入口，但不做破坏性数据清理。
+9. RAG marker parser additive 接受 canonical/正文两种 Provider 表达并统一为 canonical；source-inspection classifier 只提升唯一且已授权 Repository 的实现细节问题，不改变普通 Wiki 问题和多 Repository 歧义行为。
 
 Wiki migration 先 additive 增加 Markdown 字段与 Citation 表，再原子切换 consumer；旧 Claim-only active pointer 被清空并标记 outdated，但旧行和 artifact 保留。每个 migration 仍只向前、可在空库重建。回滚优先关闭 `ASKME_CODE_AGENT_ENABLED`、停止 runner和公共开关，保留新表与 artifact 供诊断；不得通过宽范围删除恢复。
 
@@ -397,13 +398,13 @@ Wiki migration 先 additive 增加 Markdown 字段与 Citation 表，再原子�
 
 ### 15.1 自动化与运行验证
 
-1. Unit：URL/ref、filter、archive path、防 zip bomb、visibility、Router schema/reason code、Repository 实体词与 section 相关性隔离、精确 marker Citation、budget、result/Citation validation、projection、config allowlist、会话推荐 context hash/fallback。
+1. Unit：URL/ref、filter、archive path、防 zip bomb、visibility、Router schema/reason code、函数实现意图 source-inspection、Repository 实体词与 section 相关性隔离、canonical/方括号 marker Citation、budget、result/Citation validation、projection、config allowlist、会话推荐 context hash/fallback。
 2. PostgreSQL integration：双 owner 隔离、revision activation transaction、Wiki immutability/approval、legacy active 退出、lease/version、cancel/reconcile、historical Citation retention 与 GC。
 3. SDK contract：通用 OpenAI-compatible Chat Completions mock + 真实 smoke，覆盖 timeout/body watchdog、retry、thinking/provider compatibility 与 usage，不记录 raw body。
 4. Guest/image contract：镜像 digest、Skill hash、无动态 install、固定 tools、repository 指令不加载、无 host mount、network deny、credential absence、资源限制与销毁。
 5. Runner E2E：Repository Analysis 与 Conversation Analysis 两种 purpose、优先级保留、crash/lease、invalid Citation 修正、permission cancel 和 cleanup failure；真实问题必须产生并完成 `conversation_analysis`，不能只以 Router 调用或 Repository Wiki run 代替 Deep 验收。
 6. SSE integration：snapshot、version、missed NOTIFY、listener reconnect、heartbeat、auth revoke、proxy buffering 与 terminal resource fetch。
-7. Browser：Candidate sync/Wiki Markdown 阅读编辑预览、普通/深度路由、pending/completed/insufficient/failed/cancelled、public auto trigger、Citation 降权和移动端无阻塞；覆盖 `copybook` 项目概览只显示直接支撑来源、Candidate/Public 不受日次数阻断、空会话引导与多轮后推荐问题随所属会话完整上下文更新。
+7. Browser：Candidate sync/Wiki Markdown 阅读编辑预览、普通/深度路由、pending/completed/insufficient/failed/cancelled、public auto trigger、Citation 降权和移动端无阻塞；覆盖 `copybook` 项目概览只显示直接支撑来源，`copybook` 的 `paginate` 剩余格子问题确定性 Deep 并显示精确源码 Citation，Candidate/Public 不受日次数阻断，空会话引导与多轮后推荐问题随所属会话完整上下文更新。
 
 ### 15.2 固定验收输入
 

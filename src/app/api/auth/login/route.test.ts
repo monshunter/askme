@@ -7,6 +7,7 @@ vi.mock("@/server/auth/service", () => ({
   SESSION_COOKIE: "askme_session",
   sessionCookieOptions: vi.fn(),
 }));
+vi.mock("@/server/auth/auth-rate-limit", () => ({ consumeAuthRateLimit: vi.fn() }));
 
 import { POST } from "./route";
 

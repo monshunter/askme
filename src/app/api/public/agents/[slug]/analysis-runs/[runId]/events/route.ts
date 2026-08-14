@@ -4,7 +4,7 @@ import { analysisRunSseResponse, type AnalysisRunSnapshot } from "@/server/code-
 import { getPool } from "@/server/db/client";
 import { apiFailure, requestId, withRequestId } from "@/server/http";
 import { requirePublicConversation } from "@/server/public-chat/session-service";
-import { visitorCookieName } from "@/server/public-chat/visitor-credential";
+import { requestVisitorToken } from "@/server/public-chat/visitor-credential";
 import { parsePublicSlug } from "@/server/publication/publication-policy";
 import { requireResourceId } from "@/server/resource-id";
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
     const params = await context.params;
     const slug = parsePublicSlug(params.slug);
     const runId = requireResourceId(params.runId, "analysis_run");
-    const { publication, conversation } = await requirePublicConversation(slug, request.cookies.get(visitorCookieName(slug))?.value);
+    const { publication, conversation } = await requirePublicConversation(slug, requestVisitorToken(request));
     const response = await analysisRunSseResponse({
       request,
       pool: getPool(),

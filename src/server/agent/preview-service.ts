@@ -23,7 +23,7 @@ import { isRepositoryEvidence } from "./retrieval";
 import { loadQuestionRepositories } from "./question-context";
 import { localizedQuestionMessage } from "./question-language";
 import { recordQuestionRoute } from "./question-route-audit";
-import { effectiveQuestionRoute, routeQuestion } from "./question-router";
+import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository } from "./question-router";
 
 type ExchangeRow = {
   conversationId: string;
@@ -353,13 +353,14 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
         repositories,
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
-      const selected = decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null;
-      const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null);
+      const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories);
+      const selected = sourceInspectionRepository ?? (decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
+      const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null, sourceInspectionRepository !== null);
       await recordQuestionRoute(getPool(), {
         ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
         requestedRoute: decision.route, effectiveRoute,
-        reasonCode: decision.route === "deep" && effectiveRoute !== "deep" ? "low_confidence_rag_fallback" : decision.route === "refuse" && effectiveRoute !== "refuse" ? "router_refuse_not_deterministic" : decision.reasonCode,
-        confidence: decision.confidence, repositoryId: decision.repositoryId, evidenceCount: evidence.length, requestId,
+        reasonCode: sourceInspectionRepository ? "source_inspection_required" : decision.route === "deep" && effectiveRoute !== "deep" ? "low_confidence_rag_fallback" : decision.route === "refuse" && effectiveRoute !== "refuse" ? "router_refuse_not_deterministic" : decision.reasonCode,
+        confidence: decision.confidence, repositoryId: selected?.id ?? decision.repositoryId, evidenceCount: evidence.length, requestId,
       });
       if (effectiveRoute === "deep" && selected) {
         const run = await queueConversationAnalysisRun({

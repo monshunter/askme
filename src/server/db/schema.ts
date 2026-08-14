@@ -95,6 +95,22 @@ export const sessions = pgTable(
   (table) => [uniqueIndex("sessions_token_hash_unique").on(table.tokenHash), index("sessions_user_idx").on(table.userId)],
 );
 
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("password_reset_tokens_hash_unique").on(table.tokenHash),
+    index("password_reset_tokens_user_active_idx").on(table.userId, table.expiresAt),
+  ],
+);
+
 export const materials = pgTable(
   "materials",
   {
@@ -293,6 +309,13 @@ export const publicRateLimits = pgTable(
   },
   (table) => [index("public_rate_limits_updated_idx").on(table.updatedAt)],
 );
+
+export const authRateLimits = pgTable("auth_rate_limits", {
+  scopeKey: text("scope_key").primaryKey(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+  requestCount: integer("request_count").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("auth_rate_limits_updated_idx").on(table.updatedAt)]);
 
 export const messages = pgTable(
   "messages",

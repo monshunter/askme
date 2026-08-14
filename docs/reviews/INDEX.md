@@ -90,4 +90,9 @@
 | REVIEW-085 | REVIEW-085：SPEC-002 问答语言与 LLM 推荐增量 Spec Review | [REVIEW-085.md](REVIEW-085.md) |
 | REVIEW-086 | REVIEW-086：DESIGN-005 问答语言与 LLM 推荐增量 Design Review | [REVIEW-086.md](REVIEW-086.md) |
 | REVIEW-087 | REVIEW-087：PLAN-016 Agent 精准问答与上下文推荐 Change Review | [REVIEW-087.md](REVIEW-087.md) |
+| REVIEW-088 | REVIEW-088：PLAN-017 Plan Review | [REVIEW-088.md](REVIEW-088.md) |
+| REVIEW-089 | REVIEW-089：SPEC-001 / SPEC-002 认证、游客与回答增量 Spec Review | [REVIEW-089.md](REVIEW-089.md) |
+| REVIEW-090 | REVIEW-090：DESIGN-001 / DESIGN-005 认证、游客与回答增量 Design Review | [REVIEW-090.md](REVIEW-090.md) |
+| REVIEW-091 | REVIEW-091：PLAN-017 统一 SMTP 范围调整 Plan Review | [REVIEW-091.md](REVIEW-091.md) |
+| REVIEW-092 | REVIEW-092：PLAN-017 认证、SMTP、游客隔离与 Citation 修复 Change Review | [REVIEW-092.md](REVIEW-092.md) |
 <!-- AGENT-HARNESS:END INDEX -->

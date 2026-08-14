@@ -30,7 +30,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 ### 2.1 角色
 
 - **Candidate**：职业资料、知识库、隐私策略和 Candidate Agent 的唯一 owner。
-- **Interviewer**：匿名打开已发布 Agent 的访客；只能提问、查看本次回答允许公开的引用名称，并在来源允许公开访问时打开该来源。
+- **Interviewer / Visitor**：匿名打开已发布 Agent 的浏览器级游客；只能提问、查看本次回答允许公开的引用名称，并在来源允许公开访问时打开该来源。
 - **Platform Admin**：治理平台账号、已发布 Agent、内容风险和运行设置；不能以 Candidate 身份修改其私有知识内容。
 
 ### 2.2 核心术语
@@ -39,6 +39,7 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 - **Knowledge Item**：系统从一个或多个 Source Material 中组织出的项目、经历、技能、文章、仓库或总结。
 - **Citation**：回答对具体 Source Material 和证据片段的可追溯引用。
 - **Published Agent**：满足发布前置条件、拥有当前公开链接并可被 Interviewer 访问的 Candidate Agent。
+- **Browser Visitor Identity**：由当前 origin 的 localStorage 保存的高熵游客凭证；同一浏览器使用同一游客身份访问不同 Published Agent，但每个 publication 拥有独立 Conversation。
 
 ### 2.3 MVP 非目标
 
@@ -51,10 +52,13 @@ Askme 将 Candidate 拥有的职业资料转化为默认私有、可审核、可
 
 ### 3.1 身份、会话与权限
 
-1. 系统提供 Candidate 与 Platform Admin 的凭证登录、注销和持久会话；匿名用户只能访问已发布的公共 Agent。
+1. Candidate 可自助注册，并与 Platform Admin 一样使用凭证登录、注销和持久会话；自助注册只能创建 `candidate`，不能创建或提升为 `admin`。
 2. Candidate 的 Source Material、Knowledge Item、隐私策略、会话和 Agent 由 owner id 隔离；任意跨 owner 直接访问必须拒绝。
 3. Platform Admin 可查看聚合数据、账号、已发布 Agent 和内容风险，可因治理原因暂停公开 Agent，但不能读取或编辑 Candidate 的私有原文和私有知识详情。
 4. 所有变更接口必须验证会话、角色、输入和资源 owner；公共聊天接口必须限流并记录不含敏感原文的审计事实。
+5. Candidate 忘记密码时可提交邮箱并获得不暴露账号是否存在的统一反馈；只有当前有效 Candidate 才收到短时、单次使用的重置链接。成功重置必须使同一账号全部旧会话失效。
+6. 已登录 Candidate 可验证当前密码后设置不同的新密码；成功后撤销全部旧会话并签发当前浏览器的新会话。密码不得进入 URL、日志、审计 metadata 或数据库明文列。
+7. 注册、登录、忘记密码、重置和改密均使用相同的邮箱规范化、密码强度、稳定错误与滥用防护；冻结账号不能通过任一认证入口恢复访问。
 
 ### 3.2 Candidate Dashboard
 
@@ -109,12 +113,15 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 ### 3.8 Interviewer 公共 Agent
 
 1. 公共页面呈现 Candidate 授权的头像/姓名/头衔/地点/简介、Agent 状态、知识和 Citation 概况、公开亮点、推荐问题与 Chat-first 主区域。
-2. Interviewer 可匿名建立会话、连续提问并刷新推荐问题；问题和回答持久化到该公共会话，不能访问其他访客会话。
-3. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答中的 Citation 只展示来源名称，不展示类型、正文、摘要或证据片段；`citation_allowed` 不返回访问地址，`public_preview` 名称可打开来源。Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开；任何响应都不得包含内部存储路径。
-4. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
-5. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
-6. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
-7. Interviewer 的问题与 Agent 回答按安全 Markdown 渲染；标题、列表、引用、链接、表格、行内代码和围栏代码块保持可读，原始 HTML、脚本和危险 URL 不得执行。
+2. Interviewer 首次进入任一公开 Agent 时获得由 localStorage 持有的 Browser Visitor Identity；同一浏览器再次访问时复用该身份，两个不同浏览器或浏览器 profile 必须得到不同身份。服务端只保存凭证 hash，不信任客户端声明的 owner、conversation 或 publication。
+3. 同一游客对每个 publication 只复用自己的一个活动 Conversation，问题、回答和推荐问题只持久化到该 Conversation；不同游客、不同 publication 或伪造 message/run id 均不能读取、修改、监听或反馈其他会话。
+4. 游客凭证通过受控请求同步到同源安全 cookie，以支持 EventSource、来源预览和新标签页；localStorage 是浏览器身份 owner。升级前按 slug 保存的旧 HttpOnly cookie 只允许在 session 初始化时迁移一次，不得让多个游客合并为共享会话。
+5. 公共 Conversation 使用 30 天无活动滚动保留；每次有效访问延长保留时间。localStorage 被清除后下一次初始化创建新游客身份，旧 Conversation 不得自动投影给新身份。
+6. 检索只使用 `citation_allowed` 和 `public_preview` 证据。回答中的 Citation 只展示来源名称，不展示类型、正文、摘要或证据片段；`citation_allowed` 不返回访问地址，`public_preview` 名称可打开来源。Markdown、PDF 在当前页居中预览，PDF 默认使用 A4 纸张比例，其他格式在新标签页打开；任何响应都不得包含内部存储路径。
+7. 隐私越权、提示注入、索要完整知识库或无关问题必须被安全拒绝；回答不得把系统提示、密钥、私有资料或其他 Candidate 数据带入上下文。
+8. 未发布、已撤销、被 Admin 暂停或不存在的 Agent 返回明确不可用页面，不泄露其私有状态。
+9. 公共页面提供“分享 Agent 链接”操作；点击后复制浏览器当前页面 URL 并反馈结果，不创建或下载链接文件。
+10. Interviewer 的问题与 Agent 回答按安全 Markdown 渲染；标题、列表、引用、链接、表格、行内代码和围栏代码块保持可读，原始 HTML、脚本和危险 URL 不得执行。
 
 ### 3.9 Platform Admin
 
@@ -129,7 +136,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 1. 桌面端在 1448 × 1086 参考视口复现设计稿的固定侧栏、顶部栏、卡片层次、深墨绿主色、暖白纸张质感、水墨山水背景、衬线标题和红色印章点缀；直接复用已提供背景资产。
 2. Candidate Workspace、公共 Agent 与 Platform Admin 使用各自正确的导航和身份标签；所有设计稿中的主要按钮、筛选、分页、搜索、下拉和导航均连接真实行为或明确的不可用状态。
 3. Chrome DevTools 使用 `iPhone 14 Pro Max` 设备配置（430 × 932）时不产生横向溢出，导航可访问，主要操作与对话输入保持可用；桌面表格在移动端转为可读布局。
-4. 键盘可完成登录、导航、上传选择、筛选、隐私设置和对话；焦点可见，表单控件具有关联 label，状态不只依赖颜色表达。
+4. 键盘可完成注册、登录、忘记/重置/变更密码、导航、上传选择、筛选、隐私设置和对话；焦点可见，表单控件具有关联 label，状态不只依赖颜色表达。
 5. 默认语言为 English，并提供 English / 简体中文切换；语言选择持久化，核心页面和错误反馈不得混用未翻译的界面字符串。
 6. 全站无论是否登录、无论进入 Candidate、公共 Agent、Platform Admin、登录或邀请页面，都只在右上角显示同一个全局语言切换控件；页面、footer 与账号菜单不得再持有第二个语言入口。
 7. Candidate Shell 不显示与一级导航重复的 Quick Action / 快捷操作，也不显示与 Agent 页面发布能力重复的 Invite Interviewers / 邀请面试官卡片。
@@ -140,8 +147,9 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 1. 默认 AI provider 为 DeepSeek OpenAI-compatible Chat Completions，默认 base URL 为 `https://api.deepseek.com`，默认 model 为 `deepseek-v4-flash`；可通过非 Secret 环境变量覆盖 base URL 和 model 以支持测试。
 2. `DEEPSEEK_API_KEY` 按“进程环境优先，当前用户 `~/.env` 次之”解析；不得把真实密钥写入仓库、数据库、日志、浏览器 bundle、API 错误或测试快照。
-3. 本地正式启动路径使用 Docker Compose，至少包含 Web、后台 worker 和 PostgreSQL，并使用持久 volume 保存数据库和上传文件；重复启动不得清空数据。
+3. 本地正式启动路径使用 Docker Compose，至少包含 Web、后台 worker、PostgreSQL 与可观察真实邮件的 SMTP 测试服务，并使用持久 volume 保存数据库和上传文件；重复启动不得清空数据。
 4. 提供 migration、初始本地账号 bootstrap、健康检查、就绪检查和可恢复的停止/重启路径；仅显式 reset 才能清除本地数据。
+5. 密码重置与 Admin 邀请复用同一服务端 SMTP transport；配置支持无认证或成对 username/password、显式 port/secure/from 和有界连接超时。未配置与发送失败必须返回稳定安全错误或防枚举受理语义，原始凭证、token 和完整邮件正文不得进入日志、审计或业务响应。本地 Compose 默认投递到 Mailpit，生产邮件供应商不属于本 Objective。
 
 ### 3.12 质量与可观测性
 
@@ -153,6 +161,9 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 
 - [x] `AC-AUTH-001` Candidate 与 Admin 可使用真实凭证登录、恢复会话并注销，匿名权限被限制。
 - [x] `AC-AUTH-002` 跨 Candidate 资源访问和错误角色操作被服务端拒绝，且测试证明 owner 隔离。
+- [x] `AC-AUTH-003` Candidate 可完成自助注册、登录、注销、忘记密码邮件、单次重置和登录后改密；Admin 不能由自助入口创建，旧 token 与旧 session 在密码变化后失效。
+- [x] `AC-AUTH-004` 忘记密码不泄露邮箱是否存在，认证入口具有输入边界、滥用防护和安全审计，密码与原始 token 不进入日志、URL query 或业务响应。
+- [x] `AC-MAIL-001` 密码重置与 Admin 邀请通过统一 SMTP transport 真实投递，配置和失败语义受测；本地 Mailpit 可分别观察两类邮件且不引入业务数据 volume。
 - [x] `AC-DASH-001` Candidate Dashboard 的指标、最近资料、工作流与下一步全部来自当前数据库状态。
 - [x] `AC-MAT-001` 六类文件的成功上传、50 MiB 边界和无效文件拒绝均有自动化或真实运行 Evidence。
 - [x] `AC-MAT-002` GitHub、Notion 与 Website 至少各完成一次真实导入路径或可控官方 API 测试替身的契约验证。
@@ -176,6 +187,7 @@ Candidate 可逐项修改可见性，查看 Interviewer 可访问/隐藏的即�
 - [x] `AC-CHAT-002` 私有数据、跨 owner 数据、未公开原文件访问、提示注入和完整知识库索取被拒绝或隔离。
 - [x] `AC-CHAT-003` 未发布、撤销、暂停与不存在的 Agent 均不可对话且不泄露私有事实。
 - [x] `AC-CHAT-004` 公共问答安全渲染 Markdown；Citation 只展示来源名称，并仅为 `public_preview` 提供按格式打开来源的能力。
+- [x] `AC-CHAT-005` 同一浏览器的 localStorage 游客身份可恢复各 publication 的独立 Conversation；两个浏览器、两个 publication 及伪造 message/run/source 请求均不能互读互改，旧 slug cookie 可一次迁移且不会形成共享会话。
 - [x] `AC-ADMIN-001` Admin Overview 的全部指标、最近发布、审查队列与趋势来自真实聚合数据。
 - [x] `AC-ADMIN-002` Candidate、Published Agents、Reports、Content Review 与 Settings 导航均具备合同定义的真实读写闭环。
 - [x] `AC-ADMIN-003` Admin 治理不能读取 Candidate 私有原文，账号/Agent 状态动作具有审计记录。

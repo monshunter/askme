@@ -22,12 +22,12 @@ x-runtime-environment: &runtime-environment
   ASKME_CODE_AGENT_MAX_TOOL_CALLS: ${ASKME_CODE_AGENT_MAX_TOOL_CALLS:-80}
   ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA: ${ASKME_CODE_AGENT_REPOSITORY_DAILY_QUOTA:-10}
   ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS: ${ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS:-1200000}
-  ASKME_SMTP_HOST: ${ASKME_SMTP_HOST:-}
-  ASKME_SMTP_PORT: ${ASKME_SMTP_PORT:-587}
+  ASKME_SMTP_HOST: ${ASKME_SMTP_HOST:-mailpit}
+  ASKME_SMTP_PORT: ${ASKME_SMTP_PORT:-1025}
   ASKME_SMTP_SECURE: ${ASKME_SMTP_SECURE:-false}
   ASKME_SMTP_USER: ${ASKME_SMTP_USER:-}
   ASKME_SMTP_PASSWORD: ${ASKME_SMTP_PASSWORD:-}
-  ASKME_SMTP_FROM: ${ASKME_SMTP_FROM:-}
+  ASKME_SMTP_FROM: "${ASKME_SMTP_FROM:-Askme <noreply@askme.local>}"
 
 services:
   db:
@@ -60,6 +60,12 @@ services:
       db:
         condition: service_healthy
 
+  mailpit:
+    image: axllent/mailpit:v1.30.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ASKME_MAILPIT_PORT:-8025}:8025"
+
   web:
     build: .
     restart: unless-stopped
@@ -78,6 +84,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s

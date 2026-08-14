@@ -14,7 +14,7 @@ docker compose ps
 curl -fsS http://127.0.0.1:3000/api/health/ready
 ```
 
-打开 <http://127.0.0.1:3000>。默认 local-only 账号来自 `.env.example`：
+打开 <http://127.0.0.1:3000>；本地认证邮件可在 Mailpit <http://127.0.0.1:8025> 查看。默认 local-only 账号来自 `.env.example`：
 
 - Candidate：`candidate@askme.local`
 - Platform Admin：`admin@askme.local`
@@ -39,7 +39,7 @@ npm test
 npm run lint
 npm run typecheck
 npm run build
-npm run smoke:auth
+DATABASE_URL=postgresql://askme:askme-local-only@127.0.0.1:55432/askme npm run smoke:auth
 ```
 
 运行 migration 和 bootstrap 需要 `DATABASE_URL` 及对应 local 账号环境变量。当前 Docker 操作事实、故障恢复和 Evidence 见 [OP-001](docs/operations/OP-001.md)。

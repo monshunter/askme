@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { apiData, apiFailure, requestId } from "@/server/http";
 import { parsePublicFeedbackInput } from "@/server/public-chat/public-chat-input";
 import { savePublicFeedback } from "@/server/public-chat/public-chat-service";
-import { visitorCookieName } from "@/server/public-chat/visitor-credential";
+import { requestVisitorToken } from "@/server/public-chat/visitor-credential";
 import { AppError } from "@/server/errors";
 import { parsePublicSlug } from "@/server/publication/publication-policy";
 import { requireResourceId } from "@/server/resource-id";
@@ -20,7 +20,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ slu
     } catch {
       throw new AppError("INVALID_JSON", "Send valid JSON feedback.", 400);
     }
-    return apiData(await savePublicFeedback(slug, request.cookies.get(visitorCookieName(slug))?.value, messageId, parsePublicFeedbackInput(body), id), id);
+    return apiData(await savePublicFeedback(slug, requestVisitorToken(request), messageId, parsePublicFeedbackInput(body), id), id);
   } catch (error) {
     return apiFailure(error, id);
   }

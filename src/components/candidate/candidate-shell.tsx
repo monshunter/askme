@@ -84,6 +84,7 @@ export function CandidateShell({ user, locale, children }: CandidateShellProps) 
               </summary>
               <div className="profile-popover">
                 <p>{user.headline ?? t("candidate.profile.fallback")}</p>
+                <Link href="/workspace/account">{t("candidate.account")}</Link>
                 <form action="/api/auth/logout" method="post"><button type="submit">{t("candidate.signOut")}</button></form>
               </div>
             </details>

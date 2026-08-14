@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { authenticate, createSession, SESSION_COOKIE, sessionCookieOptions } from "@/server/auth/service";
+import { consumeAuthRateLimit } from "@/server/auth/auth-rate-limit";
 import { AppError } from "@/server/errors";
 import { apiFailure, requestId, requestOrigin, withRequestId } from "@/server/http";
+import { requestClientAddress } from "@/server/public-chat/visitor-credential";
 
 const credentialsSchema = z.object({
-  email: z.email().max(320),
+  email: z.string().trim().pipe(z.email().max(320)).transform((value) => value.toLocaleLowerCase()),
   password: z.string().min(1).max(1024),
 });
 
@@ -25,6 +27,10 @@ export async function POST(request: NextRequest) {
     const parsed = credentialsSchema.safeParse(body);
     if (!parsed.success) throw new AppError("INVALID_CREDENTIALS_INPUT", "Enter a valid email and password.", 400);
     const credentials = parsed.data;
+    await Promise.all([
+      consumeAuthRateLimit(`login:email:${credentials.email}`, 10, 15 * 60),
+      consumeAuthRateLimit(`login:ip:${requestClientAddress(request.headers)}`, 30, 15 * 60),
+    ]);
     const user = await authenticate(credentials.email, credentials.password);
     const session = await createSession(user, id);
     const destination = user.role === "admin" ? "/admin" : "/workspace";

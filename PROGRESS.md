@@ -119,3 +119,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-016：闭环 Agent 精准问答、Deep 路由与上下文推荐](docs/plans/PLAN-016.md)
 ---
+
+---
+ID: OBJ-012
+Objective: 完整交付候选人认证、统一 SMTP 邮件能力、浏览器游客身份隔离与源码问题可靠回答
+Status: 已完成
+Plans:
+- [x] [PLAN-017：闭环认证、游客会话隔离与 Citation 修复](docs/plans/PLAN-017.md)
+---

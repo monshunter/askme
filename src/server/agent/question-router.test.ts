@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/server/errors";
 
-import { effectiveQuestionRoute, routeQuestion, type QuestionRouterClient } from "./question-router";
+import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository, type QuestionRouterClient } from "./question-router";
 
 const repositories = [
   { id: "11111111-1111-4111-8111-111111111111", displayName: "Askme", deepAllowed: true },
@@ -20,6 +20,12 @@ function client(content: unknown): QuestionRouterClient {
 }
 
 describe("routeQuestion", () => {
+  it("selects one authorized Repository for an explicit function implementation question", () => {
+    expect(selectSourceInspectionRepository("copybook 的 `paginate` 函数在分页时如何处理剩余格子？", repositories)).toEqual(repositories[0]);
+    expect(selectSourceInspectionRepository("What does Askme do?", repositories)).toBeNull();
+    expect(effectiveQuestionRoute({ route: "rag", reasonCode: "evidence_sufficient", confidence: 0.95 }, repositories[0]!, true)).toBe("deep");
+  });
+
   it("does not let the model turn a Host-allowed career question with no evidence into an out-of-scope refusal", () => {
     expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "out_of_scope", confidence: 1 }, null)).toBe("rag");
     expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "insufficient_authorized_evidence", confidence: 1 }, null)).toBe("rag");

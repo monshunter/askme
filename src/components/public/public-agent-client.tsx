@@ -8,6 +8,7 @@ import { ApiClientError, requestApi } from "@/components/candidate/api-client";
 import { MarkdownContent } from "@/components/markdown-content";
 import { SourceLink, type SourceOpenMode } from "@/components/source-viewer";
 import { createTranslator, type Locale } from "@/i18n/core";
+import { PUBLIC_VISITOR_HEADER, PUBLIC_VISITOR_STORAGE_KEY } from "@/shared/public-visitor";
 
 type Citation = { materialTitle: string; access: { href: string; mode: SourceOpenMode } | null };
 type PublicMessage = { id: string; role: "user" | "assistant"; status: "pending" | "completed" | "failed"; content: string; errorCode: string | null; createdAt: string; feedback: "up" | "down" | null; citations: Citation[]; analysisRun: { id: string; version: number; state: "pending" | "running" | "completed" | "failed" | "cancelled"; phase: string } | null };
@@ -20,6 +21,10 @@ type PublicProjection = {
   suggestedQuestions: string[];
 };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; details?: { retryAfterSeconds?: number } } | null };
+
+function visitorRequest(visitorToken: string, init: RequestInit = {}) {
+  return { ...init, headers: { ...(init.headers as Record<string, string> | undefined), [PUBLIC_VISITOR_HEADER]: visitorToken } };
+}
 
 function connectionFeedback(error: unknown, action: string, locale: Locale) {
   const t = createTranslator(locale);
@@ -48,11 +53,13 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
   const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const initialized = useRef(false);
+  const visitorToken = useRef<string | null>(null);
   const threadEnd = useRef<HTMLDivElement>(null);
   const runEvents = useRef(new Map<string, EventSource>());
 
   const loadThread = useCallback(async () => {
-    const { response, payload } = await requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, { cache: "no-store" });
+    if (!visitorToken.current) throw new Error(t("public.sessionFailed"));
+    const { response, payload } = await requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, visitorRequest(visitorToken.current, { cache: "no-store" }));
     if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") {
       setAgentUnavailable(true);
       return null;
@@ -97,13 +104,20 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
 
   async function initializeSession() {
     setSessionState("starting");
-    const { response, payload } = await requestApi<Envelope<{ conversationId: string }>>(`/api/public/agents/${slug}/session`, { method: "POST" });
+    const storedToken = localStorage.getItem(PUBLIC_VISITOR_STORAGE_KEY);
+    const { response, payload } = await requestApi<Envelope<{ conversationId: string; visitorToken: string }>>(
+      `/api/public/agents/${slug}/session`,
+      storedToken ? visitorRequest(storedToken, { method: "POST" }) : { method: "POST" },
+    );
     if (!response.ok) {
       if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
       setSessionState("failed");
       setNotice({ tone: "error", message: t("public.sessionFailed") });
       return false;
     }
+    if (!payload.data || !/^[A-Za-z0-9_-]{43}$/.test(payload.data.visitorToken)) throw new ApiClientError("invalid_response");
+    localStorage.setItem(PUBLIC_VISITOR_STORAGE_KEY, payload.data.visitorToken);
+    visitorToken.current = payload.data.visitorToken;
     await loadThread();
     setSessionState("ready");
     return true;
@@ -133,8 +147,9 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
     const clientMessageId = crypto.randomUUID();
     try {
       const perform = () => requestApi<Envelope<Thread>>(`/api/public/agents/${slug}/chat`, {
+        ...visitorRequest(visitorToken.current ?? ""),
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { ...visitorRequest(visitorToken.current ?? "").headers, "content-type": "application/json" },
         body: JSON.stringify({ clientMessageId, question: normalized }),
       });
       let result = await perform();
@@ -168,7 +183,8 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
     setRefreshing(true);
     setNotice(null);
     try {
-      const { response, payload } = await requestApi<Envelope<{ suggestedQuestions: string[] }>>(`/api/public/agents/${slug}/suggestions/refresh`, { method: "POST" });
+      if (!visitorToken.current) throw new Error(t("public.sessionFailed"));
+      const { response, payload } = await requestApi<Envelope<{ suggestedQuestions: string[] }>>(`/api/public/agents/${slug}/suggestions/refresh`, visitorRequest(visitorToken.current, { method: "POST" }));
       if (!response.ok) {
         if (payload.error?.code === "PUBLIC_AGENT_UNAVAILABLE") setAgentUnavailable(true);
         setNotice({ tone: "error", message: t("public.suggestionsFailed") });
@@ -186,9 +202,11 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
   async function saveFeedback(message: PublicMessage, value: "up" | "down") {
     setFeedbackSaving(message.id);
     try {
+      if (!visitorToken.current) throw new Error(t("public.sessionFailed"));
       const { response, payload } = await requestApi<Envelope<{ value: "up" | "down" }>>(`/api/public/agents/${slug}/messages/${message.id}/feedback`, {
+        ...visitorRequest(visitorToken.current),
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: { ...visitorRequest(visitorToken.current).headers, "content-type": "application/json" },
         body: JSON.stringify({ value }),
       });
       if (!response.ok) {

@@ -7,8 +7,10 @@ import {
   analysisRuns,
   contentFlags,
   conversations,
+  authRateLimits,
   materials,
   messages,
+  passwordResetTokens,
   repositories,
   repositoryArtifacts,
   repositoryDossierCitations,
@@ -25,6 +27,15 @@ import {
 } from "./schema";
 
 describe("database schema alignment", () => {
+  it("persists only hashed one-time password reset and auth rate-limit state", () => {
+    const resetColumns = getTableColumns(passwordResetTokens);
+    expect(resetColumns.tokenHash?.name).toBe("token_hash");
+    expect(resetColumns.expiresAt?.name).toBe("expires_at");
+    expect(resetColumns.usedAt?.name).toBe("used_at");
+    expect(resetColumns).not.toHaveProperty("token");
+    expect(getTableColumns(authRateLimits).scopeKey?.name).toBe("scope_key");
+  });
+
   it("owns answer source invalidation on messages rather than materials", () => {
     expect(getTableColumns(materials)).not.toHaveProperty("sourceInvalidatedAt");
     expect(getTableColumns(messages).sourceInvalidatedAt?.name).toBe("source_invalidated_at");

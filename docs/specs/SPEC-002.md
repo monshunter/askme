@@ -122,14 +122,14 @@ Askme 的知识检索只保存和检索文档型资料、Knowledge Item 与 Appr
 
 1. 确定性门禁检查身份、publication、owner、Repository visibility、公开深度分析开关、问题范围、短窗口滥用防护、并发和单次运行预算；任何 LLM 不能绕过这些门禁。问答 `conversation_analysis` 不按 Askme 内部日次数配额拒绝，未来是否可用只由独立 Token/积分余额合同决定；该合同未引入前不设置次数门禁。
 2. 在允许的文档、Knowledge Item 和 Approved Wiki section 中进行初始检索。Repository 名称用于确定目标 Repository，不得同时作为 section 相关性的主要内容词；跨语言或词法证据无法回答时不能把“同仓库”当作“已找到答案”。
-3. 轻量 Router 输出 `rag`、`deep` 或 `refuse`，并附稳定 reason code、confidence 和唯一 repository id。Host 必须持久化不含问题正文的 requested/effective route、reason code、confidence、repository id 与 evidence count，供当前运行验收和故障审计。低 confidence 先尝试普通回答；证据仍不足且门禁允许时才升级为 `deep`。
+3. 轻量 Router 输出 `rag`、`deep` 或 `refuse`，并附稳定 reason code、confidence 和唯一 repository id。Host 必须持久化不含问题正文的 requested/effective route、reason code、confidence、repository id 与 evidence count，供当前运行验收和故障审计。低 confidence 先尝试普通回答；证据仍不足且门禁允许时才升级为 `deep`。当问题明确要求函数、类、调用链、分支或边界条件的实现行为，且 Host 已唯一确定一个允许深度分析的 Repository 时，Host 必须以 `source_inspection_required` 收敛到 `deep`，不能因 Wiki 只提到符号名称就误判为 RAG 已充分。
 4. `rag` 使用检索到的文档或 Wiki section 回答；`deep` 创建异步 Deep Analysis Run 读取绑定 Revision 的原始 artifact；`refuse` 返回明确边界说明。RAG、Deep、证据不足与拒绝反馈都必须使用当前用户问题的主要语言；源码、标识符和既有专有名词可以保持原文，但不得把中文问答整体回答成英文或在没有语义需要时中英混写。
 
 一个问题涉及多个 Repository 且无法唯一确定目标时，Askme 必须请用户明确选择，不猜测、不并行启动多个 sandbox。公共访客只可看到当前 publication 允许展示的项目名称。
 
 普通回答与深度回答都必须区分 `answered`、`insufficient` 与 `refused`。深度分析启动后如果失败，不得伪装成成功的 RAG fallback；系统应保留失败状态和安全重试入口。
 
-RAG Answer 选择 Repository Wiki Evidence 时，必须同时返回该 Evidence 中实际支撑最终回答的一个或多个 `[S*]` marker。Host 只验证并持久化这些 marker 对应的源码范围；同一 section 中未被回答选择的其他 marker 不得出现在“实际使用来源”。模型只选择 section、Host 自动展开 section 全部 Citation 的旧行为不再允许。回答无法把事实绑定到精确 marker 时必须返回证据不足或失败，不能用同仓库、同页面或内容 hash 有效代替事实关联。
+RAG Answer 选择 Repository Wiki Evidence 时，必须同时返回该 Evidence 中实际支撑最终回答的一个或多个 `[S*]` marker。JSON 的 canonical marker 值为不带方括号的 `S1`、`S2`；Provider 兼容返回正文形式的 `[S1]` 时，Host 必须先确定性规范化为 `S1`，再做去重和允许集合校验，其他拼写、越界或规范化后重复仍然拒绝。Host 只验证并持久化这些 marker 对应的源码范围；同一 section 中未被回答选择的其他 marker 不得出现在“实际使用来源”。模型只选择 section、Host 自动展开 section 全部 Citation 的旧行为不再允许。回答无法把事实绑定到精确 marker 时必须返回证据不足或失败，不能用同仓库、同页面或内容 hash 有效代替事实关联。
 
 ### 6.1 会话推荐问题
 
@@ -227,6 +227,7 @@ Repository Analysis Run 与 Deep Analysis Run 使用同一隔离运行时，但�
 - [x] `AC-HISTORY-001` 最终会话消息、有效 Citation 和最小 run metadata 可恢复；中间 reasoning/tool output 不持久化，深度结论不进入 Wiki、RAG 或 Knowledge Item。
 - [x] `AC-ACCEPT-001` 固定 `new-api` Revision 完成约 10 题路由、事实与 Citation 验收，固定 private Revision 完成一次性 Token、不可变 SHA、撤权和清理验收。
 - [x] `AC-ANSWER-001` RAG 回答只持久化模型实际选择且能支撑最终陈述的 Repository `[S*]` 源码范围；Repository 名称与无关 section marker 不会膨胀来源，固定 copybook 项目概览问题不展示入口组件来源。
+- [x] `AC-ANSWER-002` RAG Provider 返回 `S7` 或 `[S7]` 均规范化为同一有效 marker，非法与重复 marker 仍失败；固定 copybook `paginate` 剩余格子问题确定性进入真实 Conversation Deep，并返回实现行为与有效源码 Citation。
 - [x] `AC-DEEP-001` Candidate 与 Public 的真实问题可以产生可审计 `deep` 有效路由和 `conversation_analysis`，由 worker 在新 microVM 读取固定 Revision 原始源码并提交有效 Citation；验收不能由 Router mock、Wiki `repository_analysis` 或 readiness 代替。
 - [x] `AC-USAGE-001` Agent 问答和 Conversation Deep 不读取或消耗 Askme 日次数配额，Admin 不再配置公开会话每日问题数；短窗口滥用防护、并发和单次运行预算仍有效。
 - [x] `AC-SUGGEST-001` 空会话展示基于当前授权知识的引导问题；每次 RAG/Deep 回答后，Candidate 与 Public 推荐均随同一 conversation 的完整可见上下文更新并保存 context version，刷新不退回无关预定义轮换。

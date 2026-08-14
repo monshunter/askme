@@ -14,4 +14,10 @@ describe("public source presentation contract", () => {
   it("has a dedicated public source route that can recheck current permission", () => {
     expect(existsSync(new URL("../../app/api/public/agents/[slug]/materials/[materialId]/route.ts", import.meta.url))).toBe(true);
   });
+
+  it("owns public visitor identity in localStorage and sends it on API requests", () => {
+    expect(clientSource).toContain("localStorage.getItem(PUBLIC_VISITOR_STORAGE_KEY)");
+    expect(clientSource).toContain("localStorage.setItem(PUBLIC_VISITOR_STORAGE_KEY");
+    expect(clientSource).toContain("[PUBLIC_VISITOR_HEADER]: visitorToken");
+  });
 });

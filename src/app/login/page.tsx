@@ -4,8 +4,8 @@ import Link from "next/link";
 import { createTranslator } from "@/i18n/core";
 import { getRequestLocale } from "@/i18n/server";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const [{ error }, locale] = await Promise.all([searchParams, getRequestLocale()]);
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; reset?: string }> }) {
+  const [{ error, reset }, locale] = await Promise.all([searchParams, getRequestLocale()]);
   const t = createTranslator(locale);
 
   return (
@@ -29,6 +29,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <p className="muted">{t("login.copy")}</p>
 
           {error ? <p className="form-error" role="alert">{t("login.invalid")}</p> : null}
+          {reset ? <p className="form-success" role="status">{t("login.reset")}</p> : null}
 
           <form action="/api/auth/login" method="post">
             <label htmlFor="email">{t("login.email")}</label>
@@ -37,6 +38,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <input id="password" name="password" type="password" autoComplete="current-password" required />
             <button type="submit">{t("login.submit")} <ArrowRight size={18} /></button>
           </form>
+          <nav className="auth-links" aria-label={t("login.title")}><Link href="/forgot-password">{t("login.forgot")}</Link><Link href="/register">{t("login.register")}</Link></nav>
           <p className="local-note">{t("login.local")}</p>
         </div>
       </section>

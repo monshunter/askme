@@ -115,8 +115,26 @@ describe("grounded Agent answers", () => {
     expect(complete.mock.calls[0]?.[0][0]?.content).toContain("sourceMarkers");
   });
 
+  it("normalizes bracketed Repository source markers returned by the Provider", async () => {
+    const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
+      content: JSON.stringify({
+        answer: "`paginate` 会把单元格按页容量拆分，最后一页可以少于整页容量。",
+        citations: [{ evidence: 1, sourceMarkers: ["[S1]"] }],
+      }),
+      inputTokens: 30,
+      outputTokens: 10,
+    });
+
+    const result = await generateGroundedAnswer("`paginate` 如何处理剩余单元格？", [repositoryEvidence], { answerTone: "professional", privacySafeMode: true }, { complete });
+
+    expect(result.citations).toEqual([{
+      ...repositoryEvidence,
+      sourceCitations: (repositoryEvidence as Extract<RetrievedEvidence, { repositoryWikiPageId: string }>).sourceCitations.slice(0, 1),
+    }]);
+  });
+
   it("rejects missing or foreign Repository source markers", async () => {
-    for (const sourceMarkers of [undefined, [], ["S9"]]) {
+    for (const sourceMarkers of [undefined, [], ["S9"], ["S1", "[S1]"]]) {
       const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
         content: JSON.stringify({ answer: "Unsupported answer", citations: [{ evidence: 1, ...(sourceMarkers === undefined ? {} : { sourceMarkers }) }] }),
         inputTokens: 10,
