@@ -155,11 +155,17 @@ Evidence Judge 输出 `full | partial | none | conflicted`：
 
 初检不完整时，Judge 可以基于 unsupported aspects 产生一次定向补检。一个问题最多两轮检索；补检不得扩大授权来源，结果必须与第一轮去重。第二轮失败后只能基于第一轮输出 partial/none，不能无界重试。
 
+Host 必须把用户当前问题拆成有稳定顺序和 ID 的显式回答方面。复合问题中的公司、任职时间、职责、成果等方面不能因检索已命中部分内容而被合并或遗漏；每个方面最终必须由至少一个已验证 Claim 回答，或明确显示当前授权 Evidence 不支持该方面。检索词命中率不能替代问题方面覆盖。
+
 ## 8. Claim 验证与 Citation
 
-Answer Generator 必须先生成结构化 coverage、claims、aspectId、evidenceIds 和 unsupported aspects。Host 先校验每个 evidence ID 的 owner、visibility、active version、checksum 和来源状态，再交给独立 Claim Verifier。
+Answer Generator 必须先生成结构化 coverage、claims、aspectId、evidenceIds 和 `unsupportedAspectIds`。Host 先校验每个 `aspectId` 属于当前问题、每个 evidence ID 的 owner、visibility、active version、checksum 和来源状态，再交给独立 Claim Verifier。
+
+每次回答在请求开始时冻结一个由 Host 时钟产生的 `YYYY-MM-DD` 当前日期，并作为受信任的时间上下文传给 Answer Generator。模型不得根据训练截止时间、历史 Prompt 或 Evidence 猜测当前年份；工作年限等相对时间只能由 Evidence 中的起止时间与该 Host 日期计算。若用户明确询问工作年限，且独立 Verifier 已确认的 Claim 含明确职业起点，Host 必须用冻结日期重新计算并渲染持续时长，不能因模型只复述起点而遗漏年限，也不能发布模型给出的过期当前年份。Host 日期不构成职业事实 Citation，计算结果仍必须引用提供起止时间的 Evidence。
 
 Claim Verifier 只读取该 Claim 引用的 Evidence subset，输出 `entailed | partially_entailed | unsupported | contradicted`。Host 删除 unsupported/contradicted Claim，收窄 partially_entailed Claim，最多允许一次受控修复。最终 Markdown 由 Host 渲染；Citation Validator 失败时不得持久化或输出无 Citation 替代答案。
+
+Host 只接受已声明问题方面的 Claim，并按原问题方面顺序渲染最终 Markdown。Verifier 删除或收窄 Claim 后，Host 必须重新对账方面覆盖；没有有效 Claim 的方面转为明确的 Evidence 缺口。相同或近似相同的 Claim 不得在同一回答中重复发布；无法安全合并的语义重复必须以稳定回答质量错误失败，不能把重复内容伪装成完整回答。
 
 Citation 形态：
 
@@ -267,6 +273,8 @@ V2 发布必须满足：
 - [x] `AC-RAG2-004` Parent–Child 切分遵守结构、token、上下文和范围约束，简历公司/岗位/职责不会失去关联。
 - [x] `AC-RAG2-005` Evidence Judge 正确区分 full、partial、none、conflicted、refused 和 failed，最多进行一次不扩大权限的定向补检。
 - [x] `AC-RAG2-006` Claim Verifier 删除或收窄无支持/矛盾 Claim，Citation Validator 只允许当前授权、active、checksum 有效的 Evidence。
+- [x] `AC-ANSWER-001` 工作年限和其他相对时间使用请求开始时冻结的 Host 当前日期计算，不再由模型猜测当前年份；计算结果引用包含起止时间的授权 Evidence。
+- [x] `AC-ANSWER-002` 复合问题的每个显式方面均由已验证 Claim 回答或明确披露 Evidence 缺口，最终 Markdown 按问题顺序组织且不发布相同或近似相同的重复 Claim。
 - [x] `AC-RAG2-007` Embedding、Rerank、Planner 和第二轮失败按合同安全降级；Answer/Verifier/Citation 失败不伪装成“证据不足”。
 - [x] `AC-REPO-DOC-001` Repository 级批准后，白名单内当前和未来 Markdown/PDF 自动索引并继承 visibility；源码与扫描 PDF 不进入 Embedding。
 - [x] `AC-REPO-DOC-002` Repository sync 与 index readiness 独立可见，超限/不支持文件产生 ready_with_warnings 和稳定原因，新索引失败不混用 commit。

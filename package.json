@@ -47,6 +47,7 @@
     "smoke:rag-index-foundation": "tsx scripts/smoke-rag-index-foundation.ts",
     "eval:rag-v2": "tsx scripts/eval-rag-v2.ts",
     "eval:rag-v2:provider": "tsx scripts/eval-rag-v2.ts --provider",
+    "eval:rag-answer-quality": "tsx scripts/eval-rag-answer-quality.ts",
     "smoke:upload": "tsx scripts/smoke-upload.ts",
     "verify:docker-lifecycle": "scripts/verify-docker-lifecycle.sh",
     "verify:surface-matrix": "tsx scripts/verify-surface-matrix.ts",

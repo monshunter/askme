@@ -423,6 +423,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
   }
 
   const startedAt = performance.now();
+  const currentDate = new Date().toISOString().slice(0, 10);
   let failureModel = "unconfigured";
   try {
     const config = getRuntimeConfig();
@@ -489,6 +490,8 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       evidence,
       coverage: retrieval?.coverage ?? "none",
       unsupportedAspects: retrieval?.unsupportedAspects ?? [],
+      answerAspects: retrieval?.plan.answerAspects,
+      currentDate,
       settings,
       generatorClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.rag }),
       verifierClient: new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.verifier }),

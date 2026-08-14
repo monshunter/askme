@@ -23,4 +23,5 @@
 | PLAN-018 | PLAN-018：闭环邮件公开域名与游客多会话管理 | [PLAN-018.md](PLAN-018.md) |
 | PLAN-019 | PLAN-019：闭环公开身份补全与 Agent 发布可达性 | [PLAN-019.md](PLAN-019.md) |
 | PLAN-020 | PLAN-020：交付真实 Hybrid Agentic RAG V2 | [PLAN-020.md](PLAN-020.md) |
+| PLAN-021 | PLAN-021：闭环 Agent 回答时间与内容质量 | [PLAN-021.md](PLAN-021.md) |
 <!-- AGENT-HARNESS:END INDEX -->

@@ -4,6 +4,7 @@ import type { AnswerClient, AnswerConversationMessage } from "@/server/agent/ans
 
 export const evidenceTypes = ["material", "knowledge", "approved_wiki", "repository_document"] as const;
 export type RagEvidenceType = (typeof evidenceTypes)[number];
+export type RagAnswerAspect = { aspectId: string; label: string };
 
 const plannerSchema = z.object({
   standaloneQuery: z.string().trim().min(1).max(500),
@@ -16,6 +17,7 @@ const plannerSchema = z.object({
 
 export type RagQueryPlan = z.infer<typeof plannerSchema> & {
   normalizedQuestion: string;
+  answerAspects: RagAnswerAspect[];
   exactPhrases: string[];
   lexicalTerms: string[];
   trigramProbes: string[];
@@ -47,6 +49,26 @@ function normalizeQuestion(value: string) {
     .replace(/[：]/gu, ":")
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+const interrogativeAspect = /(?:多少|多久|哪些|什么|何时|什么时候|哪(?:个|些|里)|如何|怎样|是否|吗|\b(?:what|which|when|where|who|whose|how|whether)\b)/iu;
+
+function cleanAspectLabel(value: string) {
+  return value
+    .replace(/^\s*(?:以及|并且|然后|还有|and\b)\s*/iu, "")
+    .replace(/[.!?;,:\s]+$/gu, "")
+    .trim();
+}
+
+export function extractAnswerAspects(question: string): RagAnswerAspect[] {
+  const normalizedQuestion = normalizeQuestion(question);
+  const strongClauses = normalizedQuestion.split(/[?;]+/u).map(cleanAspectLabel).filter(Boolean);
+  const labels = strongClauses.flatMap((clause) => {
+    const commaParts = clause.split(/,+/u).map(cleanAspectLabel).filter(Boolean);
+    return commaParts.filter((part) => interrogativeAspect.test(part)).length >= 2 ? commaParts : [clause];
+  }).slice(0, 8);
+  const stableLabels = labels.length > 0 ? labels : [cleanAspectLabel(normalizedQuestion) || normalizedQuestion];
+  return stableLabels.map((label, index) => ({ aspectId: `a${index + 1}`, label }));
 }
 
 function contextEntities(messages: AnswerConversationMessage[]) {
@@ -95,6 +117,7 @@ export function analyzeDeterministicQuery(question: string, conversation: Answer
   const trigramProbes = unique([...entities, ...latin.filter((term) => term.length >= 3), ...cjk.filter((term) => term.length === 3)], 24);
   return {
     normalizedQuestion,
+    answerAspects: extractAnswerAspects(normalizedQuestion),
     standaloneQuery,
     entities,
     mustTerms: quoted,

@@ -81,7 +81,7 @@ Web 负责同步命令、问答 API、Candidate/Admin Trace 和 Citation project
 | `IndexCoordinator` | 创建 index/source version、调度 job、原子激活、失败保持旧 active、强撤销和 GC |
 | `RepositoryDocumentCollector` | 在 immutable artifact 内按 allowlist/glob/容量发现并提取 Markdown/PDF 文本 |
 | `DeterministicQueryAnalyzer` | Unicode、中文片段、CJK n-gram、实体、精确短语、混合语言与会话指代 seed |
-| `QueryPlanner` | 输出受 schema 约束的 standalone query、terms、semantic queries 和 evidence type |
+| `QueryPlanner` | 输出受 schema 约束的 standalone query、terms、semantic queries 和 evidence type；Host 同步保留按原问题顺序提取的 answer aspects |
 | `HybridRetriever` | 在同一授权集合并行执行 exact、lexical、vector、structured 并返回 route ranks |
 | `RrfFusion` | 按配置化 weight/k 合并、stable dedup、Parent 限流和 evidence-family 标记 |
 | `EvidenceJudge` | 独立 Rerank 后判断 coverage、unsupported aspects 与是否执行唯一补检 |
@@ -200,7 +200,7 @@ flowchart TD
 
 ### 7.1 Deterministic Query
 
-`DeterministicQueryAnalyzer` 先执行 NFKC、空白/标点规范化、Latin token lowercase、中文短语候选与 2/3-gram、数字/版本/专名保留。它生成 exact phrases、FTS lexemes、trigram probes 和 semantic seed；中文不再通过 `websearch_to_tsquery` 的单个整句 OR 字符串表达。
+`DeterministicQueryAnalyzer` 先执行 NFKC、空白/标点规范化、Latin token lowercase、中文短语候选与 2/3-gram、数字/版本/专名保留。它生成 exact phrases、FTS lexemes、trigram probes、semantic seed，以及按原问题顺序编号的 `answerAspects[] = { aspectId, label }`；中文不再通过 `websearch_to_tsquery` 的单个整句 OR 字符串表达。`answerAspects` 是回答完整性的 Host contract，不由 Provider 覆盖或删除。
 
 Query Planner 使用独立 Chat Profile 和严格 Zod schema。Planner 输入只包含当前问题、受控会话摘要和 Host 已授权的 source type 列表，不包含未检索正文。输出不得携带 SQL、tenant、visibility 或 tool call。失败、超时或 schema invalid 时直接使用 deterministic plan。
 
@@ -228,12 +228,14 @@ Answer Generator 输出：
 ```text
 coverage
 claims[] = { claimId, aspectId, text, evidenceIds[] }
-unsupportedAspects[]
+unsupportedAspectIds[]
 ```
+
+Orchestrator 在请求开始时从 Host 时钟冻结一次 `currentDate: YYYY-MM-DD`，与 `answerAspects` 一起作为受信任 system context 传给 Answer Generator。`currentDate` 只允许参与工作年限等相对时间计算，不能替代职业 Evidence；同一请求的检索、生成、验证和持久化不得重新取时钟而产生跨日漂移。对于明确询问工作年限的单方面问题，Host renderer 从已通过 Verifier 的 Claim 提取带“起 / since / from”语义的职业起点，并以 `currentDate` 计算约年数或年月；无法得到已验证起点时仍使用普通已验证 Claim，不从原始 Evidence 猜测日期。该派生文本复用 Claim 的 Citation，既覆盖 Provider 遗漏时长，也覆盖 Provider 使用旧年份的情况。
 
 Host 在 Verifier 前重新加载 evidence IDs 并核对 owner、active source/index、visibility、checksum。Claim Verifier 每次只接收一个或一小组 Claim 及其 cited subset，输出 entailed/partial/unsupported/contradicted 和可选 narrowed text。一次 repair 只能删除或收窄 Claim，不能新增 evidence ID。
 
-Citation Validator 确认每条最终 Claim 至少一个 entailed Evidence；Material 使用 Child range/checksum，Repository Markdown 使用 commit/path/lines/checksum，PDF 使用 commit/path/page/checksum，Wiki marker 必须映射当前 Approved Projection 的 Host-verified source。Host 按用户语言渲染 Markdown 和 Citation DTO，模型不能直接决定内部 URL。
+Citation Validator 确认每条最终 Claim 至少一个 entailed Evidence；Material 使用 Child range/checksum，Repository Markdown 使用 commit/path/lines/checksum，PDF 使用 commit/path/page/checksum，Wiki marker 必须映射当前 Approved Projection 的 Host-verified source。Host 拒绝未知 `aspectId`，在 Verifier 后重新汇总每个 answer aspect，并把没有有效 Claim 的方面转为显式缺口。最终 Claim 先执行规范化完全重复与同方面高重叠检查；同方面安全可判定的重复只保留信息完整的一条，无法安全合并的高重叠返回稳定质量错误。跨方面只拒绝规范化后完全相同的 Claim，允许职责与成果等方面保留必要的公司或项目上下文。Host 按 answer aspect 原顺序和用户语言渲染 Markdown 与 Citation DTO，模型不能直接决定章节顺序或内部 URL。
 
 互相冲突的 Evidence 由 Judge 标记 `conflicted`；Answer 只能说明冲突和各自来源，不能选择“看起来更新”的一方。`partial` 只渲染已支持方面并列出缺口。Answer/Verifier/Validator failure 使用独立 stable error，不返回 insufficient fallback。
 

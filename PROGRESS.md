@@ -151,3 +151,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-020：交付真实 Hybrid Agentic RAG V2](docs/plans/PLAN-020.md)
 ---
+
+---
+ID: OBJ-016
+Objective: 修复 Agent 时间事实、语义重复和要点缺失，提升职业问答的正确性与完整性
+Status: 已完成
+Plans:
+- [x] [PLAN-021：闭环 Agent 回答时间与内容质量](docs/plans/PLAN-021.md)
+---

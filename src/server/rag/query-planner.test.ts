@@ -26,6 +26,17 @@ describe("analyzeDeterministicQuery", () => {
     expect(plan.standaloneQuery).toContain("Askme");
     expect(plan.standaloneQuery).toContain("它解决了什么问题");
   });
+
+  it("preserves every explicit compound-question aspect in the original order", () => {
+    const plan = analyzeDeterministicQuery("先后在哪些公司工作？分别是什么时候？负责什么工作，取得哪些成就？");
+
+    expect(plan.answerAspects).toEqual([
+      { aspectId: "a1", label: "先后在哪些公司工作" },
+      { aspectId: "a2", label: "分别是什么时候" },
+      { aspectId: "a3", label: "负责什么工作" },
+      { aspectId: "a4", label: "取得哪些成就" },
+    ]);
+  });
 });
 
 describe("planRagQuery", () => {
