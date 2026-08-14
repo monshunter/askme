@@ -7,6 +7,7 @@ import { projectPublicCitations } from "./public-citation";
   chunkId: "11111111-1111-4111-8111-111111111111",
   rank: 1,
   materialId: "22222222-2222-4222-8222-222222222222",
+  contentChecksum: "a".repeat(64),
   materialTitle: "career.md",
   materialKind: "file" as const,
   mimeType: "text/markdown",
@@ -56,10 +57,16 @@ describe("public Citation projection", () => {
     });
   });
 
-  it("lists a source name once when an answer cites more than one chunk from it", () => {
+  it("lists identical source content once across chunks and duplicate Material rows", () => {
     expect(projectPublicCitations("candidate-agent", [
       { ...base, visibility: "citation_allowed" },
-      { ...base, chunkId: "33333333-3333-4333-8333-333333333333", rank: 2, visibility: "citation_allowed" },
+      {
+        ...base,
+        chunkId: "33333333-3333-4333-8333-333333333333",
+        materialId: "44444444-4444-4444-8444-444444444444",
+        rank: 2,
+        visibility: "citation_allowed",
+      },
     ])).toHaveLength(1);
   });
 });

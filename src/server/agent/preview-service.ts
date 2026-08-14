@@ -11,6 +11,7 @@ import { getPool } from "@/server/db/client";
 import { AppError, toAppError } from "@/server/errors";
 
 import { generateGroundedAnswer } from "./answer-generator";
+import { deduplicateDocumentSources } from "./citation-dedup";
 import { ensureConversationSuggestions } from "./conversation-suggestions";
 import { recordSuccessfulAiUsage } from "./ai-usage";
 import { retrieveUnifiedEvidence } from "./evidence-provider";
@@ -38,6 +39,32 @@ type PreviewAnswerResult = Awaited<ReturnType<typeof generateGroundedAnswer>> | 
   citations: [];
   usage: { inputTokens: number | null; outputTokens: number | null };
 };
+
+type RawPreviewDocumentCitation = {
+  kind: "document";
+  materialId: string;
+  contentChecksum: string | null;
+  rank: number;
+} & Record<string, unknown>;
+
+type RawPreviewRepositoryCitation = {
+  kind: "repository";
+  rank: number;
+} & Record<string, unknown>;
+
+type RawPreviewCitation = RawPreviewDocumentCitation | RawPreviewRepositoryCitation;
+
+function projectPreviewCitations(citations: RawPreviewCitation[]) {
+  const documents = deduplicateDocumentSources(citations.filter((citation): citation is RawPreviewDocumentCitation => citation.kind === "document"));
+  return [...documents, ...citations.filter((citation): citation is RawPreviewRepositoryCitation => citation.kind === "repository")]
+    .sort((left, right) => left.rank - right.rank)
+    .map((citation, index) => {
+      if (citation.kind === "repository") return { ...citation, rank: index + 1 };
+      const projected: Record<string, unknown> = { ...citation };
+      Reflect.deleteProperty(projected, "contentChecksum");
+      return { ...projected, rank: index + 1 };
+    });
+}
 
 async function existingExchange(ownerId: string, clientMessageId: string) {
   const result = await getPool().query<ExchangeRow>(
@@ -150,7 +177,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
   if (!thread) throw new AppError("CONVERSATION_CREATE_FAILED", "The preview conversation could not be created.", 500);
   await recoverStaleAnswers(thread.id, ownerId, pool);
   const actorKey = `candidate:${ownerId}`;
-  const messages = await pool.query(
+  const messages = await pool.query<{ citations: RawPreviewCitation[] } & Record<string, unknown>>(
     `SELECT message.id,message.role,message.status,
             CASE WHEN message.source_invalidated_at IS NOT NULL
                    OR EXISTS (
@@ -190,7 +217,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
               SELECT jsonb_agg(item.payload ORDER BY item.rank) FROM (
                 SELECT citation.rank,jsonb_build_object(
                   'kind','document','chunkId',citation.chunk_id,'rank',citation.rank,'excerpt',citation.excerpt,
-                  'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
+                  'materialId',material.id,'contentChecksum',material.content_checksum,'materialTitle',material.title,'materialKind',material.kind,
                   'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
                 ) AS payload
                 FROM message_citations citation
@@ -215,7 +242,7 @@ export async function loadPreviewThread(ownerId: string, requestedConversationId
     [thread.id, ownerId, actorKey],
   );
   const suggestedQuestions = await ensureConversationSuggestions({ conversationId: thread.id, ownerId, mode: "preview", locale });
-  return { conversation: thread, messages: messages.rows, suggestedQuestions };
+  return { conversation: thread, messages: messages.rows.map((message) => ({ ...message, citations: projectPreviewCitations(message.citations) })), suggestedQuestions };
 }
 
 async function persistAnswer(

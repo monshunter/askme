@@ -1,11 +1,13 @@
 import { safeExternalHref, sourceOpenMode, type MaterialKind, type SourceOpenMode } from "@/components/source-viewer-policy";
 import type { MaterialVisibility } from "@/server/privacy/visibility-policy";
+import { documentSourceIdentity } from "@/server/agent/citation-dedup";
 
 export type RawPublicDocumentCitation = {
   kind?: "document";
   chunkId: string;
   rank: number;
   materialId: string;
+  contentChecksum: string | null;
   materialTitle: string;
   materialKind: MaterialKind;
   mimeType: string | null;
@@ -60,8 +62,9 @@ export function projectPublicCitations(slug: string, citations: RawPublicCitatio
         access,
       }];
     }
-    if (seen.has(citation.materialId)) return [];
-    seen.add(citation.materialId);
+    const key = documentSourceIdentity(citation);
+    if (seen.has(key)) return [];
+    seen.add(key);
     let access: PublicCitation["access"] = null;
     if (citation.visibility === "public_preview") {
       const href = citation.materialKind === "file"

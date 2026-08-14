@@ -2,11 +2,13 @@ import type { Pool } from "pg";
 
 import { allowedVisibilities, type MaterialVisibility, type VisibilityConsumer } from "@/server/privacy/visibility-policy";
 
+import { deduplicateDocumentChunks } from "./citation-dedup";
 import { buildEvidenceSearchQuery, parseEvidenceQuery, type EvidenceQuery } from "./retrieval-input";
 
 export type RetrievedDocumentEvidence = {
   chunkId: string;
   materialId: string;
+  contentChecksum?: string | null;
   materialTitle: string;
   materialKind: "file" | "notion" | "website";
   externalUrl: string | null;
@@ -56,7 +58,7 @@ export async function searchEvidence(
   const query = parseEvidenceQuery(input);
   const searchQuery = buildEvidenceSearchQuery(query.query);
   const result = await pool.query<RetrievedDocumentEvidence>(
-    `SELECT c.id AS "chunkId",c.material_id AS "materialId",m.title AS "materialTitle",m.kind AS "materialKind",
+    `SELECT c.id AS "chunkId",c.material_id AS "materialId",m.content_checksum AS "contentChecksum",m.title AS "materialTitle",m.kind AS "materialKind",
             m.external_url AS "externalUrl",m.visibility,c.position,c.content,
             greatest(
               ts_rank_cd(c.search_vector,websearch_to_tsquery('simple',$3)),
@@ -82,7 +84,7 @@ export async function searchEvidence(
        )
      ORDER BY score DESC,m.updated_at DESC,c.position ASC,c.id ASC
      LIMIT $5`,
-    [ownerId, allowedVisibilities(consumer), searchQuery, escapeLikePattern(query.query), query.limit],
+    [ownerId, allowedVisibilities(consumer), searchQuery, escapeLikePattern(query.query), query.limit * 4],
   );
-  return result.rows;
+  return deduplicateDocumentChunks(result.rows).slice(0, query.limit);
 }

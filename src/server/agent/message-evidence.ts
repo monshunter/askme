@@ -3,10 +3,17 @@ import type { PoolClient } from "pg";
 import { allowedVisibilities, type VisibilityConsumer } from "@/server/privacy/visibility-policy";
 import { AppError } from "@/server/errors";
 
+import { documentSourceIdentity } from "./citation-dedup";
 import { isRepositoryEvidence, type RetrievedDocumentEvidence, type RetrievedEvidence } from "./retrieval";
 
 export function answerCitationCount(citations: RetrievedEvidence[]) {
-  return citations.reduce((count, citation) => count + (isRepositoryEvidence(citation) ? citation.sourceCitations.length : 1), 0);
+  const documentSources = new Set<string>();
+  let repositorySources = 0;
+  for (const citation of citations) {
+    if (isRepositoryEvidence(citation)) repositorySources += citation.sourceCitations.length;
+    else documentSources.add(documentSourceIdentity(citation));
+  }
+  return documentSources.size + repositorySources;
 }
 
 export async function validateAnswerEvidence(

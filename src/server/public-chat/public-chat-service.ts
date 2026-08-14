@@ -147,7 +147,7 @@ export async function loadPublicThread(slug: string, visitorToken: string | unde
               SELECT jsonb_agg(item.payload ORDER BY item.rank) FROM (
                 SELECT citation.rank,jsonb_build_object(
                   'kind','document','chunkId',citation.chunk_id,'rank',citation.rank,
-                  'materialId',material.id,'materialTitle',material.title,'materialKind',material.kind,
+                  'materialId',material.id,'contentChecksum',material.content_checksum,'materialTitle',material.title,'materialKind',material.kind,
                   'mimeType',material.mime_type,'externalUrl',material.external_url,'visibility',material.visibility
                 ) AS payload
                 FROM message_citations citation
