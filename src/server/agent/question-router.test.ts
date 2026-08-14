@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/server/errors";
 
-import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository, type QuestionRouterClient } from "./question-router";
+import { effectiveQuestionRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository, type QuestionRouterClient } from "./question-router";
 
 const repositories = [
   { id: "11111111-1111-4111-8111-111111111111", displayName: "Askme", deepAllowed: true },
@@ -30,6 +30,15 @@ describe("routeQuestion", () => {
     expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "out_of_scope", confidence: 1 }, null)).toBe("rag");
     expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "insufficient_authorized_evidence", confidence: 1 }, null)).toBe("rag");
     expect(effectiveQuestionRoute({ route: "refuse", reasonCode: "ambiguous_repository", confidence: 1 }, null)).toBe("refuse");
+  });
+
+  it("does not guess the only Repository when RAG evidence is insufficient", () => {
+    const oneCat = { id: "33333333-3333-4333-8333-333333333333", displayName: "OneCat", deepAllowed: true };
+    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "refuse", repositoryId: null }, [oneCat])).toBeNull();
+    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "rag", repositoryId: null }, [oneCat])).toBeNull();
+    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "deep", repositoryId: oneCat.id }, [oneCat])).toBeNull();
+    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "rag", repositoryId: oneCat.id }, [oneCat])).toBeNull();
+    expect(selectInsufficientEvidenceRepository("OneCat 项目呢？", { route: "rag", repositoryId: oneCat.id }, [oneCat])).toEqual(oneCat);
   });
   it("accepts a deep route only for a Host-authorized Repository", async () => {
     const result = await routeQuestion({

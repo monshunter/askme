@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { getRuntimeConfig } from "@/server/config";
 
-import { buildEvidencePack, rerankCandidates, runBoundedRetrieval } from "./evidence-orchestrator";
+import { buildEvidencePack, judgeEvidenceCoverage, rerankCandidates, runBoundedRetrieval } from "./evidence-orchestrator";
 import type { RetrievedRagEvidence } from "./hybrid-retriever";
 import { analyzeDeterministicQuery } from "./query-planner";
 
@@ -69,6 +69,60 @@ describe("buildEvidencePack", () => {
     expect(result.actualTokens).toBeLessThanOrEqual(result.effectiveTokens);
     expect(result.independentFamilyCount).toBe(1);
     expect(result.coverage).toBe("full");
+  });
+});
+
+describe("judgeEvidenceCoverage", () => {
+  it("returns none when low-relevance evidence does not support any required entity", () => {
+    const plan = {
+      ...analyzeDeterministicQuery("askme 项目呢？"),
+      entities: ["askme"],
+      mustTerms: ["askme", "项目"],
+      shouldTerms: ["askme", "项目", "介绍", "用途", "功能"],
+    };
+    const unrelated = {
+      ...candidate("e1", "f1", "OneCat 是一个用 Go 编写的声明式 HTTP 网关项目。"),
+      rerankScore: 0.391,
+      score: 0.391,
+      routeRanks: { lexical: 1, vector: 5 },
+    };
+    const unrelatedNegative = {
+      ...candidate("e2", "f2", "OneCat 是个人开源项目，但不是云资源供应平台。"),
+      rerankScore: 0.374,
+      score: 0.374,
+      routeRanks: { lexical: 2, vector: 7 },
+    };
+
+    expect(judgeEvidenceCoverage(plan, [unrelated, unrelatedNegative], false)).toEqual({ coverage: "none", unsupportedAspects: ["askme"] });
+  });
+
+  it("keeps strongly reranked semantic evidence eligible without requiring literal entity text", () => {
+    const plan = {
+      ...analyzeDeterministicQuery("Askme 是什么？"),
+      entities: ["Askme"],
+      mustTerms: ["Askme"],
+    };
+    const semanticMatch = {
+      ...candidate("e1", "f1", "这是一个帮助候选人管理职业资料并向面试官提供有引用回答的职业知识智能体。", { vector: 1 }),
+      rerankScore: 0.91,
+      score: 0.91,
+    };
+
+    expect(judgeEvidenceCoverage(plan, [semanticMatch], false).coverage).toBe("partial");
+  });
+
+  it("keeps a related multi-turn reference answerable when its resolved entity is supported", () => {
+    const plan = analyzeDeterministicQuery("它解决了什么问题？", [
+      { role: "user", content: "介绍一下 Askme 项目" },
+      { role: "assistant", content: "Askme 是职业知识 Agent。" },
+    ]);
+    const related = {
+      ...candidate("e1", "f1", "Askme 帮助候选人管理职业资料，并向面试官提供带 Citation 的授权回答。", { exact: 1, vector: 1 }),
+      rerankScore: 0.93,
+      score: 0.93,
+    };
+
+    expect(judgeEvidenceCoverage(plan, [related], false).coverage).toBe("partial");
   });
 });
 

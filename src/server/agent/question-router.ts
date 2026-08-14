@@ -56,6 +56,20 @@ export function effectiveQuestionRoute(decision: { route: "rag" | "deep" | "refu
   return "rag" as const;
 }
 
+export function selectInsufficientEvidenceRepository(
+  question: string,
+  decision: { route: "rag" | "deep" | "refuse"; repositoryId?: string | null },
+  repositories: QuestionRouteRepository[],
+) {
+  if (decision.route !== "rag" || !decision.repositoryId) return null;
+  const selected = repositories.find((repository) => repository.id === decision.repositoryId && repository.deepAllowed);
+  if (!selected) return null;
+  const normalizedQuestion = question.normalize("NFKC").toLocaleLowerCase();
+  const displayName = selected.displayName.normalize("NFKC").toLocaleLowerCase();
+  const shortName = displayName.split("/").at(-1) ?? displayName;
+  return normalizedQuestion.includes(displayName) || (shortName.length >= 3 && normalizedQuestion.includes(shortName)) ? selected : null;
+}
+
 function parseDecision(content: string) {
   try {
     const json = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");

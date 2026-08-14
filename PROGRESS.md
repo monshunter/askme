@@ -175,3 +175,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-023：统一 DeepSeek Flash 模型并回归 LLM 核心链路](docs/plans/PLAN-023.md)
 ---
+
+---
+ID: OBJ-019
+Objective: 修复公共 Agent 使用无关授权 Evidence 回答核心实体缺失问题，并在真实环境闭环验收
+Status: 已完成
+Plans:
+- [x] [PLAN-024：修复公共 Agent 无关证据误答](docs/plans/PLAN-024.md)
+---

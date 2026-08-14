@@ -16,8 +16,16 @@ function normalized(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase("en-US").replace(/\s+/gu, " ").trim();
 }
 
+function entityCoverageSignals(plan: RagQueryPlan) {
+  return unique(plan.entities.map(normalized).filter((term) => term.length >= 2)).slice(0, 8);
+}
+
+function coreCoverageSignals(plan: RagQueryPlan) {
+  return unique([...plan.mustTerms, ...plan.entities].map(normalized).filter((term) => term.length >= 2)).slice(0, 8);
+}
+
 function coverageSignals(plan: RagQueryPlan) {
-  const primary = unique([...plan.mustTerms, ...plan.entities].map(normalized).filter((term) => term.length >= 2));
+  const primary = coreCoverageSignals(plan);
   if (primary.length > 0) return primary.slice(0, 8);
   return unique(plan.lexicalTerms.map(normalized).filter((term) => term.length >= 2)).slice(0, 8);
 }
@@ -35,11 +43,18 @@ function conflictDetected(signals: string[], evidence: RetrievedRagEvidence[]) {
 export function judgeEvidenceCoverage(plan: RagQueryPlan, evidence: RetrievedRagEvidence[], rerankDegraded: boolean) {
   if (evidence.length === 0) return { coverage: "none" as const, unsupportedAspects: coverageSignals(plan) };
   const signals = coverageSignals(plan);
-  if (conflictDetected(signals, evidence)) return { coverage: "conflicted" as const, unsupportedAspects: [] as string[] };
   const packet = normalized(evidence.map((item) => item.parentContent).join("\n"));
   const supported = signals.filter((signal) => packet.includes(signal));
   const routeBacked = evidence.some((item) => Object.keys(item.routeRanks).length >= 2);
   const rerankBacked = evidence.some((item) => (item.rerankScore ?? 0) >= 0.45);
+  const coreSignals = coreCoverageSignals(plan);
+  const entitySignals = entityCoverageSignals(plan);
+  const requiredSignals = entitySignals.length > 0 ? entitySignals : coreSignals;
+  const supportedRequired = requiredSignals.filter((signal) => packet.includes(signal));
+  if (requiredSignals.length > 0 && supportedRequired.length === 0 && (rerankDegraded || !rerankBacked)) {
+    return { coverage: "none" as const, unsupportedAspects: requiredSignals };
+  }
+  if (conflictDetected(signals, evidence)) return { coverage: "conflicted" as const, unsupportedAspects: [] as string[] };
   const enoughSignals = signals.length === 0 || supported.length >= Math.min(2, signals.length);
   const full = enoughSignals && (rerankDegraded ? routeBacked : routeBacked || rerankBacked);
   return {

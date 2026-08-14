@@ -117,4 +117,6 @@
 | REVIEW-112 | REVIEW-112：PLAN-022 公开 Agent 与预览会话体验 Change Review | [REVIEW-112.md](REVIEW-112.md) |
 | REVIEW-113 | REVIEW-113：PLAN-023 DeepSeek Flash 降本与 LLM 核心链路 Plan Review | [REVIEW-113.md](REVIEW-113.md) |
 | REVIEW-114 | REVIEW-114：PLAN-023 DeepSeek Flash 降本与 LLM 核心链路 Change Review | [REVIEW-114.md](REVIEW-114.md) |
+| REVIEW-115 | REVIEW-115：PLAN-024 公共 Agent 相关性修复 Plan Review | [REVIEW-115.md](REVIEW-115.md) |
+| REVIEW-116 | REVIEW-116：PLAN-024 公共 Agent 相关性修复 Change Review | [REVIEW-116.md](REVIEW-116.md) |
 <!-- AGENT-HARNESS:END INDEX -->

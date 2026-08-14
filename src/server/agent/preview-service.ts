@@ -20,7 +20,7 @@ import { assessAgentQuestion } from "./question-policy";
 import { loadQuestionRepositories } from "./question-context";
 import { localizedQuestionMessage } from "./question-language";
 import { recordQuestionRoute } from "./question-route-audit";
-import { effectiveQuestionRoute, routeQuestion, selectSourceInspectionRepository } from "./question-router";
+import { effectiveQuestionRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository } from "./question-router";
 import { answerRagCitationCount, generateVerifiedRagAnswer, persistRagAnswerCitations, validateRagEvidence } from "@/server/rag/rag-answer";
 import { retrieveRagForQuestion } from "@/server/rag/rag-query-service";
 import { persistRetrievalTrace } from "@/server/rag/retrieval-trace";
@@ -500,6 +500,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
         callerMode: "candidate_preview", config, result: retrieval, latencyMs: performance.now() - retrievalStartedAt,
       });
     }
+    let insufficientEvidenceRepositoryId: string | null = null;
     if (assessment.allowed) {
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
       const routerStartedAt = performance.now();
@@ -511,6 +512,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
       const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories);
       const selected = sourceInspectionRepository ?? (decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
+      insufficientEvidenceRepositoryId = selectInsufficientEvidenceRepository(assessment.question, decision, repositories)?.id ?? null;
       const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null, sourceInspectionRepository !== null);
       await recordQuestionRoute(getPool(), {
         ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
@@ -554,14 +556,17 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     });
     if (result.outcome === "insufficient_evidence" && assessment.allowed) {
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
-      if (repositories.length === 1 && repositories[0]!.deepAllowed) {
+      const selected = insufficientEvidenceRepositoryId
+        ? repositories.find((repository) => repository.id === insufficientEvidenceRepositoryId && repository.deepAllowed)
+        : null;
+      if (selected) {
         await recordQuestionRoute(getPool(), {
           ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
-          requestedRoute: "rag", effectiveRoute: "deep", reasonCode: "rag_insufficient_single_repository",
-          confidence: 1, repositoryId: repositories[0]!.id, evidenceCount: evidence.length, requestId,
+          requestedRoute: "rag", effectiveRoute: "deep", reasonCode: "rag_insufficient_selected_repository",
+          confidence: 1, repositoryId: selected.id, evidenceCount: evidence.length, requestId,
         });
         const run = await queueConversationAnalysisRun({
-          pool: getPool(), config, ownerId, repositoryId: repositories[0]!.id, conversationId: exchange.conversationId,
+          pool: getPool(), config, ownerId, repositoryId: selected.id, conversationId: exchange.conversationId,
           assistantMessageId: exchange.assistantMessageId, clientMessageId: input.clientMessageId, actorRole: "candidate", requestId,
         });
         return { ...(await loadPreviewThread(ownerId, exchange.conversationId)), idempotent: false, pending: true, analysisRun: run };
