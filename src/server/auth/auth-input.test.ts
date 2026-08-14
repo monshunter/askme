@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseChangePasswordInput, parseForgotPasswordInput, parseRegistrationInput, parseResetPasswordInput } from "./auth-input";
+import { parseCandidateProfileInput, parseChangePasswordInput, parseForgotPasswordInput, parseRegistrationInput, parseResetPasswordInput } from "./auth-input";
 
 describe("Candidate authentication input", () => {
   it("normalizes registration identity without accepting a role", () => {
@@ -25,5 +25,22 @@ describe("Candidate authentication input", () => {
       password: "Replacement-pass-2026!",
     });
     expect(() => parseResetPasswordInput({ token: "predictable", password: "Replacement-pass-2026!" })).toThrow();
+  });
+
+  it("normalizes a publishable Candidate profile without accepting account authority fields", () => {
+    expect(parseCandidateProfileInput({
+      displayName: "  Riley Chen  ",
+      headline: "  AI Agent Engineer  ",
+      location: "  Shanghai  ",
+      bio: "  Builds evidence-grounded career agents.  ",
+      ownerId: "another-user",
+      role: "admin",
+    })).toEqual({
+      displayName: "Riley Chen",
+      headline: "AI Agent Engineer",
+      location: "Shanghai",
+      bio: "Builds evidence-grounded career agents.",
+    });
+    expect(() => parseCandidateProfileInput({ displayName: "Riley", headline: "   " })).toThrow();
   });
 });

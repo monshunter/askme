@@ -119,12 +119,12 @@ try {
   if (!reenabled.changed || !(await request(`/api/public/agents/${firstSlug}`)).response.ok) throw new Error("Publish action did not restore Public Mode on the existing link");
 
   const sessionAddress = "198.51.100.9";
-  const startSession = async (visitorCookie?: string) => {
+  const startSession = async (visitorToken?: string) => {
     const response = await fetch(`${baseUrl}/api/public/agents/${firstSlug}/session`, {
       method: "POST",
-      headers: { "x-forwarded-for": sessionAddress, ...(visitorCookie ? { cookie: visitorCookie } : {}) },
+      headers: { "x-forwarded-for": sessionAddress, ...(visitorToken ? { "x-askme-visitor-token": visitorToken } : {}) },
     });
-    const payload = (await response.json()) as { data?: { conversationId?: string; created?: boolean }; error?: { code?: string } };
+    const payload = (await response.json()) as { data?: { conversationId?: string; created?: boolean; visitorToken?: string }; error?: { code?: string } };
     return { response, payload, cookie: response.headers.get("set-cookie") };
   };
 
@@ -147,13 +147,14 @@ try {
 
   const firstSession = await startSession();
   const visitorCookie = firstSession.cookie?.split(";", 1)[0];
+  const firstVisitorToken = firstSession.payload.data?.visitorToken;
   const firstConversationId = firstSession.payload.data?.conversationId;
   const sessionCookiePolicy = firstSession.cookie?.toLowerCase() ?? "";
-  if (!firstSession.response.ok || !firstSession.payload.data?.created || !visitorCookie || !firstConversationId || !sessionCookiePolicy.includes("httponly") || !sessionCookiePolicy.includes("samesite=lax")) {
+  if (!firstSession.response.ok || !firstSession.payload.data?.created || !firstVisitorToken || !visitorCookie || !firstConversationId || !sessionCookiePolicy.includes("httponly") || !sessionCookiePolicy.includes("samesite=lax")) {
     throw new Error("Anonymous visitor session cookie was not created safely");
   }
-  const resumedSession = await startSession(visitorCookie);
-  if (!resumedSession.response.ok || resumedSession.payload.data?.created !== false || resumedSession.payload.data.conversationId !== firstConversationId) {
+  const resumedSession = await startSession(firstVisitorToken);
+  if (!resumedSession.response.ok || resumedSession.payload.data?.created !== false || resumedSession.payload.data.conversationId !== firstConversationId || resumedSession.payload.data.visitorToken !== firstVisitorToken) {
     throw new Error("Anonymous visitor session did not persist across requests");
   }
   for (let creation = 1; creation < 20; creation += 1) {
@@ -169,7 +170,7 @@ try {
     "SELECT visitor_token_hash AS \"visitorTokenHash\" FROM conversations WHERE id=$1 AND mode='public'",
     [firstConversationId],
   );
-  const rawVisitorToken = visitorCookie.split("=", 2)[1]!;
+  const rawVisitorToken = firstVisitorToken;
   if (!storedVisitor.rows[0]?.visitorTokenHash || storedVisitor.rows[0].visitorTokenHash.includes(rawVisitorToken)) throw new Error("Raw visitor credential was stored in the database");
 
   const publicProjection = await request(`/api/public/agents/${firstSlug}`);

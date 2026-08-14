@@ -26,6 +26,13 @@ const changePasswordSchema = z.object({
   confirmPassword: z.string().max(200).optional(),
 }).strip().refine((value) => value.confirmPassword === undefined || value.confirmPassword === value.newPassword)
   .transform((value) => ({ currentPassword: value.currentPassword, newPassword: value.newPassword }));
+const optionalProfileText = (max: number) => z.string().trim().max(max).optional().default("").transform((value) => value || null);
+const candidateProfileSchema = z.object({
+  displayName: z.string().trim().min(1).max(120),
+  headline: z.string().trim().min(1).max(160),
+  location: optionalProfileText(160),
+  bio: optionalProfileText(2_000),
+}).strip();
 
 function parse<T>(schema: z.ZodType<T>, value: unknown, code: string, message: string) {
   const result = schema.safeParse(value);
@@ -49,7 +56,12 @@ export function parseChangePasswordInput(value: unknown) {
   return parse(changePasswordSchema, value, "INVALID_PASSWORD_CHANGE_INPUT", "Enter the current password and a new password of at least 12 characters.");
 }
 
+export function parseCandidateProfileInput(value: unknown) {
+  return parse(candidateProfileSchema, value, "INVALID_PROFILE_INPUT", "Enter a valid display name and professional headline.");
+}
+
 export type RegistrationInput = ReturnType<typeof parseRegistrationInput>;
 export type ForgotPasswordInput = ReturnType<typeof parseForgotPasswordInput>;
 export type ResetPasswordInput = ReturnType<typeof parseResetPasswordInput>;
 export type ChangePasswordInput = ReturnType<typeof parseChangePasswordInput>;
+export type CandidateProfileInput = ReturnType<typeof parseCandidateProfileInput>;

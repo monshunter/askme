@@ -47,7 +47,7 @@ async function postJson(path: string, body: Record<string, string>, cookie?: str
 
 async function currentUser(cookie: string) {
   const response = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie } });
-  const payload = (await response.json()) as { data?: { user?: { email: string; role: string } }; error?: { code?: string } };
+  const payload = (await response.json()) as { data?: { user?: { email: string; role: string; displayName: string; headline: string | null; location: string | null; bio: string | null } }; error?: { code?: string } };
   return { response, payload };
 }
 
@@ -107,6 +107,18 @@ async function verifyCandidateLifecycle(publicBaseUrl: string) {
     const registeredMe = await currentUser(registration.cookie);
     assert(registeredMe.response.ok && registeredMe.payload.data?.user?.email === email, "Registration session was not resolved");
     assert(registeredMe.payload.data?.user?.role === "candidate", "Public registration escaped the Candidate role boundary");
+    const profile = await postJson("/api/auth/profile", {
+      displayName: "Auth Smoke Candidate",
+      headline: "Career Agent Test Engineer",
+      location: "Smoke Lab",
+      bio: "Validates Candidate identity and publication readiness.",
+      ownerId: "another-user",
+      role: "admin",
+    }, registration.cookie);
+    assert(profile.response.status === 200 && profile.payload.data?.updated === true, `Candidate profile update failed with ${profile.response.status}`);
+    const profiledMe = await currentUser(registration.cookie);
+    assert(profiledMe.payload.data?.user?.headline === "Career Agent Test Engineer", "Candidate profile update was not persisted for the current account");
+    assert(profiledMe.payload.data?.user?.role === "candidate", "Candidate profile update changed the account role");
 
     const unknownReset = await postJson("/api/auth/forgot-password", { email: `unknown-${suffix}@askme.local` });
     const knownReset = await postJson("/api/auth/forgot-password", { email });
@@ -146,6 +158,7 @@ async function verifyCandidateLifecycle(publicBaseUrl: string) {
 
     return {
       registration: registration.response.status,
+      profile: profile.response.status,
       forgotPassword: knownReset.response.status,
       resetPassword: reset.response.status,
       tokenReplay: replay.response.status,

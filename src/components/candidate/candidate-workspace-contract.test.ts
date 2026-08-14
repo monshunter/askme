@@ -11,6 +11,7 @@ const knowledgeClientSource = readFileSync(new URL("./knowledge-client.tsx", imp
 const dashboardPageSource = readFileSync(new URL("../../app/workspace/page.tsx", import.meta.url), "utf8");
 const agentPageSource = readFileSync(new URL("../../app/workspace/agent/page.tsx", import.meta.url), "utf8");
 const publicationServiceSource = readFileSync(new URL("../../server/publication/publication-service.ts", import.meta.url), "utf8");
+const accountPageSource = readFileSync(new URL("../../app/workspace/account/page.tsx", import.meta.url), "utf8");
 
 describe("Candidate Workspace consolidation contract", () => {
   it("keeps only the primary navigation and no shell-level language switcher", () => {
@@ -50,6 +51,12 @@ describe("Candidate Workspace consolidation contract", () => {
   it("synchronizes publication mutations with the Agent public-mode control", () => {
     expect(agentClientSource).toContain("onPublicModeChange");
     expect(publicationControlsSource).toContain("onPublicModeChange(payload.data.publicMode)");
+  });
+
+  it("routes blocked public identity to the editable profile and preserves the Agent return path", () => {
+    expect(publicationControlsSource).toContain('/workspace/account?returnTo=/workspace/agent#public-profile');
+    expect(accountPageSource).toContain('id="public-profile"');
+    expect(accountPageSource).toContain('action="/api/auth/profile"');
   });
 
   it("hides the privacy confirmation action for the confirmed revision", () => {

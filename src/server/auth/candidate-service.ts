@@ -5,7 +5,7 @@ import { getPool } from "@/server/db/client";
 import { AppError } from "@/server/errors";
 
 import { createSessionCredential, hashPassword, hashSessionToken, verifyPassword } from "./crypto";
-import type { ChangePasswordInput, ForgotPasswordInput, RegistrationInput, ResetPasswordInput } from "./auth-input";
+import type { CandidateProfileInput, ChangePasswordInput, ForgotPasswordInput, RegistrationInput, ResetPasswordInput } from "./auth-input";
 import { sendPasswordResetEmail } from "./password-mailer";
 import { publicAppUrl } from "@/server/mail/public-url";
 
@@ -39,6 +39,33 @@ export async function registerCandidate(input: RegistrationInput, requestId?: st
     if (error && typeof error === "object" && "code" in error && error.code === "23505") {
       throw new AppError("ACCOUNT_EXISTS", "An account already exists for this email address.", 409);
     }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateCandidateProfile(userId: string, input: CandidateProfileInput, requestId?: string) {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `UPDATE users
+       SET display_name=$2,headline=$3,location=$4,bio=$5,updated_at=now()
+       WHERE id=$1 AND role='candidate' AND status='active'
+       RETURNING id`,
+      [userId, input.displayName, input.headline, input.location, input.bio],
+    );
+    if (!result.rows[0]) throw new AppError("ACCOUNT_UNAVAILABLE", "The Candidate account is unavailable.", 409);
+    await client.query(
+      `INSERT INTO audit_events(actor_id,actor_role,action,target_type,target_id,outcome,request_id,metadata)
+       VALUES ($1,'candidate','candidate.profile.update','user',$1::uuid::text,'updated',$2,$3::jsonb)`,
+      [userId, requestId ?? null, JSON.stringify({ fields: ["displayName", "headline", "location", "bio"] })],
+    );
+    await client.query("COMMIT");
+    return { updated: true as const };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
     client.release();

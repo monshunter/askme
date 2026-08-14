@@ -135,3 +135,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-018：闭环邮件公开域名与游客多会话管理](docs/plans/PLAN-018.md)
 ---
+
+---
+ID: OBJ-014
+Objective: 修复 Candidate 公开身份补全与 Agent 发布闭环，保障现有及新账号均可完成发布
+Status: 已完成
+Plans:
+- [x] [PLAN-019：闭环公开身份补全与 Agent 发布可达性](docs/plans/PLAN-019.md)
+---

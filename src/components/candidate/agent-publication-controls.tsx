@@ -40,7 +40,7 @@ function connectionFeedback(error: unknown, action: string, locale: Locale) {
 function requirementHref(key: ReadinessKey) {
   if (key === "indexed_material") return "/workspace/materials";
   if (key === "privacy_confirmation") return "/workspace/privacy";
-  return "/workspace";
+  return "/workspace/account?returnTo=/workspace/agent#public-profile";
 }
 
 function requirementText(key: ReadinessKey, ready: boolean, field: "label" | "detail"): TranslationKey {

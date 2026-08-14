@@ -99,4 +99,8 @@
 | REVIEW-094 | REVIEW-094：SPEC-001 邮件域名与游客多会话增量 Spec Review | [REVIEW-094.md](REVIEW-094.md) |
 | REVIEW-095 | REVIEW-095：DESIGN-001 邮件域名与游客多会话增量 Design Review | [REVIEW-095.md](REVIEW-095.md) |
 | REVIEW-096 | REVIEW-096：PLAN-018 邮件域名与公开多会话 Change Review | [REVIEW-096.md](REVIEW-096.md) |
+| REVIEW-097 | REVIEW-097：PLAN-019 公开身份补全与发布可达性 Plan Review | [REVIEW-097.md](REVIEW-097.md) |
+| REVIEW-098 | REVIEW-098：SPEC-001 公开身份补全与发布可达性 Spec Review | [REVIEW-098.md](REVIEW-098.md) |
+| REVIEW-099 | REVIEW-099：DESIGN-001 公开身份补全与发布可达性 Design Review | [REVIEW-099.md](REVIEW-099.md) |
+| REVIEW-100 | REVIEW-100：PLAN-019 公开身份补全与 Agent 发布可达性 Change Review | [REVIEW-100.md](REVIEW-100.md) |
 <!-- AGENT-HARNESS:END INDEX -->

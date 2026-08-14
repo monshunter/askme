@@ -58,6 +58,7 @@ const api: Record<string, ApiSurface> = {
   "/api/auth/forgot-password": { methods: ["POST"], evidence: ["smoke:auth"] },
   "/api/auth/reset-password": { methods: ["POST"], evidence: ["smoke:auth"] },
   "/api/auth/password": { methods: ["POST"], evidence: ["smoke:auth"] },
+  "/api/auth/profile": { methods: ["POST"], evidence: ["smoke:auth", "browser:candidate"] },
   "/api/dashboard": { methods: ["GET"], evidence: ["smoke:auth", "browser:candidate"] },
   "/api/health/live": { methods: ["GET"], evidence: ["verify:docker-lifecycle"] },
   "/api/health/ready": { methods: ["GET"], evidence: ["verify:docker-lifecycle", "smoke:analysis-governance"] },

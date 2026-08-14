@@ -99,6 +99,8 @@ Web 和 Worker 共享同一 TypeScript domain/service 层，UI 不直接访问�
 
 Candidate 注册先规范化邮箱并以事务创建唯一 `candidate` 用户、默认 Agent/Privacy 状态和首个 session；注册路由不接收 role。登录复用相同邮箱规范化和密码校验。已登录改密先验证当前密码，再更新 hash、撤销全部旧 session 并签发当前请求的新 session。
 
+公开身份继续由 `users.display_name/headline/location/bio` 单一 owner 保存，不为发布另建 profile 或权限表。`POST /api/auth/profile` 只接受 active Candidate session，规范化并校验显示名称、职业头衔、地点和简介，只按当前 session user id 更新一行并写 `candidate.profile.update` 审计；职业头衔必须非空，地点和简介可为空。所有来源的现有及新 Candidate 共享这一能力，因此不需要数据回填或按账号授权。请求只接受 allowlist 内部返回目标；从发布 readiness 进入时使用 `/workspace/account?returnTo=/workspace/agent#public-profile`，保存成功后回到 Agent 页面重新读取数据库事实。无效输入留在公开资料区并显示稳定反馈，不能修改其他账号，也不能让客户端提交 owner id、role 或账号状态。
+
 忘记密码按邮箱/IP hash 限流，外部始终返回相同的“请求已受理、投递不保证”反馈；只有 active Candidate 才创建 30 分钟 token hash 并通过共享 SMTP transport 发送 path 参数形式的 `/reset-password/<token>` 链接。Admin invitation 与密码重置只各自拥有主题和正文模板，连接、认证、TLS、超时、关闭和安全错误映射由 `server/mail` 单一 owner 负责。两类模板通过 URL helper 从 `ASKME_PUBLIC_BASE_URL` 构造绝对地址，不读取请求 Host；解析器把合法 HTTP(S) 根地址规范化为带尾部 `/` 的 canonical URL，默认使用 `https://askme.monshunter.xyz/`。新请求原子失效旧 token；重置在锁定 token/user 后一次消费、更新密码并撤销全部 session。SMTP 整体未配置时在查询账号前返回安全能力错误；单封密码重置邮件发送失败时失效本次 token、记录不含身份和 token 的失败审计，并保持统一已受理反馈，避免用投递结果枚举账号。
 
 公共页客户端读取 `askme.publicVisitor.v1`；不存在时由 singular session bootstrap endpoint 签发 32-byte token，响应后先写 localStorage，再加载该 publication 的 Conversation 列表。后续请求用 `X-Askme-Visitor-Token` 发送同一 token，bootstrap endpoint 同步一个全局 HttpOnly cookie 给 EventSource、来源预览和普通新标签请求；初始化时 header 是身份 owner，header 缺失表示创建新身份，只有升级前的 slug cookie 可被一次性桥接并清除。bootstrap 在事务级 advisory lock 内恢复最近活动 Conversation，不存在时只创建一个，显式 plural sessions POST 才无条件新建。
@@ -134,6 +136,7 @@ draft → ready(资料+隐私确认+profile) → published → revoked
 ```
 
 - `published` 只有一个当前 active publication；再发布在新事务中生成新的随机 slug，旧 slug 永不复活。
+- profile readiness 固定要求非空 `display_name + headline`；缺失时服务端与 UI 都保持发布禁用，并提供通往真实 profile editor 的恢复路径，不以默认或推测职业头衔绕过真实性校验。
 - Admin pause 不修改 Candidate 内容，只改变公共可访问状态；恢复回到同一 publication。
 - 每次公共页面、Chat 和来源文件请求重新读取 publication 与 material visibility，不依赖发布时快照或旧访问 URL。
 
@@ -193,9 +196,9 @@ Docker wrapper 在宿主进程加载 `~/.env` 的 allowlist 后调用 Compose；
 
 ### Candidate Shell
 
-固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control 和唯一的 Agent / 智能体入口；顶部只保留通知和账号菜单，不再提供页眉搜索或快捷操作。账号菜单提供账号安全与注销，账号安全页只承载当前密码验证和改密；注册、忘记密码与重置密码使用独立认证壳层。根布局在登录前后所有路由的右上角提供唯一语言设置，各 Shell 与页面 footer 不再渲染语言入口。Candidate Shell 不再持有 Quick Action、邀请面试官或独立 Publish Agent 导航。移动端变为可关闭 drawer，主内容使用单列卡片。
+固定桌面侧栏包含 Dashboard、Upload Materials、Knowledge Base、Privacy Control 和唯一的 Agent / 智能体入口；顶部只保留通知和账号菜单，不再提供页眉搜索或快捷操作。账号菜单提供账号资料与安全、注销；账号页以 `public-profile` 锚点承载可发布的公开资料表单，并在独立卡片保留当前密码验证和改密。注册、忘记密码与重置密码使用独立认证壳层。根布局在登录前后所有路由的右上角提供唯一语言设置，各 Shell 与页面 footer 不再渲染语言入口。Candidate Shell 不再持有 Quick Action、邀请面试官或独立 Publish Agent 导航。移动端变为可关闭 drawer，主内容使用单列卡片。
 
-`/workspace/agent` 的 Server Component 并行加载预览对话、Agent settings 与 publication overview；页面内部把预览问答、设置、发布 readiness、链接、发布/撤销和已发布公共页入口组成同一 Candidate Agent 工作流。`/workspace/publish`、`/workspace/publish/preview`、专用页面组件与 `GET /api/publications/preview` 退役；publication domain service 以及 current/link/publish/revoke API 继续作为 Agent 页与公共访问链路共享的服务端边界。
+`/workspace/agent` 的 Server Component 并行加载预览对话、Agent settings 与 publication overview；页面内部把预览问答、设置、发布 readiness、链接、发布/撤销和已发布公共页入口组成同一 Candidate Agent 工作流。公开身份 readiness 失败时，“去处理”直达账号页 `public-profile`，并携带受控返回目标；资料保存后返回 Agent 页，由新的 Server 请求重新计算 readiness。`/workspace/publish`、`/workspace/publish/preview`、专用页面组件与 `GET /api/publications/preview` 退役；publication domain service 以及 current/link/publish/revoke API 继续作为 Agent 页与公共访问链路共享的服务端边界。
 
 ### Public Agent
 
@@ -232,9 +235,9 @@ Compose 包含 `db`、一次性 `migrate`、`web`、`worker` 和本地 `mailpit`
 ## 11. 验证策略
 
 1. Domain/unit：password/session/reset token、邮箱规范化、认证限流、公开 base URL 解析与两类邮件 path、游客 token/localStorage contract、visibility matrix、公开文件访问矩阵、Markdown 安全渲染、config allowlist、URL 安全、retrieval filter、状态机与 AI response parser。
-2. PostgreSQL integration：migration、注册唯一性、重置单次消费、session 撤销、同一 Visitor 多 Conversation 的列表/新建/切换/删除、双 Visitor 与双 publication 隔离、Deep 运行中删除冲突、job lease/idempotency、级联删除、全文检索、发布/撤销与 Admin 聚合。
+2. PostgreSQL integration：migration、注册唯一性、重置单次消费、session 撤销、Candidate 公开资料更新与跨账号隔离、同一 Visitor 多 Conversation 的列表/新建/切换/删除、双 Visitor 与双 publication 隔离、Deep 运行中删除冲突、job lease/idempotency、级联删除、全文检索、发布/撤销与 Admin 聚合。
 3. Adapter contract：真实样例文件、受控 GitHub/Notion/Website HTTP fixture、DeepSeek mock 与一次不记录响应正文的真实 health/chat smoke。
 4. Docker：空 volume 启动、健康、bootstrap、worker job、restart 持久性和显式 reset 目标审计。
-5. Browser：Candidate 注册/登录/注销/忘记/重置/改密、两个独立 localStorage 游客的 Markdown 对话与互相不可见、同一游客新增/切换/刷新恢复/删除多个会话、Candidate/Public 来源预览、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、430 × 932 overflow/a11y；最后用真实浏览器重跑核心场景。
+5. Browser：Candidate 注册/登录/注销/忘记/重置/改密、缺少职业头衔的现有与新 Candidate 从发布阻塞项补齐公开资料并返回发布、两个独立 localStorage 游客的 Markdown 对话与互相不可见、同一游客新增/切换/刷新恢复/删除多个会话、Candidate/Public 来源预览、Admin 治理、错误/空/处理中状态、1448 × 1086 截图对照、430 × 932 overflow/a11y；最后用真实浏览器重跑核心场景。
 
 每个 `SPEC-001` AC 必须在 Review/Scenario/Operation owner 中指向当前 Evidence 后才可勾选；窄测试不能替代跨角色或真实浏览器结论。
