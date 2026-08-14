@@ -9,4 +9,5 @@
 | OP-004 | OP-004：PLAN-004 Platform Admin Docker 与 Chrome E2E | [OP-004.md](OP-004.md) |
 | OP-005 | OP-005：PLAN-006 本地运行、可观测性与总验收 | [OP-005.md](OP-005.md) |
 | OP-006 | OP-006：PLAN-020 Hybrid Agentic RAG V2 本地部署与真实验收 | [OP-006.md](OP-006.md) |
+| OP-007 | OP-007：PLAN-023 DeepSeek Flash 降本部署与 LLM 核心链路回归 | [OP-007.md](OP-007.md) |
 <!-- AGENT-HARNESS:END INDEX -->

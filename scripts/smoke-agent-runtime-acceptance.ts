@@ -130,7 +130,13 @@ try {
     throw new Error(`The real copybook RAG answer was not a completed Chinese answer: ${JSON.stringify(ragAnswer)}`);
   }
   const ragPaths = ragAnswer.citations.map((citation) => citation.path).filter((value): value is string => Boolean(value));
-  if (ragPaths.length < 1 || ragPaths.length > 2 || ragPaths.some((value) => !["README.md", "package.json"].includes(value))) {
+  const copybookPrimaryOverviewPaths = new Set(["README.md", "README.zh-CN.md", "overview.md"]);
+  const copybookSupportingOverviewPaths = new Set([...copybookPrimaryOverviewPaths, "AGENTS.md", "package.json", "docs/spec/architecture-design.md"]);
+  if (
+    ragPaths.length < 1 || ragPaths.length > 2 ||
+    !ragPaths.some((value) => copybookPrimaryOverviewPaths.has(value)) ||
+    ragPaths.some((value) => !copybookSupportingOverviewPaths.has(value))
+  ) {
     throw new Error(`The real copybook RAG answer selected irrelevant source paths: ${JSON.stringify(ragPaths)}`);
   }
   assertChineseSuggestions(rag.data.suggestedQuestions, "Candidate RAG");

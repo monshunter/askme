@@ -422,7 +422,7 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       profiles: {
         router: profile("router", "ASKME_AI_ROUTER_MODEL", "deepseek-v4-flash", "off", 15_000, 800, 1_000_000),
         rag: profile("rag", "ASKME_AI_RAG_MODEL", "deepseek-v4-flash", "off", 45_000, 4_000, 1_000_000),
-        code: profile("code", "ASKME_AI_CODE_MODEL", "deepseek-v4-pro", "high", 120_000, 200_000, 1_000_000),
+        code: profile("code", "ASKME_AI_CODE_MODEL", "deepseek-v4-flash", "high", 120_000, 200_000, 1_000_000),
         planner: profile("planner", "ASKME_AI_PLANNER_MODEL", "deepseek-v4-flash", "off", 15_000, 1_200, 1_000_000),
         verifier: profile("verifier", "ASKME_AI_VERIFIER_MODEL", "deepseek-v4-flash", "off", 30_000, 2_000, 1_000_000),
       },

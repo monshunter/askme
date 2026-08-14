@@ -7,7 +7,7 @@ const expected = {
   commitSha: "a".repeat(40),
   skillName: "code-question-answering" as const,
   promptVersion: "code-question-v1",
-  configuredModel: "deepseek-v4-pro",
+  configuredModel: "deepseek-v4-flash",
   maxTokens: 4_000,
   budget: {
     analysisTimeoutMs: 120_000,
@@ -31,7 +31,7 @@ function envelope() {
     },
     usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, rounds: 2, toolCalls: 3, aggregateToolOutputBytes: 2_000, examinedFileCount: 1, truncatedToolOutputs: 0 },
     provenance: {
-      actualModel: "deepseek-v4-pro",
+      actualModel: "deepseek-v4-flash",
       skillName: "code-question-answering",
       activeTools: ["read", "ls", "grep", "find"],
       loadedSkills: ["code-question-answering"],

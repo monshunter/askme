@@ -66,7 +66,7 @@ const server = createServer(async (request, response) => {
   if (requestBody.reasoning_effort === "high") reasoningEffortCount += 1;
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
   const id = `chatcmpl-smoke-${requests}`;
-  const base = { id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1_000), model: "deepseek-v4-pro" };
+  const base = { id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1_000), model: "deepseek-v4-flash" };
   if (requests === 1 || requests === 4) {
     streamChunk(response, {
       ...base,
@@ -118,7 +118,7 @@ const config = loadConfigFromSources({
   ASKME_CODE_AGENT_IMAGE_DIGEST: imageDigest,
   ASKME_AI_BASE_URL: `http://${hostAddress}:${address.port}/v1`,
   ASKME_AI_API_KEY: secret,
-  ASKME_AI_CODE_MODEL: "deepseek-v4-pro",
+  ASKME_AI_CODE_MODEL: "deepseek-v4-flash",
   ASKME_AI_CODE_THINKING: "high",
   ASKME_AI_CODE_MAX_TOKENS: "200000",
 }, "");

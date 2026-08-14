@@ -25,4 +25,5 @@
 | PLAN-020 | PLAN-020：交付真实 Hybrid Agentic RAG V2 | [PLAN-020.md](PLAN-020.md) |
 | PLAN-021 | PLAN-021：闭环 Agent 回答时间与内容质量 | [PLAN-021.md](PLAN-021.md) |
 | PLAN-022 | PLAN-022：优化公开 Agent 与预览会话体验 | [PLAN-022.md](PLAN-022.md) |
+| PLAN-023 | PLAN-023：统一 DeepSeek Flash 模型并回归 LLM 核心链路 | [PLAN-023.md](PLAN-023.md) |
 <!-- AGENT-HARNESS:END INDEX -->

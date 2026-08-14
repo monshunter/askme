@@ -93,7 +93,7 @@ try {
          owner_id,purpose,repository_id,revision_id,idempotency_key,analysis_generation,state,priority,version,phase,lease_owner,lease_expires_at,
          budget_snapshot,image_digest,skill_hash,prompt_version,profile_id,profile_fingerprint,configured_model,microvm_id,started_at
        ) VALUES ($1,'repository_analysis',$2,$3,$4,$5,'running',0,2,'analyzing','wiki-smoke-runner',now()+interval '5 minutes',
-         '{"maxRounds":50}'::jsonb,'sha256:wiki-smoke',$6,'repository-wiki-v1','code',$7,'deepseek-v4-pro','microvm-smoke',now()) RETURNING id`,
+         '{"maxRounds":50}'::jsonb,'sha256:wiki-smoke',$6,'repository-wiki-v1','code',$7,'deepseek-v4-flash','microvm-smoke',now()) RETURNING id`,
       [ownerId, repositoryId, revisionId, createHash("sha256").update(`${ownerId}:${revisionId}:${analysisGeneration}`).digest("hex"), analysisGeneration, "d".repeat(64), "e".repeat(64)],
     )).rows[0]!.id;
     return { revisionId, runId };
@@ -117,7 +117,7 @@ try {
   const first = await createRevisionAndRun(0);
   const completed = await completeRepositoryAnalysisRun({
     pool, artifactRoot, runId: first.runId, leaseOwner: "wiki-smoke-runner", output: wikiOutput, wikiFiles,
-    actualModel: "deepseek-v4-pro-smoke", usage: { inputTokens: 120, outputTokens: 80, toolCalls: 3 }, cleanupCompletedAt: new Date(),
+    actualModel: "deepseek-v4-flash-smoke", usage: { inputTokens: 120, outputTokens: 80, toolCalls: 3 }, cleanupCompletedAt: new Date(),
   });
   const replay = await completeRepositoryAnalysisRun({
     pool, artifactRoot, runId: first.runId, leaseOwner: "expired-after-completion", output: { ignored: true }, wikiFiles: new Map(),
@@ -197,7 +197,7 @@ try {
   const second = await createRevisionAndRun(1, first.revisionId);
   const secondCompletion = await completeRepositoryAnalysisRun({
     pool, artifactRoot, runId: second.runId, leaseOwner: "wiki-smoke-runner", output: wikiOutput, wikiFiles,
-    actualModel: "deepseek-v4-pro-smoke", usage: { inputTokens: 100, outputTokens: 70 }, cleanupCompletedAt: new Date(),
+    actualModel: "deepseek-v4-flash-smoke", usage: { inputTokens: 100, outputTokens: 70 }, cleanupCompletedAt: new Date(),
   });
   const pending = await getCandidateRepositoryDossier(pool, ownerId, repositoryId);
   if (!pending.dossier || pending.dossier.isActive || pending.repository.activeProjectionId !== firstApproval.projectionId) {
@@ -237,7 +237,7 @@ try {
   try {
     await completeRepositoryAnalysisRun({
       pool, artifactRoot, runId: invalid.runId, leaseOwner: "wiki-smoke-runner", output: invalidOutput, wikiFiles,
-      actualModel: "deepseek-v4-pro-smoke", usage: {}, cleanupCompletedAt: new Date(),
+      actualModel: "deepseek-v4-flash-smoke", usage: {}, cleanupCompletedAt: new Date(),
     });
   } catch (error) {
     rejectedCode = error instanceof Error && "code" in error ? String(error.code) : null;

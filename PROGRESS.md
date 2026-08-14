@@ -167,3 +167,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-022：优化公开 Agent 与预览会话体验](docs/plans/PLAN-022.md)
 ---
+
+---
+ID: OBJ-018
+Objective: 将全部当前 DeepSeek Chat 核心链路统一到 deepseek-v4-flash，降低模型成本并完成保留数据重启与端到端回归
+Status: 已完成
+Plans:
+- [x] [PLAN-023：统一 DeepSeek Flash 模型并回归 LLM 核心链路](docs/plans/PLAN-023.md)
+---

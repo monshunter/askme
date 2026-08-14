@@ -42,7 +42,7 @@ describe("runtime config", () => {
       profiles: {
         router: expect.objectContaining({ id: "router", model: "deepseek-v4-flash", thinking: "off" }),
         rag: expect.objectContaining({ id: "rag", model: "deepseek-v4-flash", thinking: "off" }),
-        code: expect.objectContaining({ id: "code", model: "deepseek-v4-pro", thinking: "high", contextWindow: 1_000_000, maxTokens: 200_000 }),
+        code: expect.objectContaining({ id: "code", model: "deepseek-v4-flash", thinking: "high", contextWindow: 1_000_000, maxTokens: 200_000 }),
         planner: expect.objectContaining({ id: "planner", model: "deepseek-v4-flash", thinking: "off" }),
         verifier: expect.objectContaining({ id: "verifier", model: "deepseek-v4-flash", thinking: "off" }),
       },
