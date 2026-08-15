@@ -69,4 +69,28 @@ describe("retrieveHybridEvidence", () => {
     expect(sql).toContain('parent.token_count AS "tokenCount"');
     expect(sql).toContain('parent.source_range AS "sourceRange"');
   });
+
+  it("applies the same resolved entity source scope before every retrieval route", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const embeddingClient = { embed: vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 }) };
+    const scope = {
+      materialIds: ["55555555-5555-4555-8555-555555555555"],
+      repositoryIds: ["66666666-6666-4666-8666-666666666666"],
+    };
+
+    await retrieveHybridEvidence(
+      { query } as never,
+      "44444444-4444-4444-8444-444444444444",
+      "candidate_preview",
+      analyzeDeterministicQuery("OneCat 项目的定位"),
+      getRuntimeConfig(),
+      { embeddingClient, scope },
+    );
+
+    expect(query).toHaveBeenCalledTimes(4);
+    for (const call of query.mock.calls) {
+      expect(String(call[0])).toContain("$3::uuid[] IS NULL");
+      expect(call[1]?.slice(2, 4)).toEqual([scope.materialIds, scope.repositoryIds]);
+    }
+  });
 });

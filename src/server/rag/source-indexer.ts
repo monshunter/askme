@@ -8,6 +8,7 @@ import { collectRepositoryDocument } from "@/server/repositories/repository-docu
 import type { RepositoryArtifactDescriptor } from "@/server/repositories/artifact-reader";
 
 import { markIndexVersionReady } from "./index-coordinator";
+import { repositoryEntityAliases } from "./entity-catalog";
 import { reconcileRepositoryDocumentIndex } from "./repository-document-index";
 import { structureChunkText } from "./structure-chunker";
 
@@ -76,8 +77,8 @@ export async function renewRagSourceLease(pool: Pool, lease: RagSourceLease, lea
   lease.leaseExpiresAt = leaseExpiresAt;
 }
 
-export async function buildEmbeddedSource(input: { text: string; sourceRevision: string; sourceTitle: string; config: RuntimeConfig; embeddingClient: EmbeddingProvider }) {
-  const chunks = structureChunkText({ text: input.text, sourceRevision: input.sourceRevision, sourceTitle: input.sourceTitle, config: input.config.rag.chunking });
+export async function buildEmbeddedSource(input: { text: string; sourceRevision: string; sourceTitle: string; entityLabels?: string[]; config: RuntimeConfig; embeddingClient: EmbeddingProvider }) {
+  const chunks = structureChunkText({ text: input.text, sourceRevision: input.sourceRevision, sourceTitle: input.sourceTitle, entityLabels: input.entityLabels, config: input.config.rag.chunking });
   const batches = Array.from({ length: Math.ceil(chunks.children.length / input.config.embedding.batchSize) }, (_, index) => chunks.children.slice(index * input.config.embedding.batchSize, (index + 1) * input.config.embedding.batchSize));
   const embedded = new Array<number[]>(chunks.children.length);
   let inputTokens = 0;
@@ -97,19 +98,27 @@ export async function buildEmbeddedSource(input: { text: string; sourceRevision:
 async function loadSourceText(pool: Pool, lease: RagSourceLease, config: RuntimeConfig) {
   if (lease.sourceKind === "material") {
     const result = await pool.query<{
-      id: string; ownerId: string; title: string; kind: "file" | "notion" | "website"; originalName: string | null; storagePath: string | null; contentChecksum: string;
+      id: string; ownerId: string; title: string; kind: "file" | "notion" | "website"; originalName: string | null; storagePath: string | null; contentChecksum: string; entityLabels: string[];
     }>(
-      `SELECT id,owner_id AS "ownerId",title,kind,original_name AS "originalName",storage_path AS "storagePath",content_checksum AS "contentChecksum"
-       FROM materials WHERE id=$1 AND owner_id=$2 AND status='indexed' AND content_checksum=$3`,
+      `SELECT material.id,material.owner_id AS "ownerId",material.title,material.kind,material.original_name AS "originalName",
+              material.storage_path AS "storagePath",material.content_checksum AS "contentChecksum",
+              coalesce((
+                SELECT jsonb_agg(DISTINCT entity->>'canonicalName')
+                FROM knowledge_sources source
+                JOIN knowledge_items knowledge ON knowledge.id=source.knowledge_item_id AND knowledge.owner_id=source.owner_id AND knowledge.status='active'
+                CROSS JOIN LATERAL jsonb_array_elements(knowledge.entities) entity
+                WHERE source.material_id=material.id AND source.owner_id=material.owner_id AND entity ? 'canonicalName'
+              ),'[]'::jsonb) AS "entityLabels"
+       FROM materials material WHERE material.id=$1 AND material.owner_id=$2 AND material.status='indexed' AND material.content_checksum=$3`,
       [lease.sourceId, lease.ownerId, lease.sourceRevision],
     );
     const material = result.rows[0];
     if (!material) throw new AppError("RAG_SOURCE_REVOKED", "The Material source is no longer active.", 409);
-    return { text: await extractStoredMaterialText(material, config.uploadRoot), title: material.title };
+    return { text: await extractStoredMaterialText(material, config.uploadRoot), title: material.title, entityLabels: material.entityLabels };
   }
   if (lease.sourceKind === "approved_wiki") {
-    const result = await pool.query<{ title: string; markdown: string }>(
-      `SELECT repository.display_name || ' / ' || page.title AS title,coalesce(projected.edited_markdown,page.generated_markdown) AS markdown
+    const result = await pool.query<{ title: string; repositoryTitle: string; markdown: string }>(
+      `SELECT repository.display_name || ' / ' || page.title AS title,repository.display_name AS "repositoryTitle",coalesce(projected.edited_markdown,page.generated_markdown) AS markdown
        FROM repository_wiki_pages page
        JOIN repository_dossiers dossier ON dossier.id=page.dossier_id
        JOIN repository_dossier_projections projection ON projection.dossier_id=dossier.id AND projection.state='approved'
@@ -120,7 +129,7 @@ async function loadSourceText(pool: Pool, lease: RagSourceLease, config: Runtime
     );
     const page = result.rows[0];
     if (!page) throw new AppError("RAG_SOURCE_REVOKED", "The approved Wiki source is no longer active.", 409);
-    return { text: page.markdown, title: page.title };
+    return { text: page.markdown, title: page.title, entityLabels: [page.repositoryTitle] };
   }
   if (lease.sourceKind === "repository_markdown" || lease.sourceKind === "repository_pdf") {
     const documentPath = typeof lease.metadata.path === "string" ? lease.metadata.path : null;
@@ -143,7 +152,11 @@ async function loadSourceText(pool: Pool, lease: RagSourceLease, config: Runtime
     if (document.contentHash !== contentHash || document.sourceRevision !== lease.sourceRevision || document.kind !== lease.sourceKind) {
       throw new AppError("RAG_SOURCE_REVOKED", "The Repository document no longer matches its immutable revision.", 409);
     }
-    return { text: document.text, title: `${descriptor.repositoryTitle} / ${document.path}` };
+    return {
+      text: document.text,
+      title: `${descriptor.repositoryTitle} / ${document.path}`,
+      entityLabels: repositoryEntityAliases(descriptor.repositoryTitle, descriptor.canonicalUrl),
+    };
   }
   throw new AppError("RAG_SOURCE_UNSUPPORTED", "The RAG source kind is not supported by this indexer.", 422);
 }
@@ -220,7 +233,7 @@ export async function processRagSourceLease(pool: Pool, lease: RagSourceLease, c
   const source = await loadSourceText(pool, lease, config);
   await renewRagSourceLease(pool, lease);
   const embeddingClient = dependencies.embeddingClient ?? new EmbeddingClient(config.embedding);
-  const built = await buildEmbeddedSource({ text: source.text, sourceRevision: lease.sourceRevision, sourceTitle: source.title, config, embeddingClient });
+  const built = await buildEmbeddedSource({ text: source.text, sourceRevision: lease.sourceRevision, sourceTitle: source.title, entityLabels: source.entityLabels, config, embeddingClient });
   await renewRagSourceLease(pool, lease);
   return persistEmbeddedSource(pool, lease, built);
 }

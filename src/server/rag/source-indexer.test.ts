@@ -33,12 +33,13 @@ describe("RAG source index worker", () => {
     }));
     const text = Array.from({ length: 80 }, (_, index) => `## Section ${index}\n\n${"Career evidence ".repeat(30)}${index}`).join("\n\n");
 
-    const result = await buildEmbeddedSource({ text, sourceRevision: "material-v1", sourceTitle: "Resume", config, embeddingClient: { embed } });
+    const result = await buildEmbeddedSource({ text, sourceRevision: "material-v1", sourceTitle: "Resume", entityLabels: ["Askme"], config, embeddingClient: { embed } });
 
     expect(result.parents.length).toBeGreaterThan(1);
     expect(result.children.length).toBeGreaterThan(2);
     expect(embed.mock.calls.every((call) => call[0].length <= 2)).toBe(true);
     expect(embed.mock.calls.flatMap((call) => call[0]).every((value) => value.includes("Source: Resume"))).toBe(true);
+    expect(embed.mock.calls.flatMap((call) => call[0]).every((value) => value.includes("Entities: Askme"))).toBe(true);
     expect(result.children.every((child) => child.embedding.length === 1_024)).toBe(true);
     expect(result.inputTokens).toBe(result.children.length * 10);
   });

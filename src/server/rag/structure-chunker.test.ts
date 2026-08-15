@@ -54,11 +54,19 @@ describe("structure-first Parent-Child chunking", () => {
   });
 
   it("adds contextual source and section text only to Embedding input", () => {
-    const result = structureChunkText({ text: "# Skills\n\nGo、Kubernetes、RAG。", sourceRevision: "skills-v1", sourceTitle: "Resume", config: chunking });
+    const result = structureChunkText({
+      text: "# Skills\n\nGo、Kubernetes、RAG。",
+      sourceRevision: "skills-v1",
+      sourceTitle: "Resume",
+      entityLabels: ["Askme", "RAG"],
+      config: chunking,
+    });
     const child = result.children[0];
 
     expect(child?.contextualContent).toContain("Source: Resume");
+    expect(child?.contextualContent).toContain("Entities: Askme | RAG");
     expect(child?.contextualContent).toContain("Section: Skills");
     expect(child?.content).not.toContain("Source: Resume");
+    expect(child?.content).not.toContain("Entities: Askme");
   });
 });

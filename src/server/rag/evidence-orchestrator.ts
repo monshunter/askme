@@ -30,16 +30,6 @@ function coverageSignals(plan: RagQueryPlan) {
   return unique(plan.lexicalTerms.map(normalized).filter((term) => term.length >= 2)).slice(0, 8);
 }
 
-function conflictDetected(signals: string[], evidence: RetrievedRagEvidence[]) {
-  const negative = /(?:\b(?:not|never|no)\b|没有|未曾|并非|不是|不负责|未负责)/iu;
-  for (const signal of signals) {
-    const supporting = evidence.filter((item) => normalized(item.parentContent).includes(signal));
-    if (new Set(supporting.map((item) => item.evidenceFamilyId)).size < 2) continue;
-    if (supporting.some((item) => negative.test(item.parentContent)) && supporting.some((item) => !negative.test(item.parentContent))) return true;
-  }
-  return false;
-}
-
 export function judgeEvidenceCoverage(plan: RagQueryPlan, evidence: RetrievedRagEvidence[], rerankDegraded: boolean) {
   if (evidence.length === 0) return { coverage: "none" as const, unsupportedAspects: coverageSignals(plan) };
   const signals = coverageSignals(plan);
@@ -54,7 +44,6 @@ export function judgeEvidenceCoverage(plan: RagQueryPlan, evidence: RetrievedRag
   if (requiredSignals.length > 0 && supportedRequired.length === 0 && (rerankDegraded || !rerankBacked)) {
     return { coverage: "none" as const, unsupportedAspects: requiredSignals };
   }
-  if (conflictDetected(signals, evidence)) return { coverage: "conflicted" as const, unsupportedAspects: [] as string[] };
   const enoughSignals = signals.length === 0 || supported.length >= Math.min(2, signals.length);
   const full = enoughSignals && (rerankDegraded ? routeBacked : routeBacked || rerankBacked);
   return {
@@ -157,7 +146,7 @@ export async function runBoundedRetrieval(input: {
     degradations.push(...reranked.degradations);
     rerankInputTokens = reranked.inputTokens;
     pack = buildEvidencePack(reranked.candidates, plan, input.config.rag.evidence, input.config.ai.profiles.rag.contextWindow, reranked.degradations.length > 0);
-    if (pack.coverage === "full" || pack.coverage === "conflicted" || roundCount >= input.config.rag.retrieval.maxRounds) break;
+    if (pack.coverage === "full" || roundCount >= input.config.rag.retrieval.maxRounds) break;
     plan = targetedRetryPlan(plan, pack.unsupportedAspects);
   }
   return {

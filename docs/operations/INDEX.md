@@ -11,4 +11,5 @@
 | OP-006 | OP-006：PLAN-020 Hybrid Agentic RAG V2 本地部署与真实验收 | [OP-006.md](OP-006.md) |
 | OP-007 | OP-007：PLAN-023 DeepSeek Flash 降本部署与 LLM 核心链路回归 | [OP-007.md](OP-007.md) |
 | OP-008 | OP-008：PLAN-024 公共 Agent 相关性修复部署与真实验收 | [OP-008.md](OP-008.md) |
+| OP-009 | OP-009：PLAN-025 Entity-grounded RAG V3 重建、部署与真实验收 | [OP-009.md](OP-009.md) |
 <!-- AGENT-HARNESS:END INDEX -->

@@ -7,7 +7,7 @@ import { recordSuccessfulAiUsage } from "@/server/agent/ai-usage";
 import { loadQuestionRepositories } from "@/server/agent/question-context";
 import { localizedQuestionMessage } from "@/server/agent/question-language";
 import { recordQuestionRoute } from "@/server/agent/question-route-audit";
-import { effectiveQuestionRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository } from "@/server/agent/question-router";
+import { effectiveQuestionRoute, hostEntityGateRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository } from "@/server/agent/question-router";
 import { recoverStaleAnswers } from "@/server/agent/message-recovery";
 import { OpenAiChatClient } from "@/server/ai/openai-compatible";
 import { queueConversationAnalysisRun } from "@/server/code-agent/analysis-runs";
@@ -17,6 +17,7 @@ import { AppError, toAppError } from "@/server/errors";
 import { loadPlatformPolicies } from "@/server/admin/settings-service";
 import { answerRagCitationCount, generateVerifiedRagAnswer, persistRagAnswerCitations, validateRagEvidence } from "@/server/rag/rag-answer";
 import { retrieveRagForQuestion } from "@/server/rag/rag-query-service";
+import { uniquelyResolvedRepositoryId } from "@/server/rag/entity-catalog";
 import { persistRetrievalTrace } from "@/server/rag/retrieval-trace";
 
 import type { PublicChatInput, PublicFeedbackInput } from "./public-chat-input";
@@ -362,7 +363,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
     const retrievalStartedAt = performance.now();
     const retrieval = assessment.allowed
       ? await retrieveRagForQuestion({
-          pool: getPool(), config, ownerId: conversation.ownerId, consumer: "public_answer", question: assessment.question,
+          pool: getPool(), config, ownerId: conversation.ownerId, consumer: "public_answer", question: assessment.question, conversationId: conversation.id,
           conversation: previousQuestions.map((question) => ({ role: "user" as const, content: question })),
         })
       : null;
@@ -379,7 +380,14 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
     );
     const settings = settingsResult.rows[0] ?? { answerTone: "professional" as const, privacySafeMode: true };
     let insufficientEvidenceRepositoryId: string | null = null;
-    if (assessment.allowed) {
+    const entityGateRoute = retrieval ? hostEntityGateRoute(retrieval.entityResolution) : null;
+    if (assessment.allowed && entityGateRoute) {
+      await recordQuestionRoute(getPool(), {
+        ownerId: conversation.ownerId, actorRole: "interviewer", conversationId: conversation.id,
+        ...entityGateRoute, evidenceCount: evidence.length, requestId,
+      });
+    } else if (assessment.allowed) {
+      const resolvedRepositoryId = retrieval ? uniquelyResolvedRepositoryId(retrieval.entityResolution) : null;
       const repositories = await loadQuestionRepositories({
         pool: getPool(), config, ownerId: conversation.ownerId, mode: "public",
         publicationId: publication.publicationId, visitorKey: hashVisitorToken(token),
@@ -391,9 +399,9 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
         repositories,
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId: conversation.ownerId, purpose: "public.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
-      const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories);
-      const selected = sourceInspectionRepository ?? (decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
-      insufficientEvidenceRepositoryId = selectInsufficientEvidenceRepository(assessment.question, decision, repositories)?.id ?? null;
+      const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories, resolvedRepositoryId);
+      const selected = sourceInspectionRepository ?? (decision.repositoryId === resolvedRepositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
+      insufficientEvidenceRepositoryId = selectInsufficientEvidenceRepository(decision, repositories, resolvedRepositoryId)?.id ?? null;
       const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null, sourceInspectionRepository !== null);
       await recordQuestionRoute(getPool(), {
         ownerId: conversation.ownerId, actorRole: "interviewer", conversationId: conversation.id,
@@ -430,6 +438,11 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
           evidence,
           coverage: retrieval?.coverage ?? "none",
           unsupportedAspects: retrieval?.unsupportedAspects ?? [],
+          missingEntities: retrieval ? [
+            ...retrieval.entityResolution.missing.map((mention) => mention.text),
+          ] : [],
+          ambiguousEntities: retrieval?.entityResolution.ambiguous.map((item) => item.mention.text) ?? [],
+          entityReferenceIssue: retrieval?.entityResolution.contextReference?.status,
           answerAspects: retrieval?.plan.answerAspects,
           currentDate,
           settings,

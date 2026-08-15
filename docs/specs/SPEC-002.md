@@ -1,25 +1,25 @@
-# SPEC-002：职业知识与代码仓库 Agent V2 产品合同
+# SPEC-002：成熟 Entity-grounded RAG 与代码仓库 Agent 产品合同
 
-Boundary ID：`askme-hybrid-agentic-rag-v2`
+Boundary ID：`askme-entity-grounded-rag-v3`
 
 Owner boundary：Askme Candidate 职业知识检索、Repository 文档知识、Agent 问答、Citation、源码 Deep Analysis、权限投影与评估门禁。
 
 Status：`approved`
 
-当前交付 Plan：[PLAN-020](../plans/PLAN-020.md)
+当前交付 Plan：[PLAN-025](../plans/PLAN-025.md)
 
 ## 1. 目标与替代边界
 
-Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为可检索、可排序、可验证、可撤销的证据。Candidate Preview 与 Public Chat 使用同一权限优先的 Hybrid Agentic RAG V2：先理解问题，再并行召回精确词、全文、向量和结构化证据，经过融合、独立重排、覆盖判断和 Claim 验证后生成带 Citation 的回答。
+Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为身份明确、可检索、可排序、可验证、可撤销的证据。Candidate Preview 与 Public Chat 使用同一权限优先的 Entity-grounded Hybrid RAG：先确定用户明确询问的实体在当前授权知识中的身份与来源范围，再进行精确词、全文、向量和结构化召回，经过融合、独立重排、Answerability 判断和 Claim 验证后生成带 Citation 的回答。语义相似只能发现相关内容，不能把不同名称的项目、人、公司、产品或 Repository 当作同一实体。
 
-“没有更多证据”只允许表示核心问题在当前授权 Evidence 中确实没有支持，不能被中文分词失败、索引未就绪、Provider 故障、回答模型失败或 Citation 校验失败冒充。
+“没有更多证据”只允许表示核心问题或用户明确指定的实体在当前授权 Evidence 中确实没有支持，不能被中文分词失败、索引未就绪、Provider 故障、回答模型失败或 Citation 校验失败冒充。若用户明确询问 `askme` 而当前授权知识只包含 `onecat`，系统必须在检索前或 Answerability Gate 拒绝把 OneCat 事实改名为 Askme；不得用“语义相似”替代身份一致。
 
 本合同直接替代此前 `SPEC-002` 的 V1 文档检索边界：
 
 - V2 使用 PostgreSQL 18 + pgvector，不保留 V1 全文检索回答链路、双写、功能开关或兼容回退；
 - 安全白名单内的 Repository Markdown 与可直接提取文本的 PDF 可以进入长期索引；原始源码仍不得进入持久 Embedding；
 - Approved Wiki、Knowledge Item 和原始证据建立血缘，不得把同一事实的派生副本当成多份独立 Evidence；
-- 账号、原始材料、Knowledge Item、Repository、权限与会话等业务数据必须保留，V1 chunk、FTS 和其他派生检索数据允许清空重建；
+- 项目尚未上线，不保留旧 Query/Entity Policy 或旧派生索引兼容路径；账号、原始材料、Repository、权限、Publication 与会话等业务事实必须保留，Knowledge Item、chunk、FTS、Embedding 和其他可重建派生知识允许按明确维护入口清空重建；
 - Repository Wiki 与隔离 Deep Analysis 的现有只读源码边界继续有效，除非本合同明确替代。
 
 文件、Website、Notion、Knowledge Item、四级可见性、Candidate 发布和 Admin 治理的通用行为继续由 [SPEC-001](SPEC-001.md) 拥有。
@@ -34,20 +34,26 @@ Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为
 - **Index Version**：固定 chunking、Embedding model/dimension、contextual prefix 和 distance metric 的派生索引版本。
 - **Evidence**：Host 能定位、实时授权并校验 checksum 的 Material Child、Repository Document Child 或 Approved Wiki section。
 - **Evidence Family**：原始 Evidence 与其 Knowledge Item、Wiki 等派生投影的血缘集合。
+- **Entity Catalog**：从当前授权的 Repository 身份和有 Evidence 绑定的 Knowledge Item 实时投影出的 Candidate 级实体目录；它不是独立人工维护的第二份知识真相。
+- **Entity Mention**：Query Analyzer 从当前问题或受控会话指代中识别的实体原文、类型提示与 `explicit | contextual` 来源。
+- **Entity Resolution**：将 Entity Mention 通过规范化 canonical name/alias 精确映射到 Entity Catalog；不得使用向量 nearest neighbor 把未知实体映射为“最像”的已知实体。
+- **Entity Scope**：Entity Resolution 后允许参与当前问题的 Material/Repository source 集合；该范围只能缩小已授权集合，不能扩大 visibility。
 - **Retrieval Policy Version**：Query Planning、TopK、RRF、Rerank、Evidence budget 和阈值的版本；改变该版本不要求重新 Embedding。
 - **Coverage**：`full | partial | none | conflicted`；权限/安全拒绝使用独立 `refused`，系统故障使用 `failed`。
 - **Retrieval Trace**：仅 Candidate/Admin 可见的查询规划、各路召回、排序、覆盖、降级和过滤诊断。
 
-## 3. V2 范围与非目标
+## 3. 范围与非目标
 
-V2 索引以下来源：
+成熟 RAG 索引以下来源：
 
 1. 状态为 `indexed` 的上传文件、Website 和 Notion 等文档材料；
 2. Candidate-edited Knowledge Item 及其链接的 `knowledge_evidence`；
 3. Candidate 已批准的 Repository Wiki section；
 4. 成功同步的不可变 Repository active commit 中，安全白名单允许且 Repository 已批准用于 Agent 的 Markdown/PDF。
 
-V2 不提供扫描 PDF OCR、原始源码 Embedding、AST/call graph 向量化、跨 Candidate 检索、自动修改上游 Repository、在线训练、反馈驱动的实时权重修改、GitHub webhook 自动同步或新的生产计费能力。
+Material ingestion 的知识组织结果必须为每个 Knowledge Item 输出有类型的 canonical entity 与有限 aliases，并把它们绑定到该 Item 的实际 `knowledge_evidence`；Repository entity 则以 Askme 已同步的 Repository record 为身份 owner。通用章节名、问句模板和无证据的模型推断不得进入 Catalog。Candidate 修改 Knowledge Item 展示标题或摘要不会自动创建新的实体身份；实体变化必须重新组织来源，或经受控且可验证的实体编辑能力写入。
+
+本合同不提供扫描 PDF OCR、原始源码 Embedding、AST/call graph 向量化、跨 Candidate 检索、自动修改上游 Repository、在线训练、反馈驱动的实时权重修改、GitHub webhook 自动同步、新的生产计费能力或通用 Knowledge Graph。Entity Catalog 只解决当前授权职业知识中的稳定身份与别名，不推断未被 Evidence 支持的实体关系。
 
 Repository 原始源码只允许由既有隔离 Deep Analysis 在一个成功同步的不可变 Revision 内只读分析；分析中间结论、reasoning、工具输出和临时文件不得进入长期 RAG。
 
@@ -62,7 +68,7 @@ Repository 原始源码只允许由既有隔离 Deep Analysis 在一个成功同
 - 标题、段落、列表、表格、Markdown section、HTML section、DOCX heading、PDF 页与段、PPTX slide、XLSX sheet/table、Knowledge Item 和 Approved Wiki section 是优先边界；
 - 正常语义边界不重叠；只有单个结构单元超过 hard max 时才允许 `40–64 tokens` overlap；
 - 简历中同一公司/岗位的名称、任职时间、职责和成果必须保留在同一 Parent，不得把“富途控股/岗位”与其职责拆成失去上下文的 Child；
-- contextual prefix 只进入 Embedding 输入，必须版本化；Citation 始终绑定未经 prefix 改写的原始文本。
+- contextual prefix 至少包含 source title、structure path 和该来源由授权 Entity Catalog 投影出的 canonical entity/alias；它只进入检索表示与 Embedding 输入，必须版本化，Citation 始终绑定未经 prefix 改写的原始文本。
 
 所有 token 计数使用同一确定性 tokenizer/计数边界。索引记录必须保存 source、owner、visibility、Parent/Child、原始范围、checksum、evidence family 和 index version。
 
@@ -115,11 +121,21 @@ Repository 首次同步默认 private。Candidate 按整个 Repository 批准，
 
 每次问题先经过确定性处理：Unicode 规范化、中文词边界、实体/精确短语、CJK n-gram、中英混合和会话指代补全。不得把连续中文整句当作单个 PostgreSQL lexeme。
 
-结构化 Query Planner 最多输出：standalone query、entities、must terms、should terms、两个 semantic queries 和 desired evidence type。Planner 不能选择 tenant、提升 visibility、扩大来源或改变工具能力。Planner 失败时使用确定性查询继续。
+Host 必须独立用当前 Authorized Entity Catalog 对原始 Query 执行最长 Alias 扫描；即使用户只写“Askme 怎么样”而没有“项目/产品”等类型后缀，也必须识别已授权的 Askme identity。该扫描只接受 Catalog 中已有 canonical/alias 的确定性命中，不用向量或模型推断新 Alias；较短 Alias 完全落在同一位置的较长 Alias 内时只保留较长者，避免 `new-api` 同时误命中无关 `api` 实体。
+
+结构化 Query Planner 最多输出：standalone query、带原文/类型/显式性的 entity mentions、must terms、should terms、两个 semantic queries 和 desired evidence type。Host 从原始问题提取的显式命名实体必须独立保留；Planner 的 rewrite 或 semantic query 不得删除、改名或用近义实体替换它。Planner 不能选择 tenant、提升 visibility、扩大来源或改变工具能力。Planner 失败时使用确定性查询继续。
+
+Planner 后、任何 Embedding 或检索前必须执行 Entity Resolution：
+
+- Entity Catalog 只能读取当前 owner、caller mode、publication、visibility、source state、active revision 允许的 Repository 与有 Evidence 绑定的 Knowledge Item；Public Chat 不得通过“实体不存在”泄露 private/agent-only 实体的存在；
+- canonical name 与 alias 使用 NFKC、大小写、空白和稳定分隔符规范化做精确映射；`one cat` 可以解析为已声明 alias `OneCat`，但 `askme` 不能 nearest-neighbor 成 `onecat`；
+- 一个显式 project/product/repository/organization/person 实体在授权 Catalog 中不存在时，系统不得执行无范围向量检索。若它是唯一核心实体，直接返回 `none` 和该用户已提供名称的安全缺口；
+- 多实体问题中，已解析实体仍可在其 Entity Scope 内形成 `partial` 回答，未解析实体必须作为显式缺口，不能把已解析实体的事实复制给它；
+- 会话中的“它/该项目/that project”等指代只从同一 Conversation 上一轮 Retrieval Trace 已解析的实体焦点恢复，并用当前 Catalog 重新授权；只有上一轮恰好一个仍授权的 resolved entity 且不存在 missing/ambiguous mention 时才继承，零个时为 unresolved，多个实体或 resolved 与 missing/ambiguous 并存时均为 ambiguous。Planner 对原始聊天文本的 contextual 猜测不得覆盖该 Host 结果，歧义时不检索、不猜测并返回明确缺口。
 
 ### 6.2 多路召回与融合
 
-权限过滤后默认并行执行：
+授权过滤与 Entity Scope 硬约束后默认并行执行：
 
 | Route | 默认 TopK | RRF weight |
 | --- | ---: | ---: |
@@ -131,6 +147,8 @@ Repository 首次同步默认 private。Candidate 按整个 Repository 批准，
 系统使用 weighted RRF，默认 `k=60`。所有 TopK、weight、RRF k、阈值和每 Parent Child 数都必须配置化。候选按 stable ID/checksum 去重，默认同一 Parent 最多保留三个 Child。
 
 Knowledge Item 只作为检索锚点；命中后必须展开到 `knowledge_evidence` 对应的 Material Child。未经来源支撑的 Candidate 编辑不能独立成为最终 Claim Evidence。Approved Wiki 可以作为最终 Evidence，但必须保留 Host 验证的 `[S*]` 原始来源血缘。
+
+Entity Scope 约束适用于 exact、lexical、vector 和 structured 四条 Route，必须在排名前执行。命中一个实体 alias 只证明 identity，不证明问题中的具体事实；检索结果仍需通过 Rerank、Answerability 与 Claim Verifier。
 
 ## 7. Rerank、Evidence Pack 与有界补检
 
@@ -144,18 +162,22 @@ Evidence fusion 必须遵守：
 - effective budget 是配置上限与 `model context - system - conversation - output reserve - safety margin` 的较小值；
 - 每次记录 configured/effective/actual evidence tokens。
 
-Evidence Judge 输出 `full | partial | none | conflicted`：
+Evidence Judge 只输出 `full | partial | none | conflicted`，并将 Entity Resolution 结果作为高优先级 Host 信号；RAG runtime 在 Coverage 之外使用 `refused | failed` 表达安全拒绝和系统故障：
 
 - `full`：核心方面均有充分 Evidence；
 - `partial`：只回答被支持方面，并明确列出不支持方面；
 - `none`：核心方面均无支持；
 - `conflicted`：一个或多个核心事实存在不可消解冲突；
-- `refused`：权限、publication、滥用或安全门禁拒绝；
-- `failed`：Provider、Answer、Citation 等系统失败。
+- `refused`：权限、publication、滥用或安全门禁拒绝，不属于 Coverage；
+- `failed`：Provider、Answer、Citation 等系统失败，不属于 Coverage。
+
+`conflicted` 只表示同一实体、同一问题方面和同一可比较事实存在互斥 Evidence；不得因为某段 Evidence 含任意“不是/没有/not”字样，或同一实体在多篇文档中出现，就把项目介绍、职业时间线等问题判为冲突。Rerank 高分只能支持 topic relevance，不能覆盖 missing entity 或扩大 Entity Scope。
 
 初检不完整时，Judge 可以基于 unsupported aspects 产生一次定向补检。一个问题最多两轮检索；补检不得扩大授权来源，结果必须与第一轮去重。第二轮失败后只能基于第一轮输出 partial/none，不能无界重试。
 
 Host 必须把用户当前问题拆成有稳定顺序和 ID 的显式回答方面。复合问题中的公司、任职时间、职责、成果等方面不能因检索已命中部分内容而被合并或遗漏；每个方面最终必须由至少一个已验证 Claim 回答，或明确显示当前授权 Evidence 不支持该方面。检索词命中率不能替代问题方面覆盖。
+
+Answerability Gate 必须在生成前证明：至少一个回答方面有当前 Entity Scope 内的直接 Evidence，且 Evidence 中的实体身份与问题一致。唯一核心实体缺失或所有方面均不支持时不得调用 Answer Generator；系统直接返回可区分 `insufficient_evidence` 与 `failed` 的结果。Generator Prompt 与最终 Host 校验继续作为 defense in depth，明确禁止把 Evidence 中的实体重命名为问题中的另一实体。
 
 ## 8. Claim 验证与 Citation
 
@@ -178,7 +200,7 @@ Candidate/Public Citation 统一打开 Askme 内部稳定阅读页，并在每�
 
 ## 9. 权限、Prompt Injection 与强撤销
 
-owner、account status、publication、visibility、source state、active revision 和 index version 过滤必须发生在 exact、FTS、trigram 和 vector 检索之前。任何 LLM、Embedding、Rerank 或 Repository 内容不能扩大该集合。
+owner、account status、publication、visibility、source state、active revision、index version 和已解析 Entity Scope 过滤必须发生在 exact、FTS、trigram 和 vector 排名之前。任何 LLM、Embedding、Rerank 或 Repository 内容不能扩大该集合。
 
 Repository visibility 继续使用 `private | agent_only | citation_allowed | public_preview`：
 
@@ -202,7 +224,7 @@ GitHub public 不等于 Askme public；Repository 在 Askme 中默认 private，
 
 ## 10. 源码 Deep Analysis
 
-实现级源码问题在文档 RAG 无法回答且 Host 唯一确定一个授权 Repository 时，可以进入现有 `deep` 路由。每个 Deep Analysis Run 只读取一个成功同步的不可变 Revision，在新的临时 BoxLite microVM 内运行只读工具；不得写 Repository、执行项目代码、安装依赖、访问网络或加载 Repository 自带指令。
+实现级源码问题在文档 RAG 无法回答且 Entity Resolution 与确定性源码意图共同唯一确定一个授权 Repository 时，可以进入现有 `deep` 路由。Entity Resolution 已要求停止的 unknown/ambiguous 请求由 Host 直接留在 RAG 回答层形成 `insufficient_evidence`，不得再调用 Router，也不得被 Router 改写为拒绝或 Deep。每个 Deep Analysis Run 只读取一个成功同步的不可变 Revision，在新的临时 BoxLite microVM 内运行只读工具；不得写 Repository、执行项目代码、安装依赖、访问网络或加载 Repository 自带指令。
 
 Deep run 的 `pending | running | completed | failed | cancelled` 与回答 outcome 分离。最终回答和 Host 验证 Citation 可以进入会话；reasoning、工具逐步输出、临时分析文件和中间结论不得持久化或进入 RAG。Deep 失败必须显示真实失败，不得伪装成 RAG none。
 
@@ -228,7 +250,7 @@ V2 使用可独立配置的 Query Planner Chat、Embedding、Rerank、RAG Answer
 Candidate/Admin 可以查看一次问答的 Retrieval Trace：
 
 - retrieval policy、active index、source revision/commit；
-- Planner 的实体、关键词和 semantic queries；
+- Planner 的 entity mentions、Host 的 resolved/missing/ambiguous 结果、Entity Scope 来源数、关键词和 semantic queries；
 - exact/lexical/vector/structured 各路命中数；
 - RRF/Rerank 后的 evidence ID、分数和筛选原因；
 - Coverage、补检、降级、跳过、权限过滤与索引告警。
@@ -239,7 +261,7 @@ Trace 不向 Interviewer 展示，不包含 system prompt、Embedding vector、�
 
 ## 13. Golden Dataset 与发布门禁
 
-仓库内维护完全合成、无真实个人信息的三名虚构 Candidate 材料和 120 个问题：
+仓库内维护完全合成、无真实个人信息的三名虚构 Candidate 材料、既有 120 个检索问题和至少 12 个独立实体混淆回归 case：
 
 | 类型 | 数量 |
 | --- | ---: |
@@ -251,7 +273,13 @@ Trace 不向 Interviewer 展示，不包含 system prompt、Embedding vector、�
 | none | 10 |
 | 权限/越界 | 10 |
 
-材料覆盖全部 visibility、Material/Knowledge Item/Approved Wiki/Repository Markdown/PDF、重复血缘、冲突、长文档、Prompt Injection 和 Provider 降级。每个 case 标注 expected outcome、coverage、required/forbidden evidence IDs、可选 acceptable Citation IDs 和 tags；required ID 用于 Recall，Citation precision 接受所有能直接支持目标 Claim 且未被禁止的标注证据。
+材料覆盖全部 visibility、Material/Knowledge Item/Approved Wiki/Repository Markdown/PDF、重复血缘、冲突、长文档、Prompt Injection 和 Provider 降级。实体集至少覆盖：已知项目、未知相似项目、无类型显式 Alias、canonical/alias、大小写与分隔符变体、短 Alias 嵌套、同名歧义、多实体 partial、唯一会话指代与多实体指代歧义。每个 case 标注 expected outcome、coverage、required/forbidden evidence IDs、可选 acceptable Citation IDs 和 tags；required ID 用于 Recall，Citation precision 接受所有能直接支持目标 Claim 且未被禁止的标注证据。
+
+发布门禁必须区分三类 Evidence：
+
+1. 离线合成检索评测必须调用生产 Query Analyzer、Entity Resolver、scope filter、RRF、Evidence Pack/Coverage 等真实核心函数；不得用 case tag、问题关键词或硬编码 outcome 直接生成预测结果；
+2. 配置 Provider 的隔离评测必须在真实 PostgreSQL 与真实 Planner、Embedding、Rerank、Answer、Verifier 上运行至少 12 个覆盖已知、未知、多实体、别名、会话指代、权限和 Provider 降级的 case，校验 outcome、关键事实、Entity/Citation 和授权边界，不以逐字答案作为 gold；
+3. 当前本地真实账号的 Candidate Preview 与 Public Chat 只用于非持久最终验收，问题与材料不进入仓库 fixture。
 
 V2 发布必须满足：
 
@@ -263,7 +291,7 @@ V2 发布必须满足：
 - 未授权泄露 `=0`；
 - outcome classification `>=95%`。
 
-指标必须按语言、来源、问题类型和降级模式分段。真实账号和个人材料只用于非持久最终验收，不进入仓库 Golden Dataset。
+指标必须按语言、来源、问题类型、实体解析结果和降级模式分段。任何只运行自定义打分器、未进入生产组件或未调用真实 Provider 的结果，都不得声称证明真实 outcome、幻觉率或端到端 Citation precision。
 
 ## 14. 验收标准
 
@@ -271,7 +299,7 @@ V2 发布必须满足：
 - [x] `AC-RAG2-002` Material、Knowledge anchor、Approved Wiki 和 Repository 文档经过 exact/lexical/vector/structured、RRF 与独立 Rerank，且所有 TopK、权重、阈值和 evidence budget 可配置。
 - [x] `AC-RAG2-003` pgvector 使用固定 1024 维 Embedding version、过滤后 exact cosine 和原子 active index；重建派生索引不删除业务数据，也不混合不同版本。
 - [x] `AC-RAG2-004` Parent–Child 切分遵守结构、token、上下文和范围约束，简历公司/岗位/职责不会失去关联。
-- [x] `AC-RAG2-005` Evidence Judge 正确区分 full、partial、none、conflicted、refused 和 failed，最多进行一次不扩大权限的定向补检。
+- [x] `AC-RAG2-005` Evidence Judge 正确区分 full、partial、none 和 conflicted，RAG runtime 独立区分 refused 与 failed；冲突必须绑定同一可比较事实，最多进行一次不扩大权限或 Entity Scope 的定向补检。
 - [x] `AC-RAG2-006` Claim Verifier 删除或收窄无支持/矛盾 Claim，Citation Validator 只允许当前授权、active、checksum 有效的 Evidence。
 - [x] `AC-ANSWER-001` 工作年限和其他相对时间使用请求开始时冻结的 Host 当前日期计算，不再由模型猜测当前年份；计算结果引用包含起止时间的授权 Evidence。
 - [x] `AC-ANSWER-002` 复合问题的每个显式方面均由已验证 Claim 回答或明确披露 Evidence 缺口，最终 Markdown 按问题顺序组织且不发布相同或近似相同的重复 Claim。
@@ -283,7 +311,13 @@ V2 发布必须满足：
 - [x] `AC-SEC-RAG-001` Prompt Injection、Repository 指令和恶意材料不能改变权限、Prompt、Provider、工具或检索范围，未授权泄露为零。
 - [x] `AC-TRACE-001` Candidate/Admin 能查看不含敏感正文和向量的 Retrieval Trace，Interviewer 不可访问。
 - [x] `AC-FEEDBACK-001` 用户反馈只进入离线标签，策略改变以新 retrieval policy version 通过门禁后发布。
-- [x] `AC-EVAL-001` 120 题合成 Golden Dataset 达到全部召回、排序、Citation、拒答、权限和 outcome 阈值。
+- [x] `AC-ENTITY-001` Material Knowledge 与 Repository 身份形成按当前 caller 授权投影的 Entity Catalog；canonical name/alias 均有 Evidence/source 绑定，Public Chat 不泄露未授权实体。
+- [x] `AC-ENTITY-002` 显式实体在 rewrite 后仍保留；已解析实体在四路检索前执行硬 source scope，唯一未知项目直接 `none`，多实体只回答已支持部分且不发生实体改名。
+- [x] `AC-ENTITY-003` Entity canonical/alias、无类型显式 Alias、大小写/分隔符变体、短 Alias 嵌套、同名歧义、唯一会话指代和多实体指代歧义均有回归；未知 Askme 不召回或回答 OneCat，已知 OneCat 仍能正常回答。
+- [x] `AC-EVAL-001` 合成 Golden Dataset 调用生产核心组件且达到召回、排序、权限和实体门禁阈值；真实 PostgreSQL/Provider 评测独立证明 outcome、Claim/Citation、未知实体与降级行为。
+- [x] `AC-REBUILD-001` 未上线环境可通过单一维护入口重建 Knowledge organization 与全部派生 RAG 数据，激活唯一新 index；账号、原始材料、Repository、权限、Publication 和会话计数不因重建丢失。
+- [x] `AC-TRACE-002` Retrieval Trace 记录安全的 entity mention、resolved/missing/ambiguous、scope 与 gate reason，能够解释“为何回答/为何拒答”，且不向 Visitor 暴露或泄露私有实体。
+- [x] `AC-ACCEPT-003` 真实 Compose、真实 Provider、Candidate Preview 与 Public Chat 通过已知实体、未知相似实体、多实体 partial、权限隔离、Citation、Trace、持久化和浏览器 Console/Network 验收。
 - [x] `AC-ACCEPT-002` 保留业务数据部署后，目标账号的富途经历和已批准 Repository 文档问题在真实浏览器返回正确回答、有效 Citation 和可解释 Trace。
 
 ## 15. 已批准的延迟项

@@ -60,9 +60,9 @@ export async function persistIngestionResult(
     const knowledgeItemIds: string[] = [];
     for (const item of organization.items) {
       const created = await client.query<{ id: string }>(
-        `INSERT INTO knowledge_items(owner_id,type,title,summary,highlights,confidence)
-         VALUES ($1,$2,$3,$4,$5::jsonb,$6) RETURNING id`,
-        [lease.material.ownerId, item.type, item.title, item.summary, JSON.stringify(item.highlights), item.confidence],
+        `INSERT INTO knowledge_items(owner_id,type,title,summary,highlights,entities,confidence)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7) RETURNING id`,
+        [lease.material.ownerId, item.type, item.title, item.summary, JSON.stringify(item.highlights), JSON.stringify(item.entities), item.confidence],
       );
       const knowledgeItemId = created.rows[0]?.id;
       if (!knowledgeItemId) throw new AppError("KNOWLEDGE_WRITE_FAILED", "The organized knowledge could not be stored.", 500);

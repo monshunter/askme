@@ -183,3 +183,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-024：修复公共 Agent 无关证据误答](docs/plans/PLAN-024.md)
 ---
+
+---
+ID: OBJ-020
+Objective: 将 Askme 升级为实体一致、可评测、可观测并能安全重建的成熟 RAG 系统，在真实环境完成端到端闭环验收
+Status: 已完成
+Plans:
+- [x] [PLAN-025：交付成熟 Entity-grounded RAG 与真实质量闭环](docs/plans/PLAN-025.md)
+---

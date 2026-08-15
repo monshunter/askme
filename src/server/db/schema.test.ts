@@ -10,6 +10,7 @@ import {
   authRateLimits,
   materials,
   messages,
+  knowledgeItems,
   passwordResetTokens,
   repositories,
   repositoryArtifacts,
@@ -121,5 +122,9 @@ describe("database schema alignment", () => {
     expect(getTableColumns(ragParentChunks).sourceRange?.name).toBe("source_range");
     expect(getTableColumns(ragChildChunks).contextualContent?.name).toBe("contextual_content");
     expect(getTableColumns(ragChildChunks).embedding?.name).toBe("embedding");
+  });
+
+  it("persists evidence-grounded entity metadata on knowledge items", () => {
+    expect(getTableColumns(knowledgeItems).entities?.name).toBe("entities");
   });
 });

@@ -73,6 +73,18 @@ describe("buildEvidencePack", () => {
 });
 
 describe("judgeEvidenceCoverage", () => {
+  it("does not infer a conflict from an unrelated negation across evidence families", () => {
+    const plan = {
+      ...analyzeDeterministicQuery("OneCat 项目的定位是什么？"),
+      entities: ["OneCat"],
+      mustTerms: ["OneCat"],
+    };
+    const project = candidate("e1", "f1", "OneCat 是声明式 HTTP 网关项目。");
+    const boundary = candidate("e2", "f2", "OneCat 不是云资源供应平台，也不负责创建 Kubernetes 集群。");
+
+    expect(judgeEvidenceCoverage(plan, [project, boundary], false).coverage).toBe("full");
+  });
+
   it("returns none when low-relevance evidence does not support any required entity", () => {
     const plan = {
       ...analyzeDeterministicQuery("askme 项目呢？"),

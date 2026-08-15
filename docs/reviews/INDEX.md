@@ -119,4 +119,10 @@
 | REVIEW-114 | REVIEW-114：PLAN-023 DeepSeek Flash 降本与 LLM 核心链路 Change Review | [REVIEW-114.md](REVIEW-114.md) |
 | REVIEW-115 | REVIEW-115：PLAN-024 公共 Agent 相关性修复 Plan Review | [REVIEW-115.md](REVIEW-115.md) |
 | REVIEW-116 | REVIEW-116：PLAN-024 公共 Agent 相关性修复 Change Review | [REVIEW-116.md](REVIEW-116.md) |
+| REVIEW-117 | REVIEW-117：PLAN-025 成熟 Entity-grounded RAG Plan Review | [REVIEW-117.md](REVIEW-117.md) |
+| REVIEW-118 | REVIEW-118：SPEC-002 成熟 Entity-grounded RAG Spec Review | [REVIEW-118.md](REVIEW-118.md) |
+| REVIEW-119 | REVIEW-119：DESIGN-005 成熟 Entity-grounded RAG Design Review | [REVIEW-119.md](REVIEW-119.md) |
+| REVIEW-120 | REVIEW-120：PLAN-025 成熟 Entity-grounded RAG 部署前 Change Review | [REVIEW-120.md](REVIEW-120.md) |
+| REVIEW-121 | REVIEW-121：PLAN-025 Entity Resolution Reconcile Plan Review | [REVIEW-121.md](REVIEW-121.md) |
+| REVIEW-122 | REVIEW-122：PLAN-025 Entity-grounded RAG V3 最终 Change Review | [REVIEW-122.md](REVIEW-122.md) |
 <!-- AGENT-HARNESS:END INDEX -->

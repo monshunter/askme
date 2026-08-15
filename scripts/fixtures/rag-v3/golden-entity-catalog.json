@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "candidates": [
+    {
+      "id": "lin-yue",
+      "entities": [
+        { "key": "person:lin-yue", "type": "person", "canonicalName": "林悦", "aliases": ["林悦"], "evidenceIds": ["lin-exp"] },
+        { "key": "organization:xinghe", "type": "organization", "canonicalName": "星河科技", "aliases": ["星河科技", "星河"], "evidenceIds": ["lin-exp"] },
+        { "key": "repository:atlas", "type": "repository", "canonicalName": "Atlas Career Agent", "aliases": ["Atlas Career Agent", "Atlas"], "evidenceIds": ["lin-atlas-md", "lin-atlas-pdf"] }
+      ]
+    },
+    {
+      "id": "maya-chen",
+      "entities": [
+        { "key": "person:maya", "type": "person", "canonicalName": "Maya Chen", "aliases": ["Maya Chen", "Maya"], "evidenceIds": ["maya-exp"] },
+        { "key": "project:nimbus", "type": "project", "canonicalName": "Nimbus", "aliases": ["Nimbus"], "evidenceIds": ["maya-exp"] },
+        { "key": "repository:edgesync", "type": "repository", "canonicalName": "EdgeSync", "aliases": ["EdgeSync", "Edge Sync"], "evidenceIds": ["maya-repo", "maya-pdf", "maya-agent"] }
+      ]
+    },
+    {
+      "id": "arun-rao",
+      "entities": [
+        { "key": "person:arun", "type": "person", "canonicalName": "Arun Rao", "aliases": ["Arun Rao", "Arun"], "evidenceIds": ["arun-exp"] },
+        { "key": "project:caremesh", "type": "project", "canonicalName": "CareMesh", "aliases": ["CareMesh", "Care Mesh"], "evidenceIds": ["arun-exp", "arun-repo", "arun-conflict-a", "arun-conflict-b"] }
+      ]
+    }
+  ]
+}

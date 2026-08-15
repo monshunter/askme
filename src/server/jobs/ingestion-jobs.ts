@@ -24,7 +24,7 @@ type LeaseRow = {
   storagePath: string | null;
 };
 
-export async function claimNextIngestionJob(pool: Pool, workerId: string, leaseDurationMs = 60_000): Promise<IngestionLease | null> {
+export async function claimNextIngestionJob(pool: Pool, workerId: string, leaseDurationMs = 60_000, materialIds?: string[]): Promise<IngestionLease | null> {
   const normalizedWorkerId = workerId.trim().slice(0, 200);
   if (!normalizedWorkerId) throw new AppError("INVALID_WORKER_ID", "A worker identifier is required.", 500);
   if (!Number.isInteger(leaseDurationMs) || leaseDurationMs < 1_000 || leaseDurationMs > 10 * 60_000) {
@@ -41,10 +41,12 @@ export async function claimNextIngestionJob(pool: Pool, workerId: string, leaseD
        JOIN materials m ON m.id = j.material_id AND m.owner_id = j.owner_id
        WHERE j.next_run_at <= now()
          AND j.attempts < j.max_attempts
+         AND ($1::uuid[] IS NULL OR j.material_id=ANY($1::uuid[]))
          AND (j.status = 'queued' OR (j.status = 'processing' AND j.lease_expires_at <= now()))
        ORDER BY j.next_run_at ASC, j.created_at ASC, j.id ASC
        FOR UPDATE OF j SKIP LOCKED
        LIMIT 1`,
+      [materialIds ?? null],
     );
     const row = selected.rows[0];
     if (!row) {

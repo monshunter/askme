@@ -30,23 +30,26 @@ export type QuestionRouteRepository = {
   deepAllowed: boolean;
 };
 
+export function hostEntityGateRoute(entityResolution: { stopBeforeRetrieval: boolean; gateReason: string }) {
+  if (!entityResolution.stopBeforeRetrieval) return null;
+  return {
+    requestedRoute: "rag" as const,
+    effectiveRoute: "rag" as const,
+    reasonCode: entityResolution.gateReason,
+    confidence: 1,
+    repositoryId: null,
+  };
+}
+
 function sourceInspectionIntent(question: string) {
   const hasCodeSubject = /`[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?`|\b(?:function|method|class|source code)\b|函数|方法|类|源码/iu.test(question);
   const asksImplementation = /如何|怎么|怎样|处理|实现|行为|边界|分支|调用链|调用|剩余|返回|深度检查|原始源码|\b(?:how|implementation|behaviou?r|edge case|branch|call flow|return|inspect)\b/iu.test(question);
   return hasCodeSubject && asksImplementation;
 }
 
-export function selectSourceInspectionRepository(question: string, repositories: QuestionRouteRepository[]) {
-  if (!sourceInspectionIntent(question)) return null;
-  const allowed = repositories.filter((repository) => repository.deepAllowed);
-  if (allowed.length === 1) return allowed[0]!;
-  const normalized = question.toLocaleLowerCase();
-  const matched = allowed.filter((repository) => {
-    const displayName = repository.displayName.toLocaleLowerCase();
-    const shortName = displayName.split("/").at(-1) ?? displayName;
-    return normalized.includes(displayName) || (shortName.length >= 3 && normalized.includes(shortName));
-  });
-  return matched.length === 1 ? matched[0]! : null;
+export function selectSourceInspectionRepository(question: string, repositories: QuestionRouteRepository[], resolvedRepositoryId: string | null) {
+  if (!sourceInspectionIntent(question) || !resolvedRepositoryId) return null;
+  return repositories.find((repository) => repository.id === resolvedRepositoryId && repository.deepAllowed) ?? null;
 }
 
 export function effectiveQuestionRoute(decision: { route: "rag" | "deep" | "refuse"; reasonCode: string; confidence: number }, selected: QuestionRouteRepository | null, sourceInspectionRequired = false) {
@@ -57,17 +60,13 @@ export function effectiveQuestionRoute(decision: { route: "rag" | "deep" | "refu
 }
 
 export function selectInsufficientEvidenceRepository(
-  question: string,
   decision: { route: "rag" | "deep" | "refuse"; repositoryId?: string | null },
   repositories: QuestionRouteRepository[],
+  resolvedRepositoryId: string | null,
 ) {
-  if (decision.route !== "rag" || !decision.repositoryId) return null;
+  if (decision.route !== "rag" || !decision.repositoryId || decision.repositoryId !== resolvedRepositoryId) return null;
   const selected = repositories.find((repository) => repository.id === decision.repositoryId && repository.deepAllowed);
-  if (!selected) return null;
-  const normalizedQuestion = question.normalize("NFKC").toLocaleLowerCase();
-  const displayName = selected.displayName.normalize("NFKC").toLocaleLowerCase();
-  const shortName = displayName.split("/").at(-1) ?? displayName;
-  return normalizedQuestion.includes(displayName) || (shortName.length >= 3 && normalizedQuestion.includes(shortName)) ? selected : null;
+  return selected ?? null;
 }
 
 function parseDecision(content: string) {

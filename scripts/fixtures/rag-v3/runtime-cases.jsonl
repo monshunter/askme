@@ -1,0 +1,19 @@
+{"id":"R001","question":"Askme 项目的定位是什么？","expectedOutcome":"answered","expectedCanonical":"Askme"}
+{"id":"R002","question":"Askme 项目的核心功能是什么？","expectedOutcome":"answered","expectedCanonical":"Askme"}
+{"id":"R003","question":"copybook 仓库的定位是什么？","expectedOutcome":"answered","expectedCanonical":"monshunter/copybook"}
+{"id":"R004","question":"copybook 仓库的主要功能是什么？","expectedOutcome":"answered","expectedCanonical":"monshunter/copybook"}
+{"id":"R005","question":"new-api 项目的定位是什么？","expectedOutcome":"answered","expectedCanonical":"QuantumNous/new-api"}
+{"id":"R006","question":"new-api 项目支持哪些 API 管理能力？","expectedOutcome":"answered","expectedCanonical":"QuantumNous/new-api"}
+{"id":"R007","question":"MoonBase 项目的定位是什么？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R008","question":"QuantumBridge 项目的核心功能是什么？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R009","question":"MarsLedger 仓库使用什么语言？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R010","question":"NebulaCRM 产品解决了什么问题？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R011","question":"CloudPassport 项目有哪些成果？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R012","question":"OceanCompiler 仓库如何实现发布？","expectedOutcome":"insufficient_evidence","expectedCanonical":null}
+{"id":"R013","question":"Askme 怎么样？","expectedOutcome":"answered","expectedCanonical":"Askme"}
+{"id":"R014","question":"MoonBase 怎么样？","expectedOutcome":"insufficient_evidence","expectedCanonical":null,"expectedCoverage":"none","expectedMissing":["MoonBase"],"expectedGateReason":"strict_entity_missing"}
+{"id":"R015","question":"Askme 和 MoonBase 分别解决了什么问题？","expectedOutcome":"answered","expectedCanonical":"Askme","expectedCoverage":"partial","expectedMissing":["MoonBase"],"expectedGateReason":"resolved_with_missing"}
+{"id":"R016","question":"它解决了什么问题？","expectedOutcome":"answered","expectedCanonical":"Askme","contextEntityFocus":[{"canonicalName":"Askme","type":"project"}]}
+{"id":"R017","question":"它解决了什么问题？","expectedOutcome":"insufficient_evidence","expectedCanonical":null,"expectedCoverage":"none","expectedGateReason":"contextual_reference_ambiguous","contextEntityFocus":[{"canonicalName":"Askme","type":"project"},{"canonicalName":"QuantumNous/new-api","type":"repository"}]}
+{"id":"R018","question":"NEW API 的定位是什么？","expectedOutcome":"answered","expectedCanonical":"QuantumNous/new-api"}
+{"id":"R019","question":"该项目解决了什么问题？","expectedOutcome":"insufficient_evidence","expectedCanonical":null,"expectedCoverage":"none","expectedGateReason":"contextual_reference_missing","contextEntityFocus":[]}

@@ -20,9 +20,10 @@ import { assessAgentQuestion } from "./question-policy";
 import { loadQuestionRepositories } from "./question-context";
 import { localizedQuestionMessage } from "./question-language";
 import { recordQuestionRoute } from "./question-route-audit";
-import { effectiveQuestionRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository } from "./question-router";
+import { effectiveQuestionRoute, hostEntityGateRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository } from "./question-router";
 import { answerRagCitationCount, generateVerifiedRagAnswer, persistRagAnswerCitations, validateRagEvidence } from "@/server/rag/rag-answer";
 import { retrieveRagForQuestion } from "@/server/rag/rag-query-service";
+import { uniquelyResolvedRepositoryId } from "@/server/rag/entity-catalog";
 import { persistRetrievalTrace } from "@/server/rag/retrieval-trace";
 
 type ExchangeRow = {
@@ -491,7 +492,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     const assessment = assessAgentQuestion(input.question);
     const retrievalStartedAt = performance.now();
     const retrieval = assessment.allowed
-      ? await retrieveRagForQuestion({ pool: getPool(), config, ownerId, consumer: "candidate_preview", question: assessment.question, conversation: await priorConversationMessages(exchange.conversationId, exchange.userMessageId) })
+      ? await retrieveRagForQuestion({ pool: getPool(), config, ownerId, consumer: "candidate_preview", question: assessment.question, conversationId: exchange.conversationId, conversation: await priorConversationMessages(exchange.conversationId, exchange.userMessageId) })
       : null;
     const evidence = retrieval?.candidates ?? [];
     if (retrieval) {
@@ -501,7 +502,14 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       });
     }
     let insufficientEvidenceRepositoryId: string | null = null;
-    if (assessment.allowed) {
+    const entityGateRoute = retrieval ? hostEntityGateRoute(retrieval.entityResolution) : null;
+    if (assessment.allowed && entityGateRoute) {
+      await recordQuestionRoute(getPool(), {
+        ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
+        ...entityGateRoute, evidenceCount: evidence.length, requestId,
+      });
+    } else if (assessment.allowed) {
+      const resolvedRepositoryId = retrieval ? uniquelyResolvedRepositoryId(retrieval.entityResolution) : null;
       const repositories = await loadQuestionRepositories({ pool: getPool(), config, ownerId, mode: "candidate" });
       const routerStartedAt = performance.now();
       const decision = await routeQuestion({
@@ -510,9 +518,9 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
         repositories,
       }, new OpenAiChatClient({ apiKey: config.ai.apiKey, baseUrl: config.ai.baseUrl, profile: config.ai.profiles.router }));
       await recordSuccessfulAiUsage({ pool: getPool(), ownerId, purpose: "agent.router", model: config.ai.profiles.router.model, ...decision.usage, latencyMs: Math.round(performance.now() - routerStartedAt) });
-      const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories);
-      const selected = sourceInspectionRepository ?? (decision.repositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
-      insufficientEvidenceRepositoryId = selectInsufficientEvidenceRepository(assessment.question, decision, repositories)?.id ?? null;
+      const sourceInspectionRepository = selectSourceInspectionRepository(assessment.question, repositories, resolvedRepositoryId);
+      const selected = sourceInspectionRepository ?? (decision.repositoryId === resolvedRepositoryId ? repositories.find((repository) => repository.id === decision.repositoryId) : null);
+      insufficientEvidenceRepositoryId = selectInsufficientEvidenceRepository(decision, repositories, resolvedRepositoryId)?.id ?? null;
       const effectiveRoute = effectiveQuestionRoute(decision, selected ?? null, sourceInspectionRepository !== null);
       await recordQuestionRoute(getPool(), {
         ownerId, actorRole: "candidate", conversationId: exchange.conversationId,
@@ -547,6 +555,11 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       evidence,
       coverage: retrieval?.coverage ?? "none",
       unsupportedAspects: retrieval?.unsupportedAspects ?? [],
+      missingEntities: retrieval ? [
+        ...retrieval.entityResolution.missing.map((mention) => mention.text),
+      ] : [],
+      ambiguousEntities: retrieval?.entityResolution.ambiguous.map((item) => item.mention.text) ?? [],
+      entityReferenceIssue: retrieval?.entityResolution.contextReference?.status,
       answerAspects: retrieval?.plan.answerAspects,
       currentDate,
       settings,

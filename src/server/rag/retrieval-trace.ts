@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import type { RuntimeConfig } from "@/server/config";
 
 import type { RagCoverage } from "./evidence-orchestrator";
+import type { EntityResolution } from "./entity-catalog";
 import type { RetrievedRagEvidence } from "./hybrid-retriever";
 import type { RagQueryPlan } from "./query-planner";
 
@@ -19,6 +20,9 @@ type SafeRetrievalResult = {
   configuredTokens: number;
   effectiveTokens: number;
   actualTokens: number;
+  provisionalCoverage?: RagCoverage;
+  answerabilityAspects?: Array<{ aspectId: string; status: "supported" | "unsupported" | "conflicted"; evidenceIds: string[] }>;
+  entityResolution?: EntityResolution;
 };
 
 export async function persistRetrievalTrace(queryable: Queryable, input: {
@@ -37,6 +41,19 @@ export async function persistRetrievalTrace(queryable: Queryable, input: {
     semanticQueryCount: input.result.plan.semanticQueries.length,
     desiredEvidenceTypes: input.result.plan.desiredEvidenceTypes,
     unsupportedAspects: input.result.unsupportedAspects,
+    entityResolution: input.result.entityResolution ? {
+      mentions: input.result.entityResolution.mentions.map((mention) => ({ text: mention.text, type: mention.type, source: mention.source })),
+      resolved: input.result.entityResolution.resolved.map((item) => ({ text: item.mention.text, type: item.mention.type, canonicalName: item.entity.canonicalName })),
+      missing: input.result.entityResolution.missing.map((mention) => ({ text: mention.text, type: mention.type })),
+      ambiguous: input.result.entityResolution.ambiguous.map((item) => ({ text: item.mention.text, type: item.mention.type, candidateCount: item.candidateCount })),
+      scope: input.result.entityResolution.scope
+        ? { materialCount: input.result.entityResolution.scope.materialIds.length, repositoryCount: input.result.entityResolution.scope.repositoryIds.length }
+        : null,
+      contextReference: input.result.entityResolution.contextReference,
+      gateReason: input.result.entityResolution.gateReason,
+    } : null,
+    provisionalCoverage: input.result.provisionalCoverage ?? input.result.coverage,
+    answerability: (input.result.answerabilityAspects ?? []).map((aspect) => ({ aspectId: aspect.aspectId, status: aspect.status, evidenceCount: aspect.evidenceIds.length })),
   };
   const selected = input.result.candidates.map((item) => ({
     evidenceId: item.evidenceId,

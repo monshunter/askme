@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/server/errors";
 
-import { effectiveQuestionRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository, type QuestionRouterClient } from "./question-router";
+import { effectiveQuestionRoute, hostEntityGateRoute, routeQuestion, selectInsufficientEvidenceRepository, selectSourceInspectionRepository, type QuestionRouterClient } from "./question-router";
 
 const repositories = [
   { id: "11111111-1111-4111-8111-111111111111", displayName: "Askme", deepAllowed: true },
@@ -20,9 +20,21 @@ function client(content: unknown): QuestionRouterClient {
 }
 
 describe("routeQuestion", () => {
+  it("keeps a Host entity failure in RAG so the answer layer owns the deterministic evidence-shortage result", () => {
+    expect(hostEntityGateRoute({ stopBeforeRetrieval: true, gateReason: "contextual_reference_ambiguous" })).toEqual({
+      requestedRoute: "rag",
+      effectiveRoute: "rag",
+      reasonCode: "contextual_reference_ambiguous",
+      confidence: 1,
+      repositoryId: null,
+    });
+    expect(hostEntityGateRoute({ stopBeforeRetrieval: false, gateReason: "resolved" })).toBeNull();
+  });
+
   it("selects one authorized Repository for an explicit function implementation question", () => {
-    expect(selectSourceInspectionRepository("copybook 的 `paginate` 函数在分页时如何处理剩余格子？", repositories)).toEqual(repositories[0]);
-    expect(selectSourceInspectionRepository("What does Askme do?", repositories)).toBeNull();
+    expect(selectSourceInspectionRepository("Askme 的 `paginate` 函数在分页时如何处理剩余格子？", repositories, repositories[0]!.id)).toEqual(repositories[0]);
+    expect(selectSourceInspectionRepository("Askme 的 `paginate` 函数在分页时如何处理剩余格子？", repositories, null)).toBeNull();
+    expect(selectSourceInspectionRepository("What does Askme do?", repositories, repositories[0]!.id)).toBeNull();
     expect(effectiveQuestionRoute({ route: "rag", reasonCode: "evidence_sufficient", confidence: 0.95 }, repositories[0]!, true)).toBe("deep");
   });
 
@@ -34,11 +46,11 @@ describe("routeQuestion", () => {
 
   it("does not guess the only Repository when RAG evidence is insufficient", () => {
     const oneCat = { id: "33333333-3333-4333-8333-333333333333", displayName: "OneCat", deepAllowed: true };
-    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "refuse", repositoryId: null }, [oneCat])).toBeNull();
-    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "rag", repositoryId: null }, [oneCat])).toBeNull();
-    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "deep", repositoryId: oneCat.id }, [oneCat])).toBeNull();
-    expect(selectInsufficientEvidenceRepository("Askme 项目呢？", { route: "rag", repositoryId: oneCat.id }, [oneCat])).toBeNull();
-    expect(selectInsufficientEvidenceRepository("OneCat 项目呢？", { route: "rag", repositoryId: oneCat.id }, [oneCat])).toEqual(oneCat);
+    expect(selectInsufficientEvidenceRepository({ route: "refuse", repositoryId: null }, [oneCat], oneCat.id)).toBeNull();
+    expect(selectInsufficientEvidenceRepository({ route: "rag", repositoryId: null }, [oneCat], oneCat.id)).toBeNull();
+    expect(selectInsufficientEvidenceRepository({ route: "deep", repositoryId: oneCat.id }, [oneCat], oneCat.id)).toBeNull();
+    expect(selectInsufficientEvidenceRepository({ route: "rag", repositoryId: oneCat.id }, [oneCat], null)).toBeNull();
+    expect(selectInsufficientEvidenceRepository({ route: "rag", repositoryId: oneCat.id }, [oneCat], oneCat.id)).toEqual(oneCat);
   });
   it("accepts a deep route only for a Host-authorized Repository", async () => {
     const result = await routeQuestion({

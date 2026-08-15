@@ -27,4 +27,5 @@
 | PLAN-022 | PLAN-022：优化公开 Agent 与预览会话体验 | [PLAN-022.md](PLAN-022.md) |
 | PLAN-023 | PLAN-023：统一 DeepSeek Flash 模型并回归 LLM 核心链路 | [PLAN-023.md](PLAN-023.md) |
 | PLAN-024 | PLAN-024：修复公共 Agent 无关证据误答 | [PLAN-024.md](PLAN-024.md) |
+| PLAN-025 | PLAN-025：交付成熟 Entity-grounded RAG 与真实质量闭环 | [PLAN-025.md](PLAN-025.md) |
 <!-- AGENT-HARNESS:END INDEX -->

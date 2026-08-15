@@ -28,7 +28,17 @@ describe("knowledge organization", () => {
   it("validates the AI JSON contract and requests OpenAI-compatible JSON mode", async () => {
     const payload = {
       materialSummary: "A grounded project summary.",
-      items: [{ type: "project", title: "Askme", summary: "A candidate career knowledge base.", highlights: ["Owner-isolated evidence"], confidence: 0.94, evidencePositions: [0] }],
+      items: [
+        {
+          type: "project",
+          title: "Askme",
+          summary: "A candidate career knowledge base.",
+          highlights: ["Owner-isolated evidence"],
+          confidence: 0.94,
+          evidencePositions: [0],
+          entities: [{ type: "project", canonicalName: "Askme", aliases: ["askme"] }],
+        },
+      ],
     };
     const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({ content: JSON.stringify(payload), inputTokens: 100, outputTokens: 40 });
     const result = await organizeMaterialKnowledge({ title: "Askme overview", kind: "website", chunks: chunkMaterialText("Askme is an owner-isolated career knowledge base.") }, { complete });
@@ -37,7 +47,11 @@ describe("knowledge organization", () => {
   });
 
   it("rejects unsupported categories and empty or malformed JSON", () => {
-    expect(() => parseKnowledgeOrganization('{"materialSummary":"x","items":[{"type":"award","title":"x","summary":"x","highlights":[],"confidence":1}]}')).toThrowError(
+    expect(() =>
+      parseKnowledgeOrganization(
+        '{"materialSummary":"x","items":[{"type":"award","title":"x","summary":"x","highlights":[],"confidence":1,"evidencePositions":[0],"entities":[{"type":"project","canonicalName":"x","aliases":[]}]}]}',
+      ),
+    ).toThrowError(
       expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>,
     );
     expect(() => parseKnowledgeOrganization("not json")).toThrowError(expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>);
@@ -46,12 +60,12 @@ describe("knowledge organization", () => {
   it("requires every organized item to name its supporting evidence chunks", () => {
     expect(() =>
       parseKnowledgeOrganization(
-        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1}]}'
+        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1,"entities":[{"type":"project","canonicalName":"x","aliases":[]}]}]}'
       ),
     ).toThrowError(expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>);
     expect(() =>
       parseKnowledgeOrganization(
-        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1,"evidencePositions":[]}]}'
+        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1,"evidencePositions":[],"entities":[{"type":"project","canonicalName":"x","aliases":[]}]}]}'
       ),
     ).toThrowError(expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>);
   });
@@ -59,9 +73,42 @@ describe("knowledge organization", () => {
   it("rejects duplicate evidence positions before persistence", () => {
     expect(() =>
       parseKnowledgeOrganization(
-        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1,"evidencePositions":[0,0]}]}'
+        '{"materialSummary":"x","items":[{"type":"project","title":"x","summary":"x","highlights":[],"confidence":1,"evidencePositions":[0,0],"entities":[{"type":"project","canonicalName":"x","aliases":[]}]}]}'
       ),
     ).toThrowError(expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>);
+  });
+
+  it("requires typed entities for every organized knowledge item", () => {
+    expect(() =>
+      parseKnowledgeOrganization(
+        '{"materialSummary":"x","items":[{"type":"project","title":"Askme","summary":"x","highlights":[],"confidence":1,"evidencePositions":[0]}]}',
+      ),
+    ).toThrowError(expect.objectContaining({ code: "AI_ORGANIZATION_INVALID" }) as Partial<AppError>);
+  });
+
+  it("rejects entity names and aliases that are not grounded in the source title or selected evidence", async () => {
+    const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
+      content: JSON.stringify({
+        materialSummary: "Askme project.",
+        items: [
+          {
+            type: "project",
+            title: "Askme",
+            summary: "Career knowledge agent.",
+            highlights: [],
+            confidence: 0.9,
+            evidencePositions: [0],
+            entities: [{ type: "project", canonicalName: "OneCat", aliases: ["one-cat"] }],
+          },
+        ],
+      }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    await expect(
+      organizeMaterialKnowledge({ title: "Askme overview", kind: "website", chunks: chunkMaterialText("Askme is a career knowledge agent.") }, { complete }),
+    ).rejects.toMatchObject({ code: "AI_ORGANIZATION_INVALID" } satisfies Partial<AppError>);
   });
 
   it("reports an explicit terminal result when no career knowledge is grounded", async () => {

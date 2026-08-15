@@ -14,7 +14,7 @@ export function indexVersionDescriptor(config: RuntimeConfig) {
     embeddingProvider: "openai-compatible",
     embeddingModel: config.embedding.model,
     embeddingDimensions: config.embedding.dimensions,
-    contextPrefixVersion: "source-context-v1",
+    contextPrefixVersion: "source-entity-context-v2",
     distanceMetric: "cosine" as const,
   };
   return {

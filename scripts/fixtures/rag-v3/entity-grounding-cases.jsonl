@@ -1,0 +1,12 @@
+{"id":"E001","mentions":[{"text":"askme","type":"project","source":"explicit"}],"expected":{"resolved":["Askme"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E002","mentions":[{"text":"ask-me","type":"product","source":"explicit"}],"expected":{"resolved":["Askme"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E003","mentions":[{"text":"unknown-project","type":"project","source":"explicit"}],"expected":{"resolved":[],"missing":["unknown-project"],"ambiguous":[],"soft":[],"stopBeforeRetrieval":true,"coverageCap":"full"}}
+{"id":"E004","mentions":[{"text":"OneCat","type":"project","source":"explicit"}],"expected":{"resolved":["OneCat"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E005","mentions":[{"text":"owner/onecat","type":"repository","source":"explicit"}],"expected":{"resolved":["OneCat"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E006","mentions":[{"text":"copybook","type":"repository","source":"explicit"}],"expected":{"resolved":["copybook"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E007","mentions":[{"text":"RAG","type":"technology","source":"explicit"}],"expected":{"resolved":[],"missing":[],"ambiguous":[],"soft":["RAG"],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E008","mentions":[{"text":"unknown-tech","type":"technology","source":"explicit"}],"expected":{"resolved":[],"missing":[],"ambiguous":[],"soft":["unknown-tech"],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E009","mentions":[{"text":"Askme","type":"project","source":"explicit"},{"text":"OneCat","type":"project","source":"explicit"}],"expected":{"resolved":["Askme","OneCat"],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}
+{"id":"E010","mentions":[{"text":"Askme","type":"project","source":"explicit"},{"text":"missing","type":"project","source":"explicit"}],"expected":{"resolved":["Askme"],"missing":["missing"],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"partial"}}
+{"id":"E011","mentions":[{"text":"common","type":"project","source":"explicit"}],"expected":{"resolved":[],"missing":[],"ambiguous":["common"],"soft":[],"stopBeforeRetrieval":true,"coverageCap":"full"}}
+{"id":"E012","mentions":[],"expected":{"resolved":[],"missing":[],"ambiguous":[],"soft":[],"stopBeforeRetrieval":false,"coverageCap":"full"}}

@@ -36,6 +36,75 @@ function evidence(id: string, content: string): RetrievedRagEvidence {
 }
 
 describe("generateVerifiedRagAnswer", () => {
+  it("names an unknown explicit entity without invoking answer providers", async () => {
+    const generator = { complete: vi.fn() };
+    const verifier = { complete: vi.fn() };
+
+    const result = await generateVerifiedRagAnswer({
+      question: "MoonBase 项目的定位是什么？",
+      evidence: [],
+      coverage: "none",
+      unsupportedAspects: ["MoonBase 项目的定位"],
+      missingEntities: ["MoonBase"],
+      settings: { answerTone: "professional", privacySafeMode: true },
+      generatorClient: generator,
+      verifierClient: verifier,
+    });
+
+    expect(result.answer).toContain("MoonBase");
+    expect(result.outcome).toBe("insufficient_evidence");
+    expect(generator.complete).not.toHaveBeenCalled();
+    expect(verifier.complete).not.toHaveBeenCalled();
+  });
+
+  it("asks for an explicit entity when a contextual reference is ambiguous", async () => {
+    const generator = { complete: vi.fn() };
+    const verifier = { complete: vi.fn() };
+
+    const result = await generateVerifiedRagAnswer({
+      question: "它解决了什么问题？",
+      evidence: [],
+      coverage: "none",
+      unsupportedAspects: ["它解决了什么问题"],
+      entityReferenceIssue: "ambiguous",
+      settings: { answerTone: "professional", privacySafeMode: true },
+      generatorClient: generator,
+      verifierClient: verifier,
+    });
+
+    expect(result.answer).toContain("无法唯一确定");
+    expect(result.answer).toContain("明确写出");
+    expect(generator.complete).not.toHaveBeenCalled();
+    expect(verifier.complete).not.toHaveBeenCalled();
+  });
+
+  it("appends a deterministic entity gap to a partial multi-entity answer", async () => {
+    const item = evidence("11111111-1111-4111-8111-111111111111", "Askme 是面向职业知识的 Agent 产品。");
+    const generator = { complete: vi.fn().mockResolvedValue({
+      content: JSON.stringify({ coverage: "partial", claims: [{ claimId: "c1", aspectId: "a1", text: "Askme 是面向职业知识的 Agent 产品。", evidenceIds: [item.evidenceId] }], unsupportedAspectIds: [] }),
+      inputTokens: 1, outputTokens: 1,
+    }) };
+    const verifier = { complete: vi.fn().mockResolvedValue({ content: JSON.stringify({ claimId: "c1", verdict: "entailed", narrowedText: null }), inputTokens: 1, outputTokens: 1 }) };
+
+    const result = await generateVerifiedRagAnswer({
+      question: "Askme 和 MoonBase 分别解决了什么问题？",
+      evidence: [item],
+      coverage: "partial",
+      unsupportedAspects: ["MoonBase"],
+      missingEntities: ["MoonBase"],
+      settings: { answerTone: "professional", privacySafeMode: true },
+      generatorClient: generator,
+      verifierClient: verifier,
+    });
+
+    expect(result.outcome).toBe("answered");
+    expect(result.coverage).toBe("partial");
+    expect(result.answer).toContain("Askme");
+    expect(result.answer).toContain("MoonBase");
+    expect(result.answer).toContain("证据缺口");
+    expect(result.unsupportedAspects).toContain("MoonBase");
+  });
+
   it("drops unsupported claims, narrows partial claims, and renders only verified citations", async () => {
     const first = evidence("11111111-1111-4111-8111-111111111111", "候选人在富途负责 Hybrid RAG 检索。");
     const second = evidence("22222222-2222-4222-8222-222222222222", "候选人参与了评测。");

@@ -4,6 +4,7 @@ import { EmbeddingClient } from "@/server/ai/retrieval-providers";
 import type { RuntimeConfig } from "@/server/config";
 import { allowedVisibilities, type MaterialVisibility, type VisibilityConsumer } from "@/server/privacy/visibility-policy";
 
+import type { EntityScope } from "./entity-catalog";
 import type { RagQueryPlan } from "./query-planner";
 
 export type RagRoute = "exact" | "lexical" | "vector" | "structured";
@@ -98,6 +99,11 @@ WITH eligible AS (
           WHERE revision.id=repository.active_revision_id AND revision.owner_id=repository.owner_id
         ))
     )
+    AND (
+      $3::uuid[] IS NULL
+      OR (source.source_kind='material' AND source.source_id=ANY($3::uuid[]))
+      OR (source.source_kind<>'material' AND repository.id=ANY($4::uuid[]))
+    )
 )`;
 
 const selectedColumns = `"evidenceId","parentId","stableKey","sourceVersionId","indexVersionId","sourceKind","sourceId","repositoryId","sourceRevision","evidenceFamilyId",visibility,title,path,"commitSha","revisionId","sourceContentHash","structurePath",content,"parentContent","tokenCount","sourceRange","contentChecksum"`;
@@ -122,6 +128,10 @@ function deduplicateRoute(hits: RagRouteHit[]) {
     seen.add(hit.evidenceId);
     return true;
   });
+}
+
+function routeScopeValues(scope: EntityScope | null | undefined) {
+  return scope ? [scope.materialIds, scope.repositoryIds] as const : [null, null] as const;
 }
 
 export function fuseWeightedRrf(
@@ -150,67 +160,68 @@ export function fuseWeightedRrf(
     });
 }
 
-async function exactRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number) {
+async function exactRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number, scope?: EntityScope | null) {
   const phrases = [...plan.exactPhrases, ...plan.entities, plan.standaloneQuery].slice(0, 32);
   const result = await pool.query<RagRouteHit>(
     `${eligibleCte}
      /* rag-route:exact */
      SELECT ${selectedColumns}
      FROM eligible
-     WHERE "contextualContent" ILIKE ANY($3::text[]) OR metadata::text ILIKE ANY($3::text[])
-     ORDER BY (SELECT count(*) FROM unnest($4::text[]) phrase WHERE lower("contextualContent") LIKE '%' || lower(phrase) || '%') DESC,
+     WHERE "contextualContent" ILIKE ANY($5::text[]) OR metadata::text ILIKE ANY($5::text[])
+     ORDER BY (SELECT count(*) FROM unnest($6::text[]) phrase WHERE lower("contextualContent") LIKE '%' || lower(phrase) || '%') DESC,
               "evidenceId" ASC
-     LIMIT $5`,
-    [ownerId, visibility, likePatterns(phrases), phrases, limit],
+     LIMIT $7`,
+    [ownerId, visibility, ...routeScopeValues(scope), likePatterns(phrases), phrases, limit],
   );
   return result.rows;
 }
 
-async function lexicalRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number) {
+async function lexicalRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number, scope?: EntityScope | null) {
   const probes = [...plan.trigramProbes, ...plan.lexicalTerms].slice(0, 32);
   const result = await pool.query<RagRouteHit>(
     `${eligibleCte}
      /* rag-route:lexical */
      SELECT ${selectedColumns}
      FROM eligible
-     WHERE search_vector @@ to_tsquery('simple',$3) OR content ILIKE ANY($4::text[])
-       OR EXISTS (SELECT 1 FROM unnest($5::text[]) probe WHERE similarity(content,probe)>=0.08)
-     ORDER BY (ts_rank_cd(search_vector,to_tsquery('simple',$3))
-       + coalesce((SELECT max(similarity(content,probe)) FROM unnest($5::text[]) probe),0)) DESC,"evidenceId" ASC
-     LIMIT $6`,
-    [ownerId, visibility, ftsQuery(plan.lexicalTerms), likePatterns(probes), probes, limit],
+     WHERE search_vector @@ to_tsquery('simple',$5) OR content ILIKE ANY($6::text[])
+       OR EXISTS (SELECT 1 FROM unnest($7::text[]) probe WHERE similarity(content,probe)>=0.08)
+     ORDER BY (ts_rank_cd(search_vector,to_tsquery('simple',$5))
+       + coalesce((SELECT max(similarity(content,probe)) FROM unnest($7::text[]) probe),0)) DESC,"evidenceId" ASC
+     LIMIT $8`,
+    [ownerId, visibility, ...routeScopeValues(scope), ftsQuery(plan.lexicalTerms), likePatterns(probes), probes, limit],
   );
   return result.rows;
 }
 
-async function structuredRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number) {
+async function structuredRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], plan: RagQueryPlan, limit: number, scope?: EntityScope | null) {
   const probes = likePatterns([...plan.entities, ...plan.mustTerms, ...plan.shouldTerms]);
   const result = await pool.query<RagRouteHit>(
     `${eligibleCte}
      /* rag-route:structured */
      SELECT ${selectedColumns}
      FROM eligible
-     WHERE title ILIKE ANY($3::text[]) OR coalesce(path,'') ILIKE ANY($3::text[])
+     WHERE title ILIKE ANY($5::text[]) OR coalesce(path,'') ILIKE ANY($5::text[])
        OR ("sourceKind"='material' AND EXISTS (
          SELECT 1 FROM knowledge_sources anchor
          JOIN knowledge_items knowledge ON knowledge.id=anchor.knowledge_item_id AND knowledge.owner_id=anchor.owner_id AND knowledge.status='active'
          WHERE anchor.owner_id=$1 AND anchor.material_id="sourceId"
-           AND (knowledge.title ILIKE ANY($3::text[]) OR knowledge.summary ILIKE ANY($3::text[]))
+           AND (knowledge.title ILIKE ANY($5::text[]) OR knowledge.summary ILIKE ANY($5::text[])
+             OR knowledge.entities::text ILIKE ANY($5::text[]))
        ))
-     ORDER BY "evidenceId" ASC LIMIT $4`,
-    [ownerId, visibility, probes.length > 0 ? probes : likePatterns([plan.standaloneQuery]), limit],
+     ORDER BY "evidenceId" ASC LIMIT $6`,
+    [ownerId, visibility, ...routeScopeValues(scope), probes.length > 0 ? probes : likePatterns([plan.standaloneQuery]), limit],
   );
   return result.rows;
 }
 
-async function vectorRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], vector: number[], limit: number) {
+async function vectorRoute(pool: Queryable, ownerId: string, visibility: readonly MaterialVisibility[], vector: number[], limit: number, scope?: EntityScope | null) {
   const result = await pool.query<RagRouteHit>(
     `${eligibleCte}
      /* rag-route:vector */
      SELECT ${selectedColumns}
      FROM eligible
-     ORDER BY embedding <=> $3::vector,"evidenceId" ASC LIMIT $4`,
-    [ownerId, visibility, vectorLiteral(vector), limit],
+     ORDER BY embedding <=> $5::vector,"evidenceId" ASC LIMIT $6`,
+    [ownerId, visibility, ...routeScopeValues(scope), vectorLiteral(vector), limit],
   );
   return result.rows;
 }
@@ -221,21 +232,21 @@ export async function retrieveHybridEvidence(
   consumer: VisibilityConsumer,
   plan: RagQueryPlan,
   config: RuntimeConfig,
-  dependencies: { embeddingClient?: EmbeddingProvider } = {},
+  dependencies: { embeddingClient?: EmbeddingProvider; scope?: EntityScope | null } = {},
 ): Promise<HybridRetrievalResult> {
   const visibility = allowedVisibilities(consumer);
   const retrieval = config.rag.retrieval;
   const embeddingClient = dependencies.embeddingClient ?? new EmbeddingClient(config.embedding);
   const vectorPromise = embeddingClient.embed(plan.semanticQueries.slice(0, 2))
     .then(async (embedded) => {
-      const batches = await Promise.all(embedded.vectors.map((vector) => vectorRoute(pool, ownerId, visibility, vector, retrieval.vectorTopK)));
+      const batches = await Promise.all(embedded.vectors.map((vector) => vectorRoute(pool, ownerId, visibility, vector, retrieval.vectorTopK, dependencies.scope)));
       return { hits: deduplicateRoute(batches.flat()), degraded: false };
     })
     .catch(() => ({ hits: [] as RagRouteHit[], degraded: true }));
   const [exact, lexical, structured, vector] = await Promise.all([
-    exactRoute(pool, ownerId, visibility, plan, retrieval.exactTopK),
-    lexicalRoute(pool, ownerId, visibility, plan, retrieval.lexicalTopK),
-    structuredRoute(pool, ownerId, visibility, plan, retrieval.structuredTopK),
+    exactRoute(pool, ownerId, visibility, plan, retrieval.exactTopK, dependencies.scope),
+    lexicalRoute(pool, ownerId, visibility, plan, retrieval.lexicalTopK, dependencies.scope),
+    structuredRoute(pool, ownerId, visibility, plan, retrieval.structuredTopK, dependencies.scope),
     vectorPromise,
   ]);
   const routes: RouteMap = { exact, lexical, vector: vector.hits, structured };

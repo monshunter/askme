@@ -172,10 +172,12 @@ function childUnits(parent: RagParentChunk, config: ChunkingConfig) {
   return groups;
 }
 
-export function structureChunkText(input: { text: string; sourceRevision: string; sourceTitle: string; config: ChunkingConfig }) {
+export function structureChunkText(input: { text: string; sourceRevision: string; sourceTitle: string; entityLabels?: string[]; config: ChunkingConfig }) {
   const text = normalizeText(input.text);
   if (!text) throw new AppError("RAG_SOURCE_TEXT_EMPTY", "The RAG source does not contain extractable text.", 422);
   if (!input.sourceRevision.trim() || !input.sourceTitle.trim()) throw new AppError("RAG_SOURCE_IDENTITY_INVALID", "The RAG source identity is invalid.", 500);
+  const entityLabels = [...new Set((input.entityLabels ?? []).map((label) => label.normalize("NFKC").replace(/\s+/gu, " ").trim()).filter(Boolean))].slice(0, 20);
+  const entityContext = entityLabels.length > 0 ? `Entities: ${entityLabels.join(" | ")}\n` : "";
 
   const parents: RagParentChunk[] = buildParents(structuralUnits(text), input.config).map((group, position) => {
     const content = group.map((unit) => unit.text).join("\n\n");
@@ -198,7 +200,7 @@ export function structureChunkText(input: { text: string; sourceRevision: string
         parentStableKey: parent.stableKey,
         position: children.length,
         content,
-        contextualContent: `Source: ${input.sourceTitle}\nSection: ${parent.structurePath}\n\n${content}`,
+        contextualContent: `Source: ${input.sourceTitle}\n${entityContext}Section: ${parent.structurePath}\n\n${content}`,
         tokenCount: deterministicTokenCount(content),
         sourceRange,
         contentChecksum,

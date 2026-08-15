@@ -213,6 +213,7 @@ export const knowledgeItems = pgTable(
     title: text("title").notNull(),
     summary: text("summary").notNull(),
     highlights: jsonb("highlights").$type<string[]>().default([]).notNull(),
+    entities: jsonb("entities").$type<Array<{ type: string; canonicalName: string; aliases: string[] }>>().default([]).notNull(),
     confidence: real("confidence").default(0).notNull(),
     ...timestamps,
   },
