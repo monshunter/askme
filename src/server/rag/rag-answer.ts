@@ -223,6 +223,7 @@ export async function generateVerifiedRagAnswer(input: {
   missingEntities?: string[];
   ambiguousEntities?: string[];
   entityReferenceIssue?: "missing" | "ambiguous";
+  queryClarification?: boolean;
   answerAspects?: RagAnswerAspect[];
   currentDate?: string;
   settings: AnswerSettings;
@@ -238,7 +239,12 @@ export async function generateVerifiedRagAnswer(input: {
     return {
       outcome: "insufficient_evidence" as const,
       coverage: "none" as const,
-      answer: input.entityReferenceIssue
+      answer: input.queryClarification
+        ? localizedQuestionMessage(input.question, {
+            en: "I cannot determine the intended subject or scope with enough confidence. Please clarify who or what you want to ask about.",
+            zh: "还无法足够确定你想查询的主体或范围，请补充说明具体想问谁或什么内容。",
+          })
+        : input.entityReferenceIssue
         ? localizedQuestionMessage(input.question, input.entityReferenceIssue === "ambiguous"
             ? { en: "I cannot determine which authorized entity that reference points to. Please name the project, product, or repository explicitly.", zh: "无法唯一确定该指代对应哪个授权实体，请明确写出项目、产品或仓库名称。" }
             : { en: "I cannot resolve that reference from the previous grounded turn. Please name the project, product, or repository explicitly.", zh: "无法从上一轮已验证对话中解析该指代，请明确写出项目、产品或仓库名称。" })

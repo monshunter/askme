@@ -39,7 +39,7 @@ describe("persistRetrievalTrace", () => {
           contextReference: null,
           stopBeforeRetrieval: false,
           coverageCap: "full",
-          gateReason: "no_strict_entity",
+          gateReason: "no_required_entity",
         },
       },
       latencyMs: 12,

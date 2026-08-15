@@ -7,7 +7,7 @@ import { allowedVisibilities, type VisibilityConsumer } from "@/server/privacy/v
 
 export const entityMentionTypes = ["person", "organization", "project", "product", "repository", "technology", "other"] as const;
 export type EntityMentionType = (typeof entityMentionTypes)[number];
-export type EntityMention = { text: string; type: EntityMentionType; source: "explicit" | "contextual" };
+export type EntityMention = { text: string; type: EntityMentionType; source: "explicit" | "contextual"; role: "required" | "context" };
 const strictEntityTypes = ["person", "organization", "project", "product", "repository"] as const;
 type StrictEntityType = (typeof strictEntityTypes)[number];
 export type EntityScope = { materialIds: string[]; repositoryIds: string[] };
@@ -68,6 +68,7 @@ export function detectAuthorizedEntityMentions(
   text: string,
   catalog: AuthorizedEntityCatalog,
   source: EntityMention["source"],
+  role: NonNullable<EntityMention["role"]> = "context",
 ) {
   const byKey = new Map(catalog.entities.map((entity) => [entity.key, entity]));
   const aliases = new Map<string, string[]>();
@@ -85,7 +86,7 @@ export function detectAuthorizedEntityMentions(
     const keys = catalog.aliases.get(normalized) ?? [];
     const entity = keys.map((key) => byKey.get(key)).find((item): item is CatalogEntity => Boolean(item));
     if (!entity) continue;
-    candidates.push({ start: span.start, end: span.end, mention: { text: span.text, type: entity.type, source } });
+    candidates.push({ start: span.start, end: span.end, mention: { text: span.text, type: entity.type, source, role } });
   }
   const selected: typeof candidates = [];
   for (const candidate of candidates.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start))) {
@@ -217,8 +218,9 @@ export type EntityResolution = {
   contextReference: ContextReferenceIssue | null;
   stopBeforeRetrieval: boolean;
   coverageCap: "full" | "partial";
-  gateReason: "no_strict_entity" | "resolved" | "resolved_with_missing" | "strict_entity_missing" | "strict_entity_ambiguous"
-    | "contextual_reference_missing" | "contextual_reference_ambiguous" | "resolved_with_missing_context" | "resolved_with_ambiguous_context";
+  gateReason: "no_required_entity" | "resolved" | "resolved_with_missing" | "strict_entity_missing" | "strict_entity_ambiguous"
+    | "contextual_reference_missing" | "contextual_reference_ambiguous" | "resolved_with_missing_context" | "resolved_with_ambiguous_context"
+    | "query_clarification_required";
 };
 
 export function resolveAuthorizedEntities(
@@ -232,7 +234,9 @@ export function resolveAuthorizedEntities(
   const ambiguous: EntityResolution["ambiguous"] = [];
   const soft: EntityMention[] = [];
 
-  for (const mention of mentions) {
+  const requiredMentions = mentions.filter((mention) => mention.role === "required");
+  soft.push(...mentions.filter((mention) => mention.role === "context"));
+  for (const mention of requiredMentions) {
     if (mention.type === "technology" || mention.type === "other") {
       soft.push(mention);
       continue;
@@ -258,7 +262,7 @@ export function resolveAuthorizedEntities(
         : contextReference?.status === "missing"
           ? "resolved_with_missing_context"
           : strictCount === 0
-    ? "no_strict_entity"
+    ? "no_required_entity"
     : ambiguous.length > 0 && resolved.length === 0
       ? "strict_entity_ambiguous"
       : missing.length > 0 && resolved.length === 0

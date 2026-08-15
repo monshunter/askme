@@ -93,4 +93,24 @@ describe("retrieveHybridEvidence", () => {
       expect(call[1]?.slice(2, 4)).toEqual([scope.materialIds, scope.repositoryIds]);
     }
   });
+
+  it("enforces the planned evidence types before every retrieval route", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const embeddingClient = { embed: vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 }) };
+
+    await retrieveHybridEvidence(
+      { query } as never,
+      "44444444-4444-4444-8444-444444444444",
+      "candidate_preview",
+      analyzeDeterministicQuery("2022年到2024年，你在哪家公司任职？"),
+      getRuntimeConfig(),
+      { embeddingClient },
+    );
+
+    expect(query).toHaveBeenCalledTimes(4);
+    for (const call of query.mock.calls) {
+      expect(String(call[0])).toContain("source.source_kind=ANY($5::rag_source_kind[])");
+      expect(call[1]?.[4]).toEqual(["material"]);
+    }
+  });
 });

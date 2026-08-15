@@ -67,7 +67,7 @@ describe("runtime config", () => {
       topN: 8,
     });
     expect(config.rag).toEqual({
-      policyVersion: "entity-grounded-rag-v3",
+      policyVersion: "query-understood-rag-v4",
       retrieval: {
         exactTopK: 20,
         lexicalTopK: 30,

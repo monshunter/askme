@@ -6,6 +6,7 @@ import type { RagCoverage } from "./evidence-orchestrator";
 import type { EntityResolution } from "./entity-catalog";
 import type { RetrievedRagEvidence } from "./hybrid-retriever";
 import type { RagQueryPlan } from "./query-planner";
+import type { TemporalEvidenceAnnotation } from "./temporal-evidence";
 
 type Queryable = Pick<Pool | PoolClient, "query">;
 
@@ -23,6 +24,7 @@ type SafeRetrievalResult = {
   provisionalCoverage?: RagCoverage;
   answerabilityAspects?: Array<{ aspectId: string; status: "supported" | "unsupported" | "conflicted"; evidenceIds: string[] }>;
   entityResolution?: EntityResolution;
+  temporalAnnotations?: TemporalEvidenceAnnotation[];
 };
 
 export async function persistRetrievalTrace(queryable: Queryable, input: {
@@ -35,6 +37,15 @@ export async function persistRetrievalTrace(queryable: Queryable, input: {
   latencyMs: number;
 }) {
   const planner = {
+    intent: input.result.plan.intent,
+    subject: input.result.plan.subject,
+    queryMode: input.result.plan.queryMode,
+    knowledgeScope: input.result.plan.knowledgeScope,
+    requestedFields: input.result.plan.requestedFields,
+    constraints: input.result.plan.constraints,
+    confidence: input.result.plan.confidence,
+    ambiguityCount: input.result.plan.ambiguities.length,
+    adjudication: input.result.plan.adjudication,
     entities: input.result.plan.entities,
     mustTerms: input.result.plan.mustTerms,
     shouldTerms: input.result.plan.shouldTerms,
@@ -42,7 +53,7 @@ export async function persistRetrievalTrace(queryable: Queryable, input: {
     desiredEvidenceTypes: input.result.plan.desiredEvidenceTypes,
     unsupportedAspects: input.result.unsupportedAspects,
     entityResolution: input.result.entityResolution ? {
-      mentions: input.result.entityResolution.mentions.map((mention) => ({ text: mention.text, type: mention.type, source: mention.source })),
+      mentions: input.result.entityResolution.mentions.map((mention) => ({ text: mention.text, type: mention.type, source: mention.source, role: mention.role })),
       resolved: input.result.entityResolution.resolved.map((item) => ({ text: item.mention.text, type: item.mention.type, canonicalName: item.entity.canonicalName })),
       missing: input.result.entityResolution.missing.map((mention) => ({ text: mention.text, type: mention.type })),
       ambiguous: input.result.entityResolution.ambiguous.map((item) => ({ text: item.mention.text, type: item.mention.type, candidateCount: item.candidateCount })),
@@ -54,6 +65,11 @@ export async function persistRetrievalTrace(queryable: Queryable, input: {
     } : null,
     provisionalCoverage: input.result.provisionalCoverage ?? input.result.coverage,
     answerability: (input.result.answerabilityAspects ?? []).map((aspect) => ({ aspectId: aspect.aspectId, status: aspect.status, evidenceCount: aspect.evidenceIds.length })),
+    temporal: {
+      overlap: (input.result.temporalAnnotations ?? []).filter((item) => item.status === "overlap").length,
+      outside: (input.result.temporalAnnotations ?? []).filter((item) => item.status === "outside").length,
+      unknown: (input.result.temporalAnnotations ?? []).filter((item) => item.status === "unknown").length,
+    },
   };
   const selected = input.result.candidates.map((item) => ({
     evidenceId: item.evidenceId,

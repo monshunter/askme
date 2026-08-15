@@ -17,7 +17,7 @@ import {
 } from "../src/server/rag/entity-catalog";
 import { buildEvidencePack } from "../src/server/rag/evidence-orchestrator";
 import { fuseWeightedRrf, type RagRoute, type RagRouteHit, type RetrievedRagEvidence } from "../src/server/rag/hybrid-retriever";
-import { analyzeDeterministicQuery, type RagQueryPlan } from "../src/server/rag/query-planner";
+import { analyzeDeterministicQuery, applyCatalogFallbackToPlan, type RagQueryPlan } from "../src/server/rag/query-planner";
 import { resolveRagPlanEntities } from "../src/server/rag/rag-query-service";
 
 const legacyEvidenceSchema = z.object({
@@ -38,6 +38,7 @@ const entityCaseSchema = z.object({
   id: z.string(),
   mentions: z.array(z.object({
     text: z.string(), type: z.enum(["person", "organization", "project", "product", "repository", "technology", "other"]), source: z.enum(["explicit", "contextual"]),
+    role: z.enum(["required", "context"]).default("required"),
   }).strict()),
   expected: z.object({
     resolved: z.array(z.string()), missing: z.array(z.string()), ambiguous: z.array(z.string()), soft: z.array(z.string()),
@@ -192,7 +193,7 @@ function syntheticRerank(candidates: RetrievedRagEvidence[], plan: RagQueryPlan,
 
 function contextFocus(context: Array<{ role: "user" | "assistant"; content: string }>, catalog: AuthorizedEntityCatalog): ConversationEntityFocus[] {
   if (context.length === 0) return [];
-  const mentions = detectAuthorizedEntityMentions(context.map((message) => message.content).join("\n"), catalog, "contextual");
+  const mentions = detectAuthorizedEntityMentions(context.map((message) => message.content).join("\n"), catalog, "contextual", "required");
   const resolution = resolveAuthorizedEntities(mentions, catalog);
   const focus = new Map<string, ConversationEntityFocus>();
   for (const item of resolution.resolved) {
@@ -277,8 +278,10 @@ async function main() {
     .split("\n").filter(Boolean).map((line) => entityQueryCaseSchema.parse(JSON.parse(line)));
   const entityQueryFailures: string[] = [];
   for (const item of entityQueryCases) {
+    const catalog = regressionCatalog();
+    const deterministic = analyzeDeterministicQuery(item.question);
     const result = resolveRagPlanEntities({
-      plan: analyzeDeterministicQuery(item.question), question: item.question, catalog: regressionCatalog(),
+      plan: applyCatalogFallbackToPlan(deterministic, item.question, detectAuthorizedEntityMentions(item.question, catalog, "explicit", "context")), question: item.question, catalog,
       contextEntityFocus: item.contextEntityFocus,
       contextFocusControlled: item.contextEntityFocus !== undefined,
     });

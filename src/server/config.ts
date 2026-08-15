@@ -447,7 +447,7 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       topN: integer("ASKME_RERANK_TOP_N", 8, 1, 100),
     },
     rag: {
-      policyVersion: read("ASKME_RAG_POLICY_VERSION") ?? "entity-grounded-rag-v3",
+      policyVersion: read("ASKME_RAG_POLICY_VERSION") ?? "query-understood-rag-v4",
       retrieval: {
         exactTopK: integer("ASKME_RAG_EXACT_TOP_K", 20, 1, 200),
         lexicalTopK: integer("ASKME_RAG_LEXICAL_TOP_K", 30, 1, 200),

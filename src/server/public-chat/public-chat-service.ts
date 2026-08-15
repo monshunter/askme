@@ -364,7 +364,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
     const retrieval = assessment.allowed
       ? await retrieveRagForQuestion({
           pool: getPool(), config, ownerId: conversation.ownerId, consumer: "public_answer", question: assessment.question, conversationId: conversation.id,
-          conversation: previousQuestions.map((question) => ({ role: "user" as const, content: question })),
+          conversation: previousQuestions.map((question) => ({ role: "user" as const, content: question })), currentDate,
         })
       : null;
     const evidence = retrieval?.candidates ?? [];
@@ -443,6 +443,7 @@ export async function chatPublicAgent(slug: string, visitorToken: string | undef
           ] : [],
           ambiguousEntities: retrieval?.entityResolution.ambiguous.map((item) => item.mention.text) ?? [],
           entityReferenceIssue: retrieval?.entityResolution.contextReference?.status,
+          queryClarification: retrieval?.entityResolution.gateReason === "query_clarification_required",
           answerAspects: retrieval?.plan.answerAspects,
           currentDate,
           settings,

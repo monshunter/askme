@@ -8,4 +8,5 @@
 | BUG-003 | BUG-003：Docker 重启时 worker 可能原样输出 PostgreSQL 客户端对象 | [BUG-003.md](BUG-003.md) |
 | BUG-004 | BUG-004：delivery trace 因 Journal 正文提及历史 Plan 而误匹配 | [BUG-004.md](BUG-004.md) |
 | BUG-005 | BUG-005：公共 Agent 用无关 Repository Evidence 回答未知项目 | [BUG-005.md](BUG-005.md) |
+| BUG-006 | BUG-006：RAG 运行时评测被 SQL 枚举与跨 owner fixture 假设破坏 | [BUG-006.md](BUG-006.md) |
 <!-- AGENT-HARNESS:END INDEX -->

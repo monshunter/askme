@@ -38,7 +38,7 @@ function evidence(id: string, family: string, content: string): RetrievedRagEvid
 }
 
 const resolution: EntityResolution = {
-  mentions: [{ text: "OneCat", type: "project", source: "explicit" }],
+  mentions: [{ text: "OneCat", type: "project", source: "explicit", role: "required" }],
   resolved: [],
   missing: [],
   ambiguous: [],
@@ -51,6 +51,78 @@ const resolution: EntityResolution = {
 };
 
 describe("runAnswerabilityGate", () => {
+  it("tells the Provider that a context mention is not a coverage requirement", async () => {
+    const project = evidence("11111111-1111-4111-8111-111111111111", "family-1", "EasyInterview 是 AI 面试训练项目。");
+    const contextResolution: EntityResolution = {
+      ...resolution,
+      mentions: [{ text: "Askme", type: "project", source: "explicit", role: "context" }],
+      soft: [{ text: "Askme", type: "project", source: "explicit", role: "context" }],
+      scope: null,
+      gateReason: "no_required_entity",
+    };
+    const complete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [project.evidenceId] }] }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    const result = await runAnswerabilityGate({
+      question: "看过 Askme 后，我还做过哪些项目？",
+      answerAspects: [{ aspectId: "a1", label: "项目" }],
+      entityResolution: contextResolution,
+      evidence: [project],
+      client: { complete },
+    });
+
+    expect(result.coverage).toBe("full");
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).toContain("role=context");
+    expect(complete.mock.calls[0]?.[0]?.[1]?.content).toContain('\"role\":\"context\"');
+  });
+
+  it("treats unavailable required entities as partial gaps beside resolved entities", async () => {
+    const askme = evidence("11111111-1111-4111-8111-111111111111", "family-1", "Askme 解决静态简历难以呈现项目深度的问题。");
+    const mixedResolution: EntityResolution = {
+      ...resolution,
+      mentions: [
+        { text: "Askme", type: "product", source: "explicit", role: "required" },
+        { text: "MoonBase", type: "project", source: "explicit", role: "required" },
+      ],
+      resolved: [{
+        mention: { text: "Askme", type: "product", source: "explicit", role: "required" },
+        entity: {
+          key: "product:askme",
+          type: "product",
+          canonicalName: "Askme",
+          aliases: ["Askme"],
+          materialIds: ["material"],
+          repositoryIds: [],
+        },
+      }],
+      missing: [{ text: "MoonBase", type: "project", source: "explicit", role: "required" }],
+      coverageCap: "partial",
+      gateReason: "resolved_with_missing",
+    };
+    const complete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [askme.evidenceId] }] }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    const result = await runAnswerabilityGate({
+      question: "Askme 和 MoonBase 分别解决了什么问题？",
+      answerAspects: [{ aspectId: "a1", label: "定位" }],
+      entityResolution: mixedResolution,
+      evidence: [askme],
+      client: { complete },
+    });
+
+    expect(result.coverage).toBe("partial");
+    expect(result.unsupportedAspects).toContain("MoonBase");
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).toContain("requiredResolution.unavailable");
+    expect(complete.mock.calls[0]?.[0]?.[1]?.content).toContain('\"requiredResolution\":{\"resolved\":[{\"text\":\"Askme\"');
+    expect(complete.mock.calls[0]?.[0]?.[1]?.content).toContain('\"status\":\"missing\"');
+  });
+
   it("passes only evidence selected for supported aspects to answer generation", async () => {
     const first = evidence("11111111-1111-4111-8111-111111111111", "family-1", "OneCat 是声明式 HTTP 网关。");
     const unrelated = evidence("22222222-2222-4222-8222-222222222222", "family-2", "候选人不负责云资源供应。");

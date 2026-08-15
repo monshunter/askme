@@ -191,3 +191,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-025：交付成熟 Entity-grounded RAG 与真实质量闭环](docs/plans/PLAN-025.md)
 ---
+
+---
+ID: OBJ-021
+Objective: 修复无显式实体与意图主体误识别问题，将 Askme 的 Entity-grounded RAG 升级为能区分已知条件、检索范围和待求字段的成熟查询理解系统，并在真实环境完成闭环验收
+Status: 已完成
+Plans:
+- [x] [PLAN-026：交付 Query-understood RAG 与无实体问题真实闭环](docs/plans/PLAN-026.md)
+---

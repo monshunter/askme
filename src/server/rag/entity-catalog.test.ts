@@ -43,7 +43,7 @@ describe("resolveAuthorizedEntities", () => {
   };
 
   it("creates a hard source scope for uniquely resolved strict entities", () => {
-    const result = resolveAuthorizedEntities([{ text: "one-cat", type: "project", source: "explicit" }], catalog);
+    const result = resolveAuthorizedEntities([{ text: "one-cat", type: "project", source: "explicit", role: "required" }], catalog);
 
     expect(result.stopBeforeRetrieval).toBe(false);
     expect(result.resolved).toHaveLength(1);
@@ -51,7 +51,7 @@ describe("resolveAuthorizedEntities", () => {
   });
 
   it("stops before retrieval when the only strict entity is missing", () => {
-    const result = resolveAuthorizedEntities([{ text: "unknown-project", type: "project", source: "explicit" }], catalog);
+    const result = resolveAuthorizedEntities([{ text: "unknown-project", type: "project", source: "explicit", role: "required" }], catalog);
 
     expect(result.stopBeforeRetrieval).toBe(true);
     expect(result.missing.map((mention) => mention.text)).toEqual(["unknown-project"]);
@@ -59,11 +59,23 @@ describe("resolveAuthorizedEntities", () => {
   });
 
   it("keeps technology mentions soft and never uses them as a hard source scope", () => {
-    const result = resolveAuthorizedEntities([{ text: "RAG", type: "technology", source: "explicit" }], catalog);
+    const result = resolveAuthorizedEntities([{ text: "RAG", type: "technology", source: "explicit", role: "context" }], catalog);
 
     expect(result.soft).toHaveLength(1);
     expect(result.stopBeforeRetrieval).toBe(false);
     expect(result.scope).toBeNull();
+  });
+
+  it("does not resolve or hard-scope a context-only named entity", () => {
+    const result = resolveAuthorizedEntities([
+      { text: "Askme", type: "project", source: "explicit", role: "context" },
+    ], catalog);
+
+    expect(result.resolved).toEqual([]);
+    expect(result.missing).toEqual([]);
+    expect(result.stopBeforeRetrieval).toBe(false);
+    expect(result.scope).toBeNull();
+    expect(result.gateReason).toBe("no_required_entity");
   });
 
   it("stops an ambiguous conversational reference before retrieval", () => {
@@ -76,7 +88,7 @@ describe("resolveAuthorizedEntities", () => {
 
   it("caps coverage at partial when an explicit entity resolves but a contextual reference remains ambiguous", () => {
     const result = resolveAuthorizedEntities(
-      [{ text: "Askme", type: "project", source: "explicit" }],
+      [{ text: "Askme", type: "project", source: "explicit", role: "required" }],
       catalog,
       { status: "ambiguous", referenceText: "它" },
     );
@@ -95,7 +107,7 @@ describe("detectAuthorizedEntityMentions", () => {
     };
 
     expect(detectAuthorizedEntityMentions("Askme 怎么样？", catalog, "explicit")).toEqual([
-      { text: "Askme", type: "project", source: "explicit" },
+      { text: "Askme", type: "project", source: "explicit", role: "context" },
     ]);
   });
 
@@ -109,7 +121,7 @@ describe("detectAuthorizedEntityMentions", () => {
     };
 
     expect(detectAuthorizedEntityMentions("new-api 怎么处理渠道？", catalog, "explicit")).toEqual([
-      { text: "new-api", type: "repository", source: "explicit" },
+      { text: "new-api", type: "repository", source: "explicit", role: "context" },
     ]);
   });
 

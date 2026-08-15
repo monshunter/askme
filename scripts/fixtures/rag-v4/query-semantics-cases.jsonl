@@ -1,0 +1,20 @@
+{"id":"QS001","question":"2022年到2024年，你在哪家公司任职，担任什么职务，负责什么工作内容？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"employment","required":[],"requestedFields":["company","job_title","responsibilities"],"timeRange":{"start":"2022-01","end":"2024-12"}}}
+{"id":"QS002","question":"你在富途控股负责什么工作？","expected":{"queryMode":"focused","subject":"profile_owner","knowledgeScope":"employment","required":["富途控股"],"requestedFields":["responsibilities"]}}
+{"id":"QS003","question":"你在哪家公司工作？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"employment","required":[],"requestedFields":["company"]}}
+{"id":"QS004","question":"MoonBase 公司期间负责什么工作？","expected":{"queryMode":"focused","required":["MoonBase"],"requestedFields":["responsibilities"]}}
+{"id":"QS005","question":"你做过哪些项目？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"project","required":[],"requestedFields":["project_name"]}}
+{"id":"QS006","question":"Askme 项目的定位和核心功能是什么？","expected":{"queryMode":"focused","required":["Askme"],"requestedFields":["positioning","functions"]}}
+{"id":"QS007","question":"看过 Askme 后，我还做过哪些项目？","expected":{"queryMode":"discovery","subject":"profile_owner","required":[],"context":["Askme"],"requestedFields":["project_name"]}}
+{"id":"QS008","question":"Askme 还包含哪些项目？","expected":{"queryMode":"focused","required":["Askme"],"requestedFields":["project_name"]}}
+{"id":"QS009","question":"你擅长哪些技能？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"skill","required":[],"requestedFields":["skills"]}}
+{"id":"QS010","question":"你做过哪些 RAG 相关工作？","expected":{"queryMode":"discovery","subject":"profile_owner","required":[],"context":["RAG"],"requestedFields":["responsibilities"]}}
+{"id":"QS011","question":"你的教育经历是什么？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"education","required":[],"requestedFields":["education"]}}
+{"id":"QS012","question":"copybook 仓库的主要功能是什么？","expected":{"queryMode":"focused","knowledgeScope":"repository","required":["copybook"],"requestedFields":["functions"]}}
+{"id":"QS013","question":"它解决了什么问题？","trustedContext":[{"text":"Askme","type":"project","source":"contextual","role":"required"}],"expected":{"queryMode":"focused","required":["Askme"],"requestedFields":["positioning"]}}
+{"id":"QS014","question":"它解决了什么问题？","conversation":[{"role":"user","content":"介绍一下 Askme"},{"role":"assistant","content":"Askme 是职业知识 Agent。"}],"expected":{"queryMode":"clarify","required":[],"requestedFields":["positioning"]}}
+{"id":"QS015","question":"2021年你担任什么职务？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"employment","required":[],"requestedFields":["job_title"],"timeRange":{"start":"2021-01","end":"2021-12"}}}
+{"id":"QS016","question":"你目前负责什么工作？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"employment","required":[],"requestedFields":["responsibilities"]}}
+{"id":"QS017","question":"Askme 和 OneCat 分别解决了什么问题？","expected":{"queryMode":"focused","required":["Askme","OneCat"],"requestedFields":["positioning"]}}
+{"id":"QS018","question":"请概括一下你的职业经历。","expected":{"queryMode":"discovery","subject":"profile_owner","required":[],"requestedFields":["summary"]}}
+{"id":"QS019","question":"你在哪家公司使用过 Kubernetes？","expected":{"queryMode":"discovery","subject":"profile_owner","knowledgeScope":"employment","required":[],"context":["Kubernetes"],"requestedFields":["company"]}}
+{"id":"QS020","question":"在富途控股期间，你使用了哪些技术？","expected":{"queryMode":"focused","subject":"profile_owner","required":["富途控股"],"requestedFields":["technologies"]}}

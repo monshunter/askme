@@ -47,6 +47,7 @@
     "smoke:runtime-state": "tsx scripts/smoke-runtime-state.ts",
     "smoke:rag-index-foundation": "tsx scripts/smoke-rag-index-foundation.ts",
     "eval:rag-core": "tsx scripts/eval-rag-v2.ts",
+    "eval:rag-query": "tsx scripts/eval-rag-query-understanding.ts",
     "eval:rag-runtime": "tsx scripts/eval-rag-runtime.ts",
     "eval:rag-api": "tsx scripts/eval-rag-api.ts",
     "eval:rag-answer-quality": "tsx scripts/eval-rag-answer-quality.ts",

@@ -78,6 +78,26 @@ describe("generateVerifiedRagAnswer", () => {
     expect(verifier.complete).not.toHaveBeenCalled();
   });
 
+  it("asks for the intended subject when semantic adjudication remains unclear", async () => {
+    const generator = { complete: vi.fn() };
+    const verifier = { complete: vi.fn() };
+
+    const result = await generateVerifiedRagAnswer({
+      question: "那个怎么样？",
+      evidence: [],
+      coverage: "none",
+      unsupportedAspects: ["概述"],
+      queryClarification: true,
+      settings: { answerTone: "professional", privacySafeMode: true },
+      generatorClient: generator,
+      verifierClient: verifier,
+    });
+
+    expect(result.outcome).toBe("insufficient_evidence");
+    expect(result.answer).toContain("主体或范围");
+    expect(generator.complete).not.toHaveBeenCalled();
+  });
+
   it("appends a deterministic entity gap to a partial multi-entity answer", async () => {
     const item = evidence("11111111-1111-4111-8111-111111111111", "Askme 是面向职业知识的 Agent 产品。");
     const generator = { complete: vi.fn().mockResolvedValue({

@@ -125,4 +125,11 @@
 | REVIEW-120 | REVIEW-120：PLAN-025 成熟 Entity-grounded RAG 部署前 Change Review | [REVIEW-120.md](REVIEW-120.md) |
 | REVIEW-121 | REVIEW-121：PLAN-025 Entity Resolution Reconcile Plan Review | [REVIEW-121.md](REVIEW-121.md) |
 | REVIEW-122 | REVIEW-122：PLAN-025 Entity-grounded RAG V3 最终 Change Review | [REVIEW-122.md](REVIEW-122.md) |
+| REVIEW-123 | REVIEW-123：PLAN-026 Query-understood RAG Plan Review | [REVIEW-123.md](REVIEW-123.md) |
+| REVIEW-124 | REVIEW-124：SPEC-002 Query-understood RAG Spec Review | [REVIEW-124.md](REVIEW-124.md) |
+| REVIEW-125 | REVIEW-125：SPEC-002 Agentic Query Understanding 补充需求重审 | [REVIEW-125.md](REVIEW-125.md) |
+| REVIEW-126 | REVIEW-126：SPEC-002 Query Clarification 结果模型 Reconcile Review | [REVIEW-126.md](REVIEW-126.md) |
+| REVIEW-127 | REVIEW-127：DESIGN-005 Agentic Query Understanding Design Review | [REVIEW-127.md](REVIEW-127.md) |
+| REVIEW-128 | REVIEW-128：PLAN-026 Query-understood RAG 部署前 Change Review | [REVIEW-128.md](REVIEW-128.md) |
+| REVIEW-129 | REVIEW-129：PLAN-026 Query-understood RAG 最终 Change Review | [REVIEW-129.md](REVIEW-129.md) |
 <!-- AGENT-HARNESS:END INDEX -->

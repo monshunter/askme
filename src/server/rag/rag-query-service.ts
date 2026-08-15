@@ -15,13 +15,25 @@ import {
   resolveAuthorizedEntities,
   type ConversationEntityFocus,
   type ContextReferenceIssue,
+  type EntityMention,
 } from "./entity-catalog";
 import { runBoundedRetrieval } from "./evidence-orchestrator";
 import { retrieveHybridEvidence } from "./hybrid-retriever";
-import { applyHostEntityMentions, conversationalReferenceText, evidenceTypes, planRagQuery, type RagQueryPlan } from "./query-planner";
+import {
+  adjudicateRagQuery,
+  applyHostEntityMentions,
+  conversationalReferenceText,
+  evidenceTypes,
+  planRagQuery,
+  ragAdjudicationReason,
+  type RagQueryPlan,
+} from "./query-planner";
+import { deterministicTokenCount } from "./structure-chunker";
+import { annotateTemporalEvidence } from "./temporal-evidence";
 
 type RagQueryDependencies = {
   plannerClient?: Pick<OpenAiChatClient, "complete">;
+  adjudicatorClient?: Pick<OpenAiChatClient, "complete">;
   embeddingClient?: Pick<EmbeddingClient, "embed">;
   rerankClient?: Pick<RerankClient, "rerank">;
   answerabilityClient?: Pick<OpenAiChatClient, "complete">;
@@ -44,7 +56,7 @@ export function resolveRagPlanEntities(input: {
   let contextReference: ContextReferenceIssue | null = null;
   const contextualMentions = referenceText && focusIsControlled
     ? focusStatus === "unique" && focus.length === 1
-      ? [{ text: focus[0]!.canonicalName, type: focus[0]!.type, source: "contextual" as const }]
+      ? [{ text: focus[0]!.canonicalName, type: focus[0]!.type, source: "contextual" as const, role: "required" as const }]
       : []
     : input.plan.entityMentions.filter((mention) => mention.source === "contextual");
   if (referenceText && focusIsControlled && focusStatus !== "unique") {
@@ -70,9 +82,9 @@ export async function retrieveRagForQuestion(input: {
   conversation?: AnswerConversationMessage[];
   conversationId?: string;
   contextEntityFocus?: ConversationEntityFocus[];
+  currentDate?: string;
 }, dependencies: RagQueryDependencies = {}) {
   const planner = dependencies.plannerClient ?? new OpenAiChatClient({ apiKey: input.config.ai.apiKey, baseUrl: input.config.ai.baseUrl, profile: input.config.ai.profiles.planner });
-  const plan = await planRagQuery({ question: input.question, conversation: input.conversation, allowedEvidenceTypes: [...evidenceTypes] }, planner);
   const catalog = await loadAuthorizedEntityCatalog(input.pool, input.ownerId, input.consumer);
   const referenceText = conversationalReferenceText(input.question);
   const focusIsControlled = Boolean(referenceText && (input.contextEntityFocus || input.conversationId));
@@ -81,11 +93,42 @@ export async function retrieveRagForQuestion(input: {
     : null;
   const focus = input.contextEntityFocus ?? loadedFocus?.entities ?? [];
   const focusStatus = loadedFocus?.status ?? (focus.length === 1 ? "unique" : focus.length === 0 ? "missing" : "ambiguous");
-  const resolvedPlan = resolveRagPlanEntities({
+  const catalogCandidates = detectAuthorizedEntityMentions(input.question, catalog, "explicit", "context");
+  const trustedContextMentions: EntityMention[] = referenceText && focusIsControlled && focusStatus === "unique" && focus.length === 1
+    ? [{ text: focus[0]!.canonicalName, type: focus[0]!.type, source: "contextual", role: "required" }]
+    : [];
+  let plan = await planRagQuery({
+    question: input.question,
+    conversation: input.conversation,
+    allowedEvidenceTypes: [...evidenceTypes],
+    catalogCandidates,
+    trustedContextMentions,
+  }, planner);
+  let resolvedPlan = resolveRagPlanEntities({
     plan, question: input.question, catalog, contextEntityFocus: focus, contextFocusControlled: focusIsControlled, contextFocusStatus: focusStatus,
   });
+  const adjudicationReason = ragAdjudicationReason({
+    plan: resolvedPlan.plan,
+    stopBeforeRetrieval: resolvedPlan.entityResolution.stopBeforeRetrieval,
+  });
+  if (adjudicationReason) {
+    plan = await adjudicateRagQuery({
+      question: input.question,
+      conversation: input.conversation,
+      initialPlan: resolvedPlan.plan,
+      reason: adjudicationReason,
+      allowedEvidenceTypes: [...evidenceTypes],
+      catalogCandidates,
+      trustedContextMentions,
+    }, dependencies.adjudicatorClient ?? planner);
+    resolvedPlan = resolveRagPlanEntities({
+      plan, question: input.question, catalog, contextEntityFocus: focus, contextFocusControlled: focusIsControlled, contextFocusStatus: focusStatus,
+    });
+  }
   const effectivePlan = resolvedPlan.plan;
-  const entityResolution = resolvedPlan.entityResolution;
+  const entityResolution = effectivePlan.queryMode === "clarify" && !resolvedPlan.entityResolution.contextReference
+    ? { ...resolvedPlan.entityResolution, stopBeforeRetrieval: true, gateReason: "query_clarification_required" as const }
+    : resolvedPlan.entityResolution;
   if (entityResolution.stopBeforeRetrieval) {
     const effectiveTokens = Math.max(0, Math.min(
       input.config.rag.evidence.maxTokens,
@@ -102,11 +145,12 @@ export async function retrieveRagForQuestion(input: {
       unsupportedAspects: effectivePlan.answerAspects.map((aspect) => aspect.label),
       answerabilityAspects: effectivePlan.answerAspects.map((aspect) => ({ aspectId: aspect.aspectId, status: "unsupported" as const, evidenceIds: [] as string[] })),
       answerabilityUsage: { inputTokens: null, outputTokens: null },
+      temporalAnnotations: [],
       plan: effectivePlan,
       candidates: [],
       roundCount: 0,
       routeCounts: [],
-      degradations: plan.degradations,
+      degradations: effectivePlan.degradations,
       rerankInputTokens: null,
       entityResolution,
     };
@@ -120,25 +164,33 @@ export async function retrieveRagForQuestion(input: {
     }),
     rerankClient: dependencies.rerankClient ?? new RerankClient(input.config.rerank),
   });
+  const temporalAnnotations = annotateTemporalEvidence(result.candidates, result.plan.constraints.timeRange, input.currentDate?.slice(0, 7));
+  const outsideEvidenceIds = new Set(temporalAnnotations.filter((item) => item.status === "outside").map((item) => item.evidenceId));
+  const answerabilityEvidence = result.candidates.filter((item) => !outsideEvidenceIds.has(item.evidenceId));
   const answerability = await runAnswerabilityGate({
     question: input.question,
     answerAspects: result.plan.answerAspects,
     entityResolution,
-    evidence: result.candidates,
+    evidence: answerabilityEvidence,
+    temporalAnnotations: temporalAnnotations.filter((item) => !outsideEvidenceIds.has(item.evidenceId)),
     client: dependencies.answerabilityClient ?? new OpenAiChatClient({
       apiKey: input.config.ai.apiKey,
       baseUrl: input.config.ai.baseUrl,
       profile: input.config.ai.profiles.verifier,
     }),
   });
+  const finalCandidates = answerability.evidence;
   return {
     ...result,
     provisionalCoverage: result.coverage,
     coverage: answerability.coverage,
-    candidates: answerability.evidence,
+    candidates: finalCandidates,
+    actualTokens: finalCandidates.reduce((total, item) => total + Math.max(item.tokenCount, deterministicTokenCount(item.parentContent)), 0),
+    independentFamilyCount: new Set(finalCandidates.map((item) => item.evidenceFamilyId)).size,
     unsupportedAspects: answerability.unsupportedAspects,
     answerabilityAspects: answerability.aspects,
     answerabilityUsage: answerability.usage,
+    temporalAnnotations,
     entityResolution,
   };
 }

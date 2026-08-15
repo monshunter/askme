@@ -1,22 +1,24 @@
-# SPEC-002：成熟 Entity-grounded RAG 与代码仓库 Agent 产品合同
+# SPEC-002：成熟 Query-understood Entity-grounded RAG 与代码仓库 Agent 产品合同
 
-Boundary ID：`askme-entity-grounded-rag-v3`
+Boundary ID：`askme-query-understood-rag-v4`
 
 Owner boundary：Askme Candidate 职业知识检索、Repository 文档知识、Agent 问答、Citation、源码 Deep Analysis、权限投影与评估门禁。
 
 Status：`approved`
 
-当前交付 Plan：[PLAN-025](../plans/PLAN-025.md)
+当前交付 Plan：[PLAN-026](../plans/PLAN-026.md)
 
 ## 1. 目标与替代边界
 
-Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为身份明确、可检索、可排序、可验证、可撤销的证据。Candidate Preview 与 Public Chat 使用同一权限优先的 Entity-grounded Hybrid RAG：先确定用户明确询问的实体在当前授权知识中的身份与来源范围，再进行精确词、全文、向量和结构化召回，经过融合、独立重排、Answerability 判断和 Claim 验证后生成带 Citation 的回答。语义相似只能发现相关内容，不能把不同名称的项目、人、公司、产品或 Repository 当作同一实体。
+Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为身份明确、可检索、可排序、可验证、可撤销的证据。Candidate Preview 与 Public Chat 使用同一权限优先的 Query-understood Entity-grounded Hybrid RAG：LLM Query Understanding Agent 结合当前问题、受控会话上下文、Host 确定性 seed 和上一轮可信 Retrieval Trace，解析真实意图、主体、知识范围、命名实体在问题中的角色、约束和待求字段；只有答案必须归属于它或受它约束的 Required Entity 才进入严格 Entity Grounding，Discovery 问题则在全部授权知识中检索待求字段。随后系统进行精确词、全文、向量和结构化召回，经过融合、独立重排、Answerability 判断和 Claim 验证后生成带 Citation 的回答。语义相似只能发现相关内容，不能把不同名称的项目、人、公司、产品或 Repository 当作同一实体，也不能凭空制造用户没有指定的实体约束。
 
 “没有更多证据”只允许表示核心问题或用户明确指定的实体在当前授权 Evidence 中确实没有支持，不能被中文分词失败、索引未就绪、Provider 故障、回答模型失败或 Citation 校验失败冒充。若用户明确询问 `askme` 而当前授权知识只包含 `onecat`，系统必须在检索前或 Answerability Gate 拒绝把 OneCat 事实改名为 Askme；不得用“语义相似”替代身份一致。
 
+同一原则的对偶必须同时成立：用户询问“2022 到 2024 年在哪家公司任职、担任什么职务、负责什么”时，公司、职务和职责是待求字段，不是预先给出的实体；`你` 指向当前 `profile_owner`，也不是普通 person entity。系统不得把“你在哪家”“哪家公司”“什么项目”等问句片段送入 Entity Catalog 并因此提前拒答。时间范围属于检索和 Answerability 约束，任职区间以 overlap 判断，不做字符串或起止年份 exact match。
+
 本合同直接替代此前 `SPEC-002` 的 V1 文档检索边界：
 
-- V2 使用 PostgreSQL 18 + pgvector，不保留 V1 全文检索回答链路、双写、功能开关或兼容回退；
+- 当前 RAG 使用 PostgreSQL 18 + pgvector，不保留 V1 全文检索回答链路、双写、功能开关或兼容回退；
 - 安全白名单内的 Repository Markdown 与可直接提取文本的 PDF 可以进入长期索引；原始源码仍不得进入持久 Embedding；
 - Approved Wiki、Knowledge Item 和原始证据建立血缘，不得把同一事实的派生副本当成多份独立 Evidence；
 - 项目尚未上线，不保留旧 Query/Entity Policy 或旧派生索引兼容路径；账号、原始材料、Repository、权限、Publication 与会话等业务事实必须保留，Knowledge Item、chunk、FTS、Embedding 和其他可重建派生知识允许按明确维护入口清空重建；
@@ -35,7 +37,16 @@ Askme 必须把 Candidate 已授权的职业资料与 Repository 文档转化为
 - **Evidence**：Host 能定位、实时授权并校验 checksum 的 Material Child、Repository Document Child 或 Approved Wiki section。
 - **Evidence Family**：原始 Evidence 与其 Knowledge Item、Wiki 等派生投影的血缘集合。
 - **Entity Catalog**：从当前授权的 Repository 身份和有 Evidence 绑定的 Knowledge Item 实时投影出的 Candidate 级实体目录；它不是独立人工维护的第二份知识真相。
-- **Entity Mention**：Query Analyzer 从当前问题或受控会话指代中识别的实体原文、类型提示与 `explicit | contextual` 来源。
+- **Query Semantics**：一次问题的受控语义合同，由 `intent`、`subject`、`queryMode`、`knowledgeScope`、带角色的 `entityMentions`、`constraints`、`requestedFields`、`confidence` 和 `ambiguities` 组成；它描述已知条件、上下文与待求变量，不授予数据访问权限。
+- **Query Understanding Agent**：使用独立 LLM Profile 的有界语义 Agent。它读取当前问题、最近受控会话、Host seed、当前问题内的 Catalog alias 候选和上一轮可信实体焦点，最多进行一次初始解析与一次条件触发的语义裁决；不能读取未授权 Evidence 正文或选择权限范围。
+- **Subject**：问题围绕的主体。Candidate Preview 与 Candidate 的 Public Agent 中，`我/你/本人/候选人/这个人` 默认解析为 `profile_owner`，不进入 Entity Catalog。
+- **Query Mode**：`focused | discovery | clarify`。`focused` 有 Required Entity，`discovery` 从授权知识寻找未知对象/字段，`clarify` 只用于多个真实合理解释会改变答案且无法由上下文消解的情况。
+- **Knowledge Scope**：问题所属的职业知识域，例如 `employment`、`project`、`skill`、`education`、`repository` 或 `general`；它用于检索规划和排序，不替代 visibility 或 Entity Scope。
+- **Named Entity Mention**：当前问题明确写出或由可信上一轮焦点恢复的具体对象名称及类型提示。当前问题出现一个名称不等于答案必须归属它；Agent 必须为 mention 标记 `required | context` 角色。
+- **Required Entity**：Named Entity Mention 中被 Query Understanding Agent 与 Host 共同确认是答案主体、比较对象或硬约束的子集；只有该子集进入 Entity Resolution 与 Entity Scope。Context mention 只参与语义理解和软检索，不触发硬门禁。
+- **Constraint**：已知筛选条件；V4 首先支持 inclusive time range。只给年份时，开始边界规范化为该年 1 月，结束边界规范化为该年 12 月。
+- **Requested Field**：用户要求从 Evidence 求出的字段，例如 company、job title、responsibilities、achievements、project name、positioning、functions 或 technologies；不得拿它做 Entity lookup。
+- **Entity Mention**：Query Understanding Agent 从当前问题或受控会话实体指代形成的实体原文、类型提示、`explicit | contextual` 来源和 `required | context` 角色；只有 `required` mention 允许进入 Entity Resolution。
 - **Entity Resolution**：将 Entity Mention 通过规范化 canonical name/alias 精确映射到 Entity Catalog；不得使用向量 nearest neighbor 把未知实体映射为“最像”的已知实体。
 - **Entity Scope**：Entity Resolution 后允许参与当前问题的 Material/Repository source 集合；该范围只能缩小已授权集合，不能扩大 visibility。
 - **Retrieval Policy Version**：Query Planning、TopK、RRF、Rerank、Evidence budget 和阈值的版本；改变该版本不要求重新 Embedding。
@@ -78,7 +89,7 @@ Embedding 使用独立 Provider，默认模型为 `qwen3.7-text-embedding`、`10
 
 新 index 经过 `building → ready → active`，失败为 `failed`，被替代版本为 `superseded`。一次检索只能使用一个 active index version，禁止混合不同 Embedding 版本。来源 revision 的新索引只有全部必要派生数据成功后才能原子激活；失败时旧 active 可继续服务。来源删除、权限降低或发布撤销不等待 GC，必须立即让所有版本不可检索。
 
-V2 默认在经过 owner、visibility、source state 和 version 过滤后的候选集执行 pgvector exact cosine search。只有 active vector 达到 `100,000` 或 exact search P95 超过 `100 ms`，并通过 exact/HNSW recall 对照后，才允许启用 HNSW。
+当前实现默认在经过 owner、visibility、source state 和 version 过滤后的候选集执行 pgvector exact cosine search。只有 active vector 达到 `100,000` 或 exact search P95 超过 `100 ms`，并通过 exact/HNSW recall 对照后，才允许启用 HNSW。
 
 ## 5. Repository Markdown/PDF
 
@@ -101,7 +112,7 @@ include/exclude glob 可配置。默认排除 `.git`、dependency、cache、buil
 | 单个 PDF | `50 MiB / 500 页` |
 | 单个 Repository revision 提取文本 | `5,000,000 tokens` |
 
-超限、不支持或无法直接提取文本的文件不得截断或静默忽略；系统记录稳定原因，并使 revision 成为 `ready_with_warnings`。无法提取文本的 PDF 使用 `unsupported_no_extractable_text`，V2 不启动 OCR。
+超限、不支持或无法直接提取文本的文件不得截断或静默忽略；系统记录稳定原因，并使 revision 成为 `ready_with_warnings`。无法提取文本的 PDF 使用 `unsupported_no_extractable_text`，当前合同不启动 OCR。
 
 ### 5.2 Repository 级批准与版本
 
@@ -115,23 +126,50 @@ Repository 首次同步默认 private。Candidate 按整个 Repository 批准，
 
 反馈同时展示 active commit、已索引/跳过文件数和稳定失败原因。新 revision 索引失败时旧 active commit 可以继续服务，但必须明确标记资料可能滞后。
 
-## 6. Query Planning 与混合召回
+## 6. Query Understanding、条件 Entity Gate 与混合召回
 
-### 6.1 Query Planning
+### 6.1 Query Semantics
 
-每次问题先经过确定性处理：Unicode 规范化、中文词边界、实体/精确短语、CJK n-gram、中英混合和会话指代补全。不得把连续中文整句当作单个 PostgreSQL lexeme。
+每次问题先经过确定性处理：Unicode 规范化、中文词边界、精确短语、CJK n-gram、中英混合、职业域/待求字段、时间范围、显式命名实体和会话指代。不得把连续中文整句当作单个 PostgreSQL lexeme，也不得用一次宽泛 NER 同时承担意图、主体、约束和待求字段判断。
 
-Host 必须独立用当前 Authorized Entity Catalog 对原始 Query 执行最长 Alias 扫描；即使用户只写“Askme 怎么样”而没有“项目/产品”等类型后缀，也必须识别已授权的 Askme identity。该扫描只接受 Catalog 中已有 canonical/alias 的确定性命中，不用向量或模型推断新 Alias；较短 Alias 完全落在同一位置的较长 Alias 内时只保留较长者，避免 `new-api` 同时误命中无关 `api` 实体。
+Host 与 Query Understanding Agent 必须共同产出并校验以下最小 Query Semantics：
 
-结构化 Query Planner 最多输出：standalone query、带原文/类型/显式性的 entity mentions、must terms、should terms、两个 semantic queries 和 desired evidence type。Host 从原始问题提取的显式命名实体必须独立保留；Planner 的 rewrite 或 semantic query 不得删除、改名或用近义实体替换它。Planner 不能选择 tenant、提升 visibility、扩大来源或改变工具能力。Planner 失败时使用确定性查询继续。
+```json
+{
+  "intent": "employment_history",
+  "subject": "profile_owner",
+  "queryMode": "discovery",
+  "knowledgeScope": "employment",
+  "entityMentions": [],
+  "constraints": {
+    "timeRange": { "start": "2022-01", "end": "2024-12" }
+  },
+  "requestedFields": ["company", "job_title", "responsibilities"],
+  "confidence": 0.98,
+  "ambiguities": []
+}
+```
 
-Planner 后、任何 Embedding 或检索前必须执行 Entity Resolution：
+`entityMentions` 只允许包含当前问题中明确写出的具体名称，或由同一 Conversation 上一轮可信 Trace 恢复的实体焦点。Host 必须拒绝把疑问短语、请求属性、代词、动词、通用知识域或不完整名词短语接受为 Named Entity Mention，包括但不限于“哪家公司”“你在哪家”“什么项目”“什么职位”“哪些经历”“负责什么”以及对应英文问句。`我/你/本人/候选人/这个人` 解析为 `profile_owner`；只有“它/该项目/that project”等确实指向上一轮实体的表达进入受控 contextual resolution。
+
+Host 必须独立用当前 Authorized Entity Catalog 对原始 Query 执行最长 Alias 扫描，把命中作为 Query Understanding Agent 的可信 identity 候选；即使用户只写“Askme 怎么样”而没有“项目/产品”等类型后缀，也必须保留 Askme candidate。该扫描只接受 Catalog 中已有 canonical/alias 的确定性命中，不用向量或模型推断新 Alias；较短 Alias 完全落在同一位置的较长 Alias 内时只保留较长者，避免 `new-api` 同时误命中无关 `api` 实体。Catalog 命中本身不决定 `required`：例如“看过 Askme 后，我还做过哪些项目”中的 Askme 是 context，不能把项目发现问题硬缩到 Askme source。
+
+Query Understanding Agent 的初始 LLM 调用输出 Query Semantics、standalone query、带原文/类型/来源/角色的 entity mentions、must terms、should terms、两个 semantic queries 和 desired evidence type。输入包含最近受控会话、Catalog alias candidates 与上一轮 Trace focus，但不包含 Catalog 全量或未检索 Evidence。Host 保留所有有效 named candidates；Provider 提出的 unknown mention 只有在其原文位于当前问题、通过 Host 命名候选校验且不属于问词/代词/待求字段时才可接受。Agent 的 rewrite 不得删除/改名 required mention，也不得把 constraint 与 requested field 互换。
+
+以下情况必须触发一次独立的语义裁决调用：初始 Agent 准备以 missing/ambiguous Required Entity 在检索前停止；LLM 与确定性/Catalog seed 对实体角色或主体存在冲突；`queryMode`、intent 或 requested fields 低置信；同一名称既可能是上下文又可能是答案主体。裁决读取两套候选和受控会话，输出最终语义选择与简短结构化理由；最多一次，不形成无界 Agent 循环。Host 再做 span、枚举、权限和不变量校验。两次 LLM 均失败时使用保守确定性 fallback：明确 target 语法和可信唯一上下文可以 focused，其余为 discovery；只有真实多义且不同解释会改变答案时进入 clarify。
+
+Query Understanding Agent 不能选择 tenant、提升 visibility、扩大来源或改变工具能力。`confidence` 只触发裁决/诊断，不能覆盖 Host 安全规则；系统不得用固定置信阈值把普通 discovery 问题批量拒答。`clarify` 返回明确的歧义说明和最小澄清问题，不伪装成资料不存在。
+
+Known 与 Unknown 必须明确分离。例如 `2022 到 2024 年你在哪家公司工作` 的 Known 是 `subject=profile_owner` 与 time range，Unknown 是 company，属于 discovery；`我在富途期间负责什么` 的 Known 还包括 required organization `富途`，Unknown 是 responsibilities，属于 focused。时间范围只约束 Evidence 适用性，不作为回答方面；Requested Field 才形成有序 `answerAspects`。
+
+Query Understanding Agent 最终语义通过 Host 校验后、任何 Embedding 或检索前必须执行 Entity Resolution：
 
 - Entity Catalog 只能读取当前 owner、caller mode、publication、visibility、source state、active revision 允许的 Repository 与有 Evidence 绑定的 Knowledge Item；Public Chat 不得通过“实体不存在”泄露 private/agent-only 实体的存在；
 - canonical name 与 alias 使用 NFKC、大小写、空白和稳定分隔符规范化做精确映射；`one cat` 可以解析为已声明 alias `OneCat`，但 `askme` 不能 nearest-neighbor 成 `onecat`；
+- Entity Resolution 只消费 `role=required` 的 Named Entity Mention。没有 Required Entity 的 discovery 问题中 Entity Gate 不得停止检索，Entity Scope 为 null，系统从当前全部授权来源检索 requested fields；
 - 一个显式 project/product/repository/organization/person 实体在授权 Catalog 中不存在时，系统不得执行无范围向量检索。若它是唯一核心实体，直接返回 `none` 和该用户已提供名称的安全缺口；
 - 多实体问题中，已解析实体仍可在其 Entity Scope 内形成 `partial` 回答，未解析实体必须作为显式缺口，不能把已解析实体的事实复制给它；
-- 会话中的“它/该项目/that project”等指代只从同一 Conversation 上一轮 Retrieval Trace 已解析的实体焦点恢复，并用当前 Catalog 重新授权；只有上一轮恰好一个仍授权的 resolved entity 且不存在 missing/ambiguous mention 时才继承，零个时为 unresolved，多个实体或 resolved 与 missing/ambiguous 并存时均为 ambiguous。Planner 对原始聊天文本的 contextual 猜测不得覆盖该 Host 结果，歧义时不检索、不猜测并返回明确缺口。
+- 会话中的“它/该项目/that project”等指代只从同一 Conversation 上一轮 Retrieval Trace 已解析的实体焦点恢复，并用当前 Catalog 重新授权；只有上一轮恰好一个仍授权的 resolved entity 且不存在 missing/ambiguous mention 时才继承，零个时为 unresolved，多个实体或 resolved 与 missing/ambiguous 并存时均为 ambiguous。Agent 对原始聊天文本的 contextual 猜测不得覆盖该 Host 结果，歧义时不检索、不猜测并返回明确缺口。
 
 ### 6.2 多路召回与融合
 
@@ -149,6 +187,8 @@ Planner 后、任何 Embedding 或检索前必须执行 Entity Resolution：
 Knowledge Item 只作为检索锚点；命中后必须展开到 `knowledge_evidence` 对应的 Material Child。未经来源支撑的 Candidate 编辑不能独立成为最终 Claim Evidence。Approved Wiki 可以作为最终 Evidence，但必须保留 Host 验证的 `[S*]` 原始来源血缘。
 
 Entity Scope 约束适用于 exact、lexical、vector 和 structured 四条 Route，必须在排名前执行。命中一个实体 alias 只证明 identity，不证明问题中的具体事实；检索结果仍需通过 Rerank、Answerability 与 Claim Verifier。
+
+Query Semantics 必须实际参与检索，而不是只写入 Trace：Knowledge Scope 和 Requested Fields 为 exact/lexical/semantic/structured 查询提供受控职业同义词，time range 保留原始年份/月并进入 standalone/semantic query；desired evidence type 必须限制对应 source kind，不能由 Agent 选择未授权来源。Knowledge Scope 只影响相关性和 evidence type，不在 discovery 问题中制造 source hard scope。时间条件不得写成 `document.start == query.start AND document.end == query.end`；能识别出 Evidence 任职区间时使用 `document.start <= query.end AND document.end >= query.start`，无法确定区间的 Evidence 交给 Answerability 判定，不因解析器未知而伪装成 none。
 
 ## 7. Rerank、Evidence Pack 与有界补检
 
@@ -175,9 +215,9 @@ Evidence Judge 只输出 `full | partial | none | conflicted`，并将 Entity Re
 
 初检不完整时，Judge 可以基于 unsupported aspects 产生一次定向补检。一个问题最多两轮检索；补检不得扩大授权来源，结果必须与第一轮去重。第二轮失败后只能基于第一轮输出 partial/none，不能无界重试。
 
-Host 必须把用户当前问题拆成有稳定顺序和 ID 的显式回答方面。复合问题中的公司、任职时间、职责、成果等方面不能因检索已命中部分内容而被合并或遗漏；每个方面最终必须由至少一个已验证 Claim 回答，或明确显示当前授权 Evidence 不支持该方面。检索词命中率不能替代问题方面覆盖。
+Host 必须从 Requested Fields 把用户当前问题拆成有稳定顺序和 ID 的显式回答方面。复合问题中的公司、职位、任职时间、职责、成果等待求字段不能因检索已命中部分内容而被合并或遗漏；Subject、Knowledge Scope 和 time range 等 Known constraints 不是 answer aspect。每个方面最终必须由至少一个已验证 Claim 回答，或明确显示当前授权 Evidence 不支持该方面。检索词命中率不能替代问题方面覆盖。
 
-Answerability Gate 必须在生成前证明：至少一个回答方面有当前 Entity Scope 内的直接 Evidence，且 Evidence 中的实体身份与问题一致。唯一核心实体缺失或所有方面均不支持时不得调用 Answer Generator；系统直接返回可区分 `insufficient_evidence` 与 `failed` 的结果。Generator Prompt 与最终 Host 校验继续作为 defense in depth，明确禁止把 Evidence 中的实体重命名为问题中的另一实体。
+Answerability Gate 必须在生成前证明：至少一个 Requested Field 有当前授权范围内的直接 Evidence；有 Required Entity 时 Evidence identity 必须与它一致，discovery 问题中 Evidence 的 company/project 等可以作为 Requested Field 的答案，不能反过来判成 entity mismatch。Context mention 不得被重命名成回答主体，也不得无故排除其他有效 Evidence。存在 time range 时，支持任职记录的 Evidence 必须与查询区间重叠；一个记录的 `start <= query.end AND end >= query.start` 即可命中，不能要求端点相等。唯一核心 Required Entity 缺失、clarify 或所有待求字段均不支持时不得调用 Answer Generator；系统分别以普通 `insufficient_evidence`、带 `query_clarification_required` reason 的 `insufficient_evidence` 或 `failed` 表达，Trace 和用户文案必须能区分真实资料缺口与需要澄清。Generator Prompt 与最终 Host 校验继续作为 defense in depth，明确禁止实体替代。
 
 ## 8. Claim 验证与 Citation
 
@@ -232,11 +272,11 @@ Deep run 的 `pending | running | completed | failed | cancelled` 与回答 outc
 
 ## 11. Provider、配置与降级
 
-V2 使用可独立配置的 Query Planner Chat、Embedding、Rerank、RAG Answer、Claim Verifier 与 Code Agent Profile。模型名、base URL、API key、timeout、retry、token/context budget 和 provider compatibility 均由受控配置读取，Secret 不进入日志、Trace、数据库、文档或 Commit。
+系统使用可独立配置的 Query Understanding Agent Chat、Embedding、Rerank、RAG Answer、Claim Verifier 与 Code Agent Profile。模型名、base URL、API key、timeout、retry、token/context budget 和 provider compatibility 均由受控配置读取，Secret 不进入日志、Trace、数据库、文档或 Commit。
 
 默认降级：
 
-- Planner 失败：确定性查询；
+- Query Understanding Agent 失败：确定性 Query Semantics；
 - Embedding 失败：exact + lexical + structured；
 - Rerank 失败：使用 RRF，Evidence Judge 提高充分性要求；
 - 第二轮失败：第一轮 partial/none；
@@ -250,7 +290,7 @@ V2 使用可独立配置的 Query Planner Chat、Embedding、Rerank、RAG Answer
 Candidate/Admin 可以查看一次问答的 Retrieval Trace：
 
 - retrieval policy、active index、source revision/commit；
-- Planner 的 entity mentions、Host 的 resolved/missing/ambiguous 结果、Entity Scope 来源数、关键词和 semantic queries；
+- Query Understanding Agent 的 intent、subject、query mode、knowledge scope、entity role、requested fields、safe constraints、confidence、adjudication 与 entity mentions，Host 的 resolved/missing/ambiguous 结果、Entity Scope 来源数、关键词和 semantic queries；
 - exact/lexical/vector/structured 各路命中数；
 - RRF/Rerank 后的 evidence ID、分数和筛选原因；
 - Coverage、补检、降级、跳过、权限过滤与索引告警。
@@ -261,7 +301,7 @@ Trace 不向 Interviewer 展示，不包含 system prompt、Embedding vector、�
 
 ## 13. Golden Dataset 与发布门禁
 
-仓库内维护完全合成、无真实个人信息的三名虚构 Candidate 材料、既有 120 个检索问题和至少 12 个独立实体混淆回归 case：
+仓库内维护完全合成、无真实个人信息的三名虚构 Candidate 材料、既有 120 个检索问题、至少 12 个独立实体混淆回归 case，以及至少 18 个无实体/显式实体成对的 Query Semantics case：
 
 | 类型 | 数量 |
 | --- | ---: |
@@ -273,15 +313,15 @@ Trace 不向 Interviewer 展示，不包含 system prompt、Embedding vector、�
 | none | 10 |
 | 权限/越界 | 10 |
 
-材料覆盖全部 visibility、Material/Knowledge Item/Approved Wiki/Repository Markdown/PDF、重复血缘、冲突、长文档、Prompt Injection 和 Provider 降级。实体集至少覆盖：已知项目、未知相似项目、无类型显式 Alias、canonical/alias、大小写与分隔符变体、短 Alias 嵌套、同名歧义、多实体 partial、唯一会话指代与多实体指代歧义。每个 case 标注 expected outcome、coverage、required/forbidden evidence IDs、可选 acceptable Citation IDs 和 tags；required ID 用于 Recall，Citation precision 接受所有能直接支持目标 Claim 且未被禁止的标注证据。
+材料覆盖全部 visibility、Material/Knowledge Item/Approved Wiki/Repository Markdown/PDF、重复血缘、冲突、长文档、Prompt Injection 和 Provider 降级。实体集至少覆盖：已知项目、未知相似项目、无类型显式 Alias、canonical/alias、大小写与分隔符变体、短 Alias 嵌套、同名歧义、多实体 partial、唯一会话指代与多实体指代歧义。Query Semantics 成对集至少覆盖“Askme 是什么/做过哪些项目”“富途期间做什么/2022–2024 在哪家公司”“未知公司期间做什么/有哪些工作经历”“看过 Askme 后还做过哪些项目/Askme 还包含哪些项目”，以及 company、job title、responsibilities、project、skill、time overlap、profile owner、incidental entity、LLM/seed disagreement 和 Provider fallback。每个 case 标注 expected semantics、entity role、entity resolution、outcome、coverage、required/forbidden evidence IDs、可选 acceptable Citation IDs 和 tags；required ID 用于 Recall，Citation precision 接受所有能直接支持目标 Claim 且未被禁止的标注证据。
 
 发布门禁必须区分三类 Evidence：
 
 1. 离线合成检索评测必须调用生产 Query Analyzer、Entity Resolver、scope filter、RRF、Evidence Pack/Coverage 等真实核心函数；不得用 case tag、问题关键词或硬编码 outcome 直接生成预测结果；
-2. 配置 Provider 的隔离评测必须在真实 PostgreSQL 与真实 Planner、Embedding、Rerank、Answer、Verifier 上运行至少 12 个覆盖已知、未知、多实体、别名、会话指代、权限和 Provider 降级的 case，校验 outcome、关键事实、Entity/Citation 和授权边界，不以逐字答案作为 gold；
+2. 配置 Provider 的隔离评测必须在真实 PostgreSQL 与真实 Query Understanding Agent、Embedding、Rerank、Answer、Verifier 上运行至少 12 个覆盖 focused/discovery/clarify、已知/未知实体、incidental mention、多实体、别名、会话指代、权限和 Provider 降级的 case，校验 semantics、outcome、关键事实、Entity/Citation 和授权边界，不以逐字答案作为 gold；
 3. 当前本地真实账号的 Candidate Preview 与 Public Chat 只用于非持久最终验收，问题与材料不进入仓库 fixture。
 
-V2 发布必须满足：
+本合同发布必须满足：
 
 - initial Recall@30 `>=95%`；
 - rerank evidence Recall@8 `>=90%`；
@@ -303,7 +343,7 @@ V2 发布必须满足：
 - [x] `AC-RAG2-006` Claim Verifier 删除或收窄无支持/矛盾 Claim，Citation Validator 只允许当前授权、active、checksum 有效的 Evidence。
 - [x] `AC-ANSWER-001` 工作年限和其他相对时间使用请求开始时冻结的 Host 当前日期计算，不再由模型猜测当前年份；计算结果引用包含起止时间的授权 Evidence。
 - [x] `AC-ANSWER-002` 复合问题的每个显式方面均由已验证 Claim 回答或明确披露 Evidence 缺口，最终 Markdown 按问题顺序组织且不发布相同或近似相同的重复 Claim。
-- [x] `AC-RAG2-007` Embedding、Rerank、Planner 和第二轮失败按合同安全降级；Answer/Verifier/Citation 失败不伪装成“证据不足”。
+- [x] `AC-RAG2-007` Embedding、Rerank、查询理解 Provider 和第二轮失败按合同安全降级；Answer/Verifier/Citation 失败不伪装成“证据不足”。
 - [x] `AC-REPO-DOC-001` Repository 级批准后，白名单内当前和未来 Markdown/PDF 自动索引并继承 visibility；源码与扫描 PDF 不进入 Embedding。
 - [x] `AC-REPO-DOC-002` Repository sync 与 index readiness 独立可见，超限/不支持文件产生 ready_with_warnings 和稳定原因，新索引失败不混用 commit。
 - [x] `AC-REPO-DOC-003` Repository Citation 固定完整 commit、path、line/page 和 checksum；Askme 阅读页实时授权，权限降低执行强撤销。
@@ -319,7 +359,14 @@ V2 发布必须满足：
 - [x] `AC-TRACE-002` Retrieval Trace 记录安全的 entity mention、resolved/missing/ambiguous、scope 与 gate reason，能够解释“为何回答/为何拒答”，且不向 Visitor 暴露或泄露私有实体。
 - [x] `AC-ACCEPT-003` 真实 Compose、真实 Provider、Candidate Preview 与 Public Chat 通过已知实体、未知相似实体、多实体 partial、权限隔离、Citation、Trace、持久化和浏览器 Console/Network 验收。
 - [x] `AC-ACCEPT-002` 保留业务数据部署后，目标账号的富途经历和已批准 Repository 文档问题在真实浏览器返回正确回答、有效 Citation 和可解释 Trace。
+- [x] `AC-QUERY-001` `我/你/本人/候选人/这个人` 在 Candidate Preview 与对应 Public Agent 中解析为 `profile_owner`；问词、代词、待求字段和不完整问句不会进入严格 Entity Resolution。
+- [x] `AC-QUERY-002` discovery 的经历、项目、技能和教育问题继续检索授权知识；required 已知实体执行 source hard scope，required 未知或歧义实体继续安全 none/partial，context mention 不错误缩小范围，不在防幻觉与过度拒答之间回摆。
+- [x] `AC-QUERY-003` LLM Query Understanding Agent 结合当前问题、受控会话、Host seed、Catalog candidate 与可信上一轮 Trace，稳定区分 intent、subject、query mode、entity role、constraints 与 requested fields；一次条件语义裁决和 fallback 不能删除 Required Entity、制造实体或把 Known constraint 与 Unknown field 互换。
+- [x] `AC-QUERY-004` `2022–2024`、单年和年月范围按 inclusive interval overlap 判断任职 Evidence；time range 不成为 answer aspect，公司、职位和职责分别获得已验证 Claim 或明确缺口。
+- [x] `AC-EVAL-002` 至少 18 个无实体/显式实体成对回归 case 通过生产 Query Understanding 与 Entity Resolver；真实 PostgreSQL/Provider 和 API 验证目标问题有正确 outcome、关键事实、Citation、Trace 与权限边界。
+- [x] `AC-ACCEPT-004` 保留业务数据重建并部署后，Candidate Preview 与 Public Chat 在真实浏览器正确回答目标富途时间经历和无实体项目问题，同时保持 Askme/OneCat/未知实体门禁、会话、来源和 Console/Network 健康。
+- [x] `AC-QUERY-005` 批准的成对 Query Semantics 回归集中，required-entity role 假阳性、required entity 漏识别、无实体 false-none 和跨实体替代均为 0；范围外开放语言不声称数学上绝对零错误，新增失败必须进入可复现 eval 后才能调整策略。
 
 ## 15. 已批准的延迟项
 
-OCR、HNSW 默认启用、其他 Git provider、跨 Repository Deep Analysis、原始源码 Embedding、在线训练、自动反馈调权、计费和生产多 Region 不阻塞 V2。HNSW 只有达到本合同容量/延迟阈值并通过 recall 对照时才可提前启用。
+OCR、HNSW 默认启用、其他 Git provider、跨 Repository Deep Analysis、原始源码 Embedding、在线训练、自动反馈调权、计费和生产多 Region 不阻塞本合同。HNSW 只有达到本合同容量/延迟阈值并通过 recall 对照时才可提前启用。

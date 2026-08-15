@@ -1,25 +1,25 @@
-# DESIGN-005：成熟 Entity-grounded RAG 与隔离源码分析系统设计
+# DESIGN-005：成熟 Query-understood Entity-grounded RAG 与隔离源码分析系统设计
 
-Boundary ID：`askme-entity-grounded-rag-runtime-v3`
+Boundary ID：`askme-query-understood-rag-runtime-v4`
 
 Owner boundary：满足 [SPEC-002](../specs/SPEC-002.md) 的版本化索引、Repository 文档、混合检索、有界 Agent、Citation、权限、观测与隔离源码分析架构。
 
 Status：`active`
 
-当前修订 Plan：[PLAN-025](../plans/PLAN-025.md)
+当前修订 Plan：[PLAN-026](../plans/PLAN-026.md)
 
 ## 1. 目标、现状与不变量
 
-Askme 继续使用 Next.js、PostgreSQL、Node worker、Docker Compose 和现有 Repository Artifact/Code Agent Runtime。当前 V2 已统一承载 Material、Knowledge anchor、Approved Wiki 与已批准 Repository Markdown/PDF，并完成四路召回、RRF、Rerank、Evidence Judge、Claim Verifier 与 Citation Validator。本修订在同一运行时增加 Entity-grounded preflight、检索前 source scope、实体上下文化索引和可信评测，不建立平行 RAG。
+Askme 继续使用 Next.js、PostgreSQL、Node worker、Docker Compose 和现有 Repository Artifact/Code Agent Runtime。当前 V3 已统一承载 Material、Knowledge anchor、Approved Wiki 与已批准 Repository Markdown/PDF，并完成 Authorized Entity Catalog、四路召回、RRF、Rerank、Answerability、Claim Verifier、Citation Validator、Trace 与安全重建。本修订在同一运行时把单次 Entity Extraction 升级为使用 LLM、受控上下文和条件语义裁决的 Query Understanding Agent，不建立平行 RAG 或通用 Agent Framework。
 
 当前实现的关键差距：
 
-- Planner 能输出 `entities`，但系统没有按当前 caller 授权投影的 Entity Catalog，也没有在 Embedding 前解析 canonical/alias 或执行 source hard scope；
-- 当前 Askme/OneCat 修复发生在检索后的字面量/Rerank threshold，未知实体仍会先召回无关 Evidence，不能成为通用身份模型；
-- contextual Child 只有 source title 与 section，没有 Material Knowledge 或 Repository canonical entity/alias；
-- `conflictDetected` 只要同一宽泛 signal 出现在两个 family 且任意正文含否定词就返回 conflicted；真实 Trace 中 40 次查询有 20 次 conflicted，OneCat 项目介绍等正常问题被系统性误判；
-- 120 题脚本用 case tag 与关键词直接推导 coverage/outcome，没有执行生产 Entity Resolver、数据库检索或 Answer/Verifier，不能证明真实幻觉率和 outcome；
-- 已有真实 Compose smoke 覆盖索引、四路召回、Citation 与撤销，但没有覆盖真实 Planner → Entity → Answerability → Answer → Verifier 的隔离评测。
+- `typedMentions` 的宽泛中文正则把 `2022年到2024年，你在哪家公司任职` 中的 `你在哪家` 产成 strict organization，Catalog missing 后在 round 0 停止；该根因已由当前生产函数精确复现；
+- `answerAspects` 在同一问题中把 `2022年到2024年` 拆成独立回答方面，却没有表达它是 constraint，也没有 company/job title/responsibilities 等 requested fields；
+- 当前 Plan 只有 terms/entity mentions，没有 intent、subject、query mode、knowledge scope、constraints 或 requested fields；Provider 只做一次 schema completion，未利用可信 Trace focus 进行意图裁决；
+- Catalog-first alias 命中会直接进入 hard scope，无法区分“Askme 是什么”的 Required Entity 与“看过 Askme 后还做过哪些项目”的 incidental Context Mention；
+- `desiredEvidenceTypes` 只进入 Trace，四路 SQL 没有消费；Answerability 不读取 Query Semantics 或 Host time-overlap signal；
+- V3 的 entity 评测覆盖 known/unknown/alias/context，却没有成对验证 discovery/focused、entity role、无实体 false-none、LLM/seed disagreement 和时间区间。
 
 系统不变量：
 
@@ -31,10 +31,12 @@ Askme 继续使用 Next.js、PostgreSQL、Node worker、Docker Compose 和现有
 6. Answer 生成、Claim 验证、Citation 校验与消息持久化是分离边界；任何一步失败都不能发布未验证 Claim。
 7. 权限撤销立即作用于 active 检索与历史 Citation；延迟 GC 不等于延迟授权。
 8. Entity identity 与 semantic relevance 分离：Catalog exact alias 决定“是谁”，Hybrid/Rerank/Answerability 决定“哪些 Evidence 能回答什么”。
+9. Mention existence 与 query role 分离：LLM Agent 结合当前问题和受控上下文判断名称是 Required Entity 还是 Context Mention；Host 校验候选真实性和安全边界，任一方都不能单独凭宽泛 NER 建立硬范围。
+10. Query Understanding、Entity Resolution、Retrieval 与 Answerability 各自有 bounded 状态；低置信触发一次语义裁决，不触发无界自反思或固定阈值批量拒答。
 
 ## 2. 关键选型与权衡
 
-| 决策 | V2 选择 | 理由 | 未选择 |
+| 决策 | 当前选择 | 理由 | 未选择 |
 | --- | --- | --- | --- |
 | Vector store | 同一 PostgreSQL 18 + pgvector | 复用 tenant filter、事务、迁移、备份和运行入口 | Milvus、Qdrant、DashVector、独立向量服务 |
 | Vector search | 过滤后的 exact cosine | 初始规模下 perfect recall，避免 ANN filter 漏召回 | 默认 HNSW/IVFFlat |
@@ -42,7 +44,10 @@ Askme 继续使用 Next.js、PostgreSQL、Node worker、Docker Compose 和现有
 | Fusion | weighted RRF + independent rerank | 词法/向量分数量纲不同，RRF 稳定；Rerank 独立优化回答相关性 | 直接加权原始分数、Chat LLM 排序 |
 | Entity Catalog | `Knowledge Item.entities + knowledge_evidence + Repository record` 的实时授权投影 | 复用现有事实 owner，按 caller 过滤，不产生人工维护的第二知识库 | 独立通用 Knowledge Graph、向量 nearest-entity、静态全 tenant registry |
 | Entity matching | canonical/alias 确定性规范化精确映射 | proper noun 身份可解释、可 hard filter、可拒答 | 用 cosine/rerank 猜实体 |
-| Agent | Host 编排的最多两轮 bounded workflow | 保持权限、延迟和失败可控 | 自由工具循环、无界自反思 |
+| Query understanding | LLM Agent + 受控 Context Packet + Host seed/validator + 条件二次裁决 | 理解真实意图和实体角色，同时让安全边界可解释、可降级 | 单条正则、一次宽泛 NER、把名称出现等同 hard scope |
+| Query Agent | 初始解析最多一次，满足触发条件时 adjudication 最多一次 | 修复 LLM/seed 冲突和将要发生的假阳性 hard-stop，保持延迟有界 | 自由工具循环、无界 self-reflection、多数投票风暴 |
+| Retrieval Agent | Host 编排的最多两轮同权限/同 Entity Scope 补检 | unsupported fields 可以定向补检，权限和延迟可控 | 无界搜索、补检扩大来源 |
+| Temporal constraint | Query-time inclusive month interval + Evidence overlap annotation | 当前 Parent 保留完整任职区间，无需建立第二时间真相或重做索引 schema | endpoint exact match、仅靠字符串相等、通用时间知识图谱 |
 | Answerability | Host entity gate + 一次结构化 Verifier-profile Evidence Gate | 生成前确认方面/实体/证据，冲突绑定具体 Evidence | 仅凭宽泛词命中或任意否定词、让 Generator 自行决定是否可答 |
 | Claim grounding | 结构化 Claim + 独立 Verifier + Host validator | 模型不能同时担任唯一生成者和裁判 | 只靠 Prompt 要求引用 |
 | Repository 文档 | approved Repository 的 Markdown/PDF 进入相同索引 | README/docs 是直接、可引用的职业项目证据 | 只检索派生 Wiki、源码全量 Embedding |
@@ -58,8 +63,11 @@ flowchart LR
   W --> O["RAG Orchestrator"]
   O --> P[("PostgreSQL + pgvector")]
   O --> EC["Authorized Entity Catalog"]
-  O --> ER["Entity Resolver"]
-  O --> QP["Query Planner Chat"]
+  O --> QC["Controlled Context Packet"]
+  EC --> QC
+  QC --> QUA["Query Understanding Agent"]
+  QUA --> QADJ["Conditional Adjudication"]
+  QADJ --> ER["Required Entity Resolver"]
   O --> E["Embedding Provider"]
   O --> RR["Rerank Provider"]
   O --> AG["Answer Generator"]
@@ -89,13 +97,17 @@ Web 负责同步命令、问答 API、Candidate/Admin Trace 和 Citation project
 | `AuthorizedEntityCatalog` | 从当前 allowed Material 的 evidence-bound entities 与当前 allowed Repository record 投影 canonical/alias/source refs |
 | `IndexCoordinator` | 创建 index/source version、调度 job、原子激活、失败保持旧 active、强撤销和 GC |
 | `RepositoryDocumentCollector` | 在 immutable artifact 内按 allowlist/glob/容量发现并提取 Markdown/PDF 文本 |
-| `DeterministicQueryAnalyzer` | Unicode、中文片段、CJK n-gram、显式 entity mention、精确短语、混合语言与会话指代 seed |
-| `QueryPlanner` | 输出受 schema 约束的 standalone query、typed entity mentions、terms、semantic queries 和 evidence type；Host 保留原问题实体与 answer aspects |
-| `EntityResolver` | 将 mention 精确映射到 Authorized Entity Catalog，输出 resolved/missing/ambiguous 与 Material/Repository scope |
-| `HybridRetriever` | 在同一授权集合和 Entity Scope 内并行执行 exact、lexical、vector、structured并返回 route ranks |
+| `DeterministicQueryAnalyzer` | Unicode、中文片段、CJK n-gram、时间、职业域、requested field、命名候选、精确短语与 target grammar seed；不单独决定最终意图 |
+| `QueryContextBuilder` | 生成当前问题、最近受控会话、当前问题内 Catalog candidates、上一轮可信 Trace focus 和 deterministic seed 的最小 Context Packet |
+| `QueryUnderstandingAgent` | 用独立 Planner Profile 输出受 schema 约束的 Query Semantics、entity role、standalone/semantic queries、terms、confidence 和 ambiguities |
+| `QuerySemanticAdjudicator` | 只在 hard-stop、角色/主体冲突、低置信或真实多义时执行第二次 LLM 裁决，最多一次 |
+| `QuerySemanticsValidator` | 校验 enum、question span、context focus、Required/Context 不变量、time range、requested fields 和 allowed evidence type；构造 fallback/clarify |
+| `EntityResolver` | 只将 Required mention 精确映射到 Authorized Entity Catalog，输出 resolved/missing/ambiguous 与 Material/Repository scope |
+| `HybridRetriever` | 在同一授权集合、Entity Scope 与 allowed evidence type 内执行 exact、lexical、vector、structured，消费 scope/fields/time 查询扩展并返回 route ranks |
 | `RrfFusion` | 按配置化 weight/k 合并、stable dedup、Parent 限流和 evidence-family 标记 |
 | `EvidenceJudge` | 用确定性 provisional coverage 驱动唯一补检，不再用任意否定词宣称冲突 |
-| `AnswerabilityGate` | 最终一次读取问题方面、Entity Resolution 与 Evidence，输出 supported/unsupported/conflicted aspect 和 evidence IDs；失败为系统错误 |
+| `TemporalEvidenceAnnotator` | 从最终 Parent Evidence 识别有限的年月/至今区间，对查询 time range 输出 overlap/outside/unknown，不写回业务事实 |
+| `AnswerabilityGate` | 最终一次读取 Query Semantics、requested-field aspects、Entity Resolution、temporal annotations 与 Evidence，输出 supported/unsupported/conflicted aspect 和 evidence IDs；失败为系统错误 |
 | `AnswerGenerator` | 输出结构化 claims/evidenceIds，不拥有授权或最终 Markdown |
 | `ClaimVerifier` | 只对每条 Claim 的引用 Evidence 判断 entailment/contradiction |
 | `CitationValidator` | 重新读取 active/auth/checksum，校验 Claim-Citation，Host 渲染最终 Markdown |
@@ -173,7 +185,7 @@ V1 `chunks`、其 search vector 和派生 `knowledge_evidence` 可以在 V2 buil
 
 ### 5.5 Trace 与反馈
 
-`rag_query_traces` 保存 conversation/message、caller mode、policy/index version、Planner safe JSON、每 route count、selected evidence IDs/scores、coverage、round count、degradation、token budget 和 latency。Planner safe JSON 增加 entity mentions、resolved/missing/ambiguous canonical name、scope Material/Repository count 与 gate reason，不保存未授权实体或来源 ID 列表。表不保存 question、evidence正文、Prompt 或 vector；Candidate 只能读自己的 trace，Admin API 只返回诊断字段。
+`rag_query_traces` 保存 conversation/message、caller mode、policy/index version、Query Understanding safe JSON、每 route count、selected evidence IDs/scores、coverage、round count、degradation、token budget 和 latency。Safe JSON 包含 intent/subject/query mode/knowledge scope/requested fields/safe time range、entity mention role、confidence、adjudication reason、resolved/missing/ambiguous canonical name、scope Material/Repository count 与 gate reason，不保存 Context Packet、完整问题/对话、Catalog 全量、未授权实体或来源 ID 列表。表不保存 Evidence 正文、Prompt 或 vector；Candidate 只能读自己的 trace，Admin API 只返回诊断字段。
 
 `rag_feedback` 保存 message、owner、`up | down | correction`、可选安全标签和 policy version。correction 正文按 Candidate 私有数据处理，但不进入索引或 Prompt，只有离线 eval export 显式读取。
 
@@ -220,19 +232,23 @@ Embedding batch 使用配置化并发、batch size、timeout 和 retry；429/5xx
 4. 只有 source count 完整、实体回归和索引 smoke 通过后才原子激活；旧派生 index 进入 superseded，业务事实不删除；
 5. 输出前后计数、new index id、source/parent/child/entity count 和稳定失败码，不打印正文或 Secret。相同命令可从当前 job/index 状态恢复。
 
-## 7. Query Planning 与多路检索
+## 7. Agentic Query Understanding 与多路检索
 
 ```mermaid
 flowchart TD
   Q["Question + conversation"] --> G{"Host authorization gates"}
   G -->|deny| RF["refused"]
   G -->|allow| EC["Authorized Entity Catalog"]
-  EC --> DQ["Deterministic analyzer + Catalog-first alias scan"]
-  DQ --> QP["Structured Query Planner"]
-  QP --> CF["Previous Trace entity focus"]
-  CF --> ER{"Entity Resolver"}
-  ER -->|only missing / ambiguous strict entity| NE["none without retrieval"]
-  ER -->|resolved or no strict entity| MR["exact + lexical + vector + structured in scope"]
+  EC --> CP["Context Packet: question + recent turns + alias candidates + trusted Trace focus + deterministic seed"]
+  CP --> QUA["Query Understanding Agent"]
+  QUA --> AD{"Adjudication trigger?"}
+  AD -->|yes, once| QJ["Semantic Adjudicator"]
+  AD -->|no| HV["Host semantics validator"]
+  QJ --> HV
+  HV -->|clarify| CQ["insufficient_evidence + query_clarification_required"]
+  HV --> ER{"Required Entity Resolver"}
+  ER -->|only missing / ambiguous required entity| NE["none without retrieval"]
+  ER -->|resolved focused or discovery| MR["exact + lexical + vector + structured in allowed scope"]
   MR --> RRF["weighted RRF + family dedup"]
   RRF --> RR["independent rerank"]
   RR --> J{"Provisional Judge"}
@@ -245,41 +261,87 @@ flowchart TD
   V --> C["Host Citation Validator + render"]
 ```
 
-### 7.1 Deterministic Query
+### 7.1 Context Packet 与确定性 seed
 
-`DeterministicQueryAnalyzer` 先执行 NFKC、空白/标点规范化、Latin token lowercase、中文短语候选与 2/3-gram、数字/版本/专名保留。它生成 exact phrases、FTS lexemes、trigram probes、semantic seed、可由语法确定的 `entityMentions[]`，以及按原问题顺序编号的 `answerAspects[] = { aspectId, label }`；中文不再通过 `websearch_to_tsquery` 的单个整句 OR 字符串表达。随后 Host 对原始 Query 执行 Catalog-first longest-alias scan：按原始跨度优先保留覆盖同一区间的最长已授权 Alias，使没有类型后缀的 `Askme 怎么样` 仍形成 strict identity，同时避免 `new-api` 内部再命中独立 `api`。单字符 Alias 不参与自动扫描，只能通过带类型确定性语法或 Planner 形成 mention。`answerAspects` 与这两类显式 entity mention 都是 Host contract，不由 Provider 覆盖或删除。
+`retrieveRagForQuestion` 先并行加载 Authorized Entity Catalog 和同一 Conversation 最新可信 Retrieval Trace，再构造一次请求内冻结的最小 Context Packet：
 
-Query Planner 使用独立 Chat Profile 和严格 Zod schema。Planner 输入只包含当前问题、受控会话摘要和 Host 已授权的 source type 列表，不包含未检索正文。每个 entity mention 是 `{ text, type, source: explicit | contextual }`；Host 只接受 explicit text 能在当前原问题中规范化定位、contextual text 能在最近受控上下文定位的项。输出不得携带 SQL、tenant、visibility 或 tool call。Host 将 deterministic mentions 与合法 Planner mentions 合并，并把所有 explicit text 强制附加到 standalone/semantic query；Planner rewrite 不能删除或替换。失败、超时或 schema invalid 时直接使用 deterministic plan。
+```text
+currentQuestion
+recentConversation = 最多最近 6 条 user/assistant message，每条至多 1,200 字符，总计至多 6,000 字符
+catalogCandidates = 只包含当前问题中 longest-alias scan 命中的已授权 canonical/type/text span
+traceFocus = 最新 Trace 的 resolved/missing/ambiguous 安全投影与 unique/missing/ambiguous 状态
+deterministicSeed = intent/scope/field/time/entity target 候选、terms 与 semantic seed
+allowedEvidenceTypes
+```
 
-### 7.2 Entity Resolution 与 Scope
+Public Chat 的 recentConversation 只来自当前 visitor credential 与 publication 下同一 Conversation；Candidate Preview 只来自当前 owner。Packet 不包含 Catalog 全量、未授权 entity、Evidence 正文、Prompt、SQL、Secret、source IDs 或 vector。Assistant 历史内容继续视为不可信上下文，只帮助理解指代/意图，不能成为 Evidence。
 
-`resolveAuthorizedEntities` 是纯 Host 步骤：
+`DeterministicQueryAnalyzer` 执行 NFKC、空白/标点规范化、Latin lowercase、中文 2/3-gram、数字/版本/专名、职业域词、requested-field 问句、年月范围和有限 target grammar。它产出候选而非最终意图：
 
-1. 加载一次 Authorized Entity Catalog，并按 normalized alias 建立 map；用 Catalog-first 扫描命中的实体与 Deterministic/Planner explicit mention 合并；
-2. 对每个 mention 产出 `resolved | missing | ambiguous | soft`。Catalog-first 命中沿用 Catalog entity type；`project/product/repository/organization/person` 是 strict identity，`technology` 和 `other` 默认是 soft retrieval term；
-3. resolved strict entities 合并其 Material IDs 与 Repository IDs 形成 union Scope；多实体比较可以读取各自来源，不能读取其他项目；
-4. 任一 strict alias 对应多个 entity key 时 ambiguous；唯一核心 strict mention missing/ambiguous 时直接构造空 retrieval result，跳过 Embedding/Rerank/Answer；
-5. resolved + missing 的多实体问题保留 resolved Scope，并把 missing name 绑定到 unsupported aspect，最终 coverage 上限为 partial；
-6. contextual reference 不重新从回答正文猜实体。Host 读取同一 Conversation 最新一条先前 Retrieval Trace 的 `resolved/missing/ambiguous`，并用当前 Catalog 重新授权；只有恰好一个仍授权的 resolved entity 且 missing/ambiguous 均为空时才作为 contextual mention，零个时标记 `contextual_reference_missing`，多个实体或 resolved 与 missing/ambiguous 并存时标记 `contextual_reference_ambiguous`。后一类在没有其他显式 resolved entity 时跳过检索，有其他显式 resolved entity 时 coverage 最多 partial；Planner contextual mention 只作诊断 seed，不能覆盖 Host focus。
+- `你/我/本人/候选人/这个人` 只产生 `subject=profile_owner` seed；
+- `哪家公司/什么职位/负责什么/哪些项目` 产生 requested field，不产生 Named Entity；
+- `Askme 项目的定位`、`在富途期间`、unknown CamelCase/带类型专名产生 possible required target；
+- Catalog scan 只产生 identity candidate，不直接决定 role；
+- time range 规范化为 inclusive month ordinal，单年为 `01..12`，非法/反向区间不进入 plan。
 
-Entity Resolution result 随请求传递，不写回 Catalog。`stopBeforeRetrieval=true` 时，两个 consumer 记录 Host route audit 后直接进入确定性的 RAG 证据不足回答，不调用 Router；因此模型不能把 entity missing/ambiguous 改写为 `refused` 或 Deep。其他请求的 Deep fallback 也只接受这里唯一 resolved 的 Repository ID。
+### 7.2 Query Understanding Agent 与语义裁决
 
-### 7.3 Route SQL
+初始 `QueryUnderstandingAgent` 复用现有独立 Planner Chat Profile，使用 temperature 0 和 strict Zod schema：
+
+```text
+intent = employment_history | project_experience | skill_profile | education_history |
+         repository_knowledge | entity_detail | career_summary | general_career
+subject = profile_owner | required_entity | general
+queryMode = focused | discovery | clarify
+knowledgeScope = employment | project | skill | education | repository | general
+entityMentions[] = { text, type, source: explicit | contextual, role: required | context }
+constraints = { timeRange?: { start: YYYY-MM, end: YYYY-MM } }
+requestedFields[] = company | job_title | employment_period | responsibilities | achievements |
+                    project_name | positioning | functions | technologies | skills | education | summary
+confidence = 0..1
+ambiguities[]
+standaloneQuery / mustTerms / shouldTerms / semanticQueries / desiredEvidenceTypes
+```
+
+Host 只接受 explicit mention 的 normalized text 能在 currentQuestion 定位、contextual mention 与唯一可信 Trace focus 一致的输出；问词、代词、requested field、通用域名或不完整问句即使由模型输出也丢弃。Catalog candidate、deterministic candidate 与合法 LLM mention 合并为带 provenance 的候选，Agent role 决定 `required | context`，Host target grammar/可信 Trace 只允许强化明确 required，不允许把问句制造成 required。
+
+满足任一条件时执行一次 `QuerySemanticAdjudicator`：最终候选将以 missing/ambiguous Required Entity 在检索前停止；LLM 与 deterministic/Catalog 对 subject、query mode 或 entity role 冲突；confidence `<0.75`；requested fields 为空；或存在 context/required 两种合理解释。裁决输入只包含 Context Packet、初始输出、冲突清单和 Host 不变量，输出同一 schema 加 `decisionReasonCode`。裁决最多一次；不访问工具、不读取 Evidence、不形成循环。
+
+Host finalizer 按以下优先级生成生产 `RagQueryPlan`：可信当前问题/Trace span 与授权不变量 → adjudicated semantics → initial semantics → deterministic fallback。两次 LLM 都失败时，明确 target grammar 或唯一可信 contextual focus 使用 focused，其余使用 discovery；真实多个合理主体且答案会变化时使用 clarify。Clarify 在 round 0 返回 outcome `insufficient_evidence`、reason `query_clarification_required` 和最小澄清文案，不调用 Embedding、Router、Deep 或 Answer Generator。
+
+Requested Fields 按原问题顺序映射为 `answerAspects[]`；time range、subject 和 scope 只作为 constraint。每个 field 使用 Host 稳定 label，Provider 不能生成未知 aspect。`scope + fields + time` 的受控中英文 expansion 只加入 should/semantic query，不加入 Required Entity 或 must term。
+
+### 7.3 Required Entity Resolution 与 Scope
+
+`resolveAuthorizedEntities` 只消费 `role=required` 的 mentions：
+
+1. `queryMode=discovery` 且没有 Required Entity 时返回 `no_required_entity`，`scope=null`，不得停止检索；Context Mention 保留在 safe semantics/Trace，不进入硬范围；
+2. Required mention 按 normalized alias 映射为 `resolved | missing | ambiguous | soft`；technology/other 仍为 soft term；
+3. resolved strict entities 合并 Material/Repository IDs 形成 union Entity Scope；多实体比较可读取各自来源，不能读取其他实体来源；
+4. 唯一 required strict mention missing/ambiguous 时，只有经过 adjudication 或无需 adjudication 的高确定 target 才在 round 0 failed-close；resolved + missing 保留 resolved Scope 并把 missing 绑定到缺口，coverage 上限 partial；
+5. contextual reference 仍只信任同一 Conversation 最新 Trace；零 focus 为 missing，多 focus 或 resolved 与 missing/ambiguous 并存为 ambiguous，初始 Agent 猜测不能覆盖 Host；
+6. Catalog alias 作为 context 时不进入 resolver。例如“看过 Askme 后还做过哪些项目”保持 discovery；“Askme 的定位”才以 Askme focused。
+
+Entity Resolution 随请求传递，不写回 Catalog。`stopBeforeRetrieval=true` 或 clarify 时两个 consumer 记录 route audit 后直接形成确定性结果，不调用 Router；因此 missing/ambiguous/clarify 不会被改写成 refused 或错误 Deep。Deep fallback 只接受这里唯一 resolved 的 required Repository ID。
+
+### 7.4 Route SQL
 
 - exact：规范化正文/标题/实体字段的 phrase equality、substring 和 stable alias；
 - lexical：`plainto_tsquery`/`to_tsquery` 的安全 lexeme，加 `pg_trgm` similarity/ILIKE probe；
 - vector：把最多两个 semantic query 分别 Embedding，join 当前 active source/index，按 `<=>` cosine distance 排序；
 - structured：Knowledge title/summary/type、Material/Repository metadata 和 `knowledge_sources` 关系，只作为 anchor rank。
 
-每路先应用 owner、allowed visibility、status、active revision、active index、revoked 和 Entity Scope 条件。Scope 为 null 时表示问题没有 strict identity；Scope 非空时 Material source 必须属于 `materialIds`，Repository Markdown/PDF/Wiki 必须属于 `repositoryIds`。四 Route 共用同一 `eligible` CTE 参数，任何 Route 或 Provider 都不能绕过。默认 TopK/weight 为 exact `20/1.5`、lexical `30/1.0`、vector `30/1.0`、structured `20/1.2`。RRF 默认 `k=60`，按 stable Child 合并；同 Parent 默认最多三个 Child，同 evidence family 不重复增信。
+每路先应用 owner、allowed visibility、status、active revision、active index、revoked、allowed evidence type 和 Entity Scope 条件。Scope 为 null 时表示 discovery 或没有 Required Entity；Scope 非空时 Material source 必须属于 `materialIds`，Repository Markdown/PDF/Wiki 必须属于 `repositoryIds`。`material|knowledge` 映射 Material source，`approved_wiki` 映射 Approved Wiki，`repository_document` 映射 Repository Markdown/PDF；Host 按 knowledge scope 计算允许集合，再与 Agent desired types 取交集，空交集使用 Host 集合而不是扩大来源。四 Route 共用同一 `eligible` CTE 参数，任何 Route 或 Provider 都不能绕过。默认 TopK/weight 为 exact `20/1.5`、lexical `30/1.0`、vector `30/1.0`、structured `20/1.2`。RRF 默认 `k=60`，按 stable Child 合并；同 Parent 最多三个 Child，同 evidence family 不重复增信。
 
-### 7.4 Rerank、补检与 Answerability
+### 7.5 Rerank、补检与 Answerability
 
 Rerank adapter 按独立 Base URL 和 `provider protocol` 调用 `qwen3-rerank`：`dashscope-compatible` 使用 Workspace 专属 `compatible-api/v1/reranks`、顶层 `results` 与固定问答检索 `instruct`，`cohere-compatible` 使用 `/reranks` 且不发送 DashScope 专属字段。请求包含 query、candidate contextual text 和 `top_n`。Host 只接受输入 index 范围内的唯一结果和 `0..1` finite score；score 仅在当前请求内使用。
 
 Rerank 未配置、超时或失败时使用 RRF，Trace 标记 degradation，Provisional Judge 提高 full 阈值。Provisional Judge 只根据 entity consistency、词/方面 coverage、route/rerank 和 source quality判断是否需要一次补检；它不再扫描任意否定词产生 `conflicted`。只有 round 1 partial/none 才构造 unsupported-aspect retry plan，且 retry 复用完全相同的 Entity Scope；round 2 无论结果如何都停止。
 
-最后一轮后，`assessRagAnswerability` 使用现有 Verifier Chat Profile 完成一次结构化调用，输入仅包含问题、Host `answerAspects`、安全的 Entity Resolution 摘要和最终 Evidence Pack。输出：
+最后一轮后，`TemporalEvidenceAnnotator` 在 time-constrained query 中从每个候选的 `parentContent` 识别有限格式（`YYYY.MM/YYYY-MM/YYYY年MM月`、区间分隔、`至今/present`），转换为 month ordinal 并标记 `overlap | outside | unknown`。它不写数据库、不把解析结果当业务真相；outside Evidence 不能单独支持该时间范围，unknown 仍交给 Answerability 从原文判断，避免 parser 漏格式造成 false-none。
+
+`assessRagAnswerability` 使用现有 Verifier Chat Profile 完成一次结构化调用，输入仅包含当前问题、安全 Query Semantics、Host requested-field `answerAspects`、Entity Resolution、temporal annotations 和最终 Evidence Pack。Focused query 必须满足 Required Entity identity；Discovery query 允许 Evidence 中的 company/project 填充 requested field；Context Mention 不得成为错误主体或排除其他证据。输出：
 
 ```text
 aspects[] = {
@@ -289,7 +351,7 @@ aspects[] = {
 }
 ```
 
-Host 校验所有 aspect/evidence ID 属于当前输入。`conflicted` 至少需要同一 aspect 的两个不同 evidence family；否则降为 supported/unsupported。所有 aspect unsupported 时为 none；部分 supported 为 partial；全部 supported 为 full；任一合法 conflicted 为 conflicted。Gate 只把它引用的 Evidence 交给 Answer Generator，减少“相关但不可回答”的上下文污染。Gate 超时、schema invalid 或引用越界返回 `AI_ANSWERABILITY_FAILED`，message outcome 为 failed，绝不伪装成 none。
+Host 校验所有 aspect/evidence ID 属于当前输入。Time-constrained employment aspect 不能只由 `outside` Evidence 支持；若模型只引用 outside IDs，Host 将该 aspect 降为 unsupported，`unknown` 仍需由模型从原文证明。`conflicted` 至少需要同一 aspect 的两个不同 evidence family；否则降为 supported/unsupported。所有 aspect unsupported 时为 none；部分 supported 为 partial；全部 supported 为 full；任一合法 conflicted 为 conflicted。Gate 只把它引用的 Evidence 交给 Answer Generator，减少“相关但不可回答”的上下文污染。Gate 超时、schema invalid 或引用越界返回 `AI_ANSWERABILITY_FAILED`，message outcome 为 failed，绝不伪装成 none。
 
 ## 8. Evidence Pack、Claim 与 Citation
 
@@ -303,7 +365,7 @@ claims[] = { claimId, aspectId, text, evidenceIds[] }
 unsupportedAspectIds[]
 ```
 
-Orchestrator 在请求开始时从 Host 时钟冻结一次 `currentDate: YYYY-MM-DD`，与 `answerAspects`、resolved/missing entity 摘要一起作为受信任 system context 传给 Answer Generator。Prompt 明确禁止把 Evidence 中的 canonical entity 重命名为另一个 query entity；Generator 不读取 Catalog 全量或未授权实体。`currentDate` 只允许参与工作年限等相对时间计算，不能替代职业 Evidence；同一请求的检索、生成、验证和持久化不得重新取时钟而产生跨日漂移。对于明确询问工作年限的单方面问题，Host renderer 从已通过 Verifier 的 Claim 提取带“起 / since / from”语义的职业起点，并以 `currentDate` 计算约年数或年月；无法得到已验证起点时仍使用普通已验证 Claim，不从原始 Evidence 猜测日期。该派生文本复用 Claim 的 Citation，既覆盖 Provider 遗漏时长，也覆盖 Provider 使用旧年份的情况。
+Orchestrator 在请求开始时从 Host 时钟冻结一次 `currentDate: YYYY-MM-DD`，与安全 Query Semantics、requested-field `answerAspects`、resolved/missing required entity 摘要和 temporal annotations 一起作为受信任 system context 传给 Answer Generator。Prompt 明确区分 focused 与 discovery：前者禁止把 Evidence canonical entity 重命名为另一个 required entity，后者允许从 Evidence 填充 company/project 等未知字段但不能把 Context Mention冒充主体。Generator 不读取 Catalog 全量或未授权实体。`currentDate` 只允许参与工作年限等相对时间计算，不能替代职业 Evidence；同一请求的检索、生成、验证和持久化不得重新取时钟而产生跨日漂移。对于明确询问工作年限的单方面问题，Host renderer 从已通过 Verifier 的 Claim 提取带“起 / since / from”语义的职业起点，并以 `currentDate` 计算约年数或年月；无法得到已验证起点时仍使用普通已验证 Claim，不从原始 Evidence 猜测日期。该派生文本复用 Claim 的 Citation，既覆盖 Provider 遗漏时长，也覆盖 Provider 使用旧年份的情况。
 
 Host 在 Verifier 前重新加载 evidence IDs 并核对 owner、active source/index、visibility、checksum。Claim Verifier 每次只接收一个或一小组 Claim 及其 cited subset，输出 entailed/partial/unsupported/contradicted 和可选 narrowed text。一次 repair 只能删除或收窄 Claim，不能新增 evidence ID。
 
@@ -317,7 +379,7 @@ Citation Validator 确认每条最终 Claim 至少一个 entailed Evidence；Mat
 
 - `embedding`: API key/base URL/model/dimensions/timeout/retry/batch/concurrency；
 - `rerank`: API key/base URL/model/provider protocol/timeout/retry/topN；
-- `planner` 与 `verifier`: Chat Profile；
+- `planner` 与 `verifier`: Chat Profile；`planner` 同时承载初始 Query Understanding 和条件 adjudication，但两次调用独立计量并使用不同 system contract；
 - `retrieval`: route TopK、weights、RRF k、Parent/Child limit、round limit；
 - `evidence`: max tokens `200000`、output reserve、safety margin；
 - `chunking`: child/parent targets、hard max、min、overlap；
@@ -335,11 +397,11 @@ Repository 设置以整个 Repository 为唯一发布 owner。visibility 从 pri
 
 历史消息读取先验证其 Evidence 仍授权。Repository 权限降低时，引用该 Repository 且超出新可见性范围的回答在同一事务中持久标记失效；失效 Citation 投影为 revoked，后续恢复 visibility 或重建 source 不清除该标记。回答依赖失效 Evidence 时状态投影 `evidence_revoked`，只能由新问题生成新回答。不复制私有正文到消息或 Trace，避免撤销后仍可从 snapshot 读取。
 
-Prompt Injection 防护使用结构化消息边界、固定 system contract、Evidence delimiter 和工具为空的 Chat calls。材料中的“指令”不经过任何动态注册路径。Planner 不读取 Evidence，Rerank 无工具，Generator/Verifier 只接收 Host 选择的正文；所有输出经过 schema 与 allowlist 校验。
+Prompt Injection 防护使用结构化消息边界、固定 system contract、Evidence delimiter 和工具为空的 Chat calls。材料中的“指令”不经过任何动态注册路径。Query Understanding Agent/Adjudicator 不读取 Evidence 或 Catalog 全量，历史对话标为 untrusted context；Rerank 无工具，Generator/Verifier 只接收 Host 选择的正文；所有输出经过 schema 与 allowlist 校验。
 
 ## 11. Retrieval Trace、状态与反馈
 
-每个 query 建立 trace id，并在相同 owner 下追加 stage metadata。安全投影包含 policy/index/commit、Planner terms/entity mentions、resolved/missing/ambiguous canonical name、scope source count、gate reason、route counts、selected evidence ids/title/score、provisional/final coverage、round、budget、degradation、filter/warning 和 stage latency。Trace 不保存 Catalog 全量、未授权 entity/source IDs 或 Evidence 正文。Candidate 可以展开自己的 trace；Admin 默认只看聚合/安全 metadata，只有通过既有治理授权进入 tenant 诊断时才看相同安全投影。
+每个 query 建立 trace id，并在相同 owner 下追加 stage metadata。安全投影包含 policy/index/commit、intent/subject/query mode/knowledge scope/requested fields/safe time range、entity mention role、initial confidence、是否 adjudicated 与 decision reason、resolved/missing/ambiguous canonical name、scope source count、gate reason、route counts、selected evidence ids/title/score、temporal match counts、provisional/final coverage、round、budget、degradation、filter/warning 和 stage latency。Trace 不保存原始 Context Packet、完整问题/对话、Catalog 全量、未授权 entity/source IDs、Evidence 正文或 adjudication 自由文本。Candidate 可以展开自己的 trace；Admin 默认只看聚合/安全 metadata，只有通过既有治理授权进入 tenant 诊断时才看相同安全投影。
 
 Repository 页面把 sync 与 index 分栏：sync state、requested/full SHA、artifact ready；index state、active commit、files indexed/skipped、warning/error、last activated。Material 页面同样区分 extracted/indexing/ready/failed。
 
@@ -351,8 +413,10 @@ Feedback API 只写 `rag_feedback`，不调用 Provider、不更新 policy、不
 | --- | --- | --- |
 | Embedding 未配置/失败 | Query 降级 lexical；新 source index failed 或 retry | 配置恢复后重跑 source/index version |
 | Rerank 未配置/失败 | RRF + strict Judge | 下次请求自动重试 Provider |
-| Planner invalid | deterministic plan | 不持久失败状态 |
-| Entity missing/ambiguous | 跳过 Embedding/Retrieval，返回安全 none/partial 缺口 | 补充或授权来源、消除 alias 歧义后新问题重试 |
+| Query Agent initial invalid | 若触发条件成立则 adjudication，否则 deterministic semantics | Trace 标记 `query_understanding_fallback` |
+| Query adjudication invalid | deterministic focused/discovery/clarify fallback | Trace 标记 `query_adjudication_fallback`，不无界重试 |
+| 真正意图/主体多义 | round 0 `insufficient_evidence` + `query_clarification_required` | 用户回答最小澄清问题后新 query |
+| Required Entity missing/ambiguous | 经必要 adjudication 后跳过 Embedding/Retrieval，返回安全 none/partial 缺口 | 补充或授权来源、消除 alias 歧义后新问题重试 |
 | Answerability invalid | message failed，不伪装 none | Provider 恢复后新问题重试 |
 | Answer/Verifier invalid | message failed，不伪装 none | 用户安全重试，新 trace |
 | Citation invalid/revoked | 不提交最终回答 | 重新检索；不能复用旧 Evidence |
@@ -360,35 +424,35 @@ Feedback API 只写 `rag_feedback`，不调用 Provider、不更新 policy、不
 | Worker crash | lease expiry 后幂等恢复 | 旧 active 继续服务 |
 | 新 global index failed | 保持旧 active index | 修复后新 version 重建 |
 
-指标至少包含 source indexing latency/count/failure、Embedding batch latency/tokens/errors、entity resolved/missing/ambiguous distribution、preflight retrieval-skip count、scope source count、route hit count/latency、exact vector P50/P95、Rerank/Answerability latency/errors、provisional/final coverage distribution、false-none eval、Citation failure、revocation filter 和 actual evidence tokens。日志只使用 id、state、count、duration、stable code，不打印 question、正文、vector、Prompt 或 Secret。
+指标至少包含 source indexing latency/count/failure、Embedding batch latency/tokens/errors、query mode/intent/scope distribution、adjudication rate/reason/latency、entity role false-positive/false-negative eval、entity resolved/missing/ambiguous distribution、clarification rate、preflight retrieval-skip count、scope source count、route hit count/latency、exact vector P50/P95、Rerank/Answerability latency/errors、temporal overlap/outside/unknown、provisional/final coverage distribution、discovery false-none eval、Citation failure、revocation filter 和 actual evidence tokens。日志只使用 id、state、count、duration、stable code，不打印 question、conversation、正文、vector、Prompt 或 Secret。
 
 HNSW gate 由 active vector count 和 exact query P95 触发离线评估；实现不自动建 HNSW。达到 `100,000` 或 P95 `>100 ms` 后，只有 Recall@30 不低于 exact 门禁时才能通过新 migration/policy 启用。
 
-## 13. Entity-grounded RAG 迁移与直接切换
+## 13. Query-understood RAG V4 直接切换与重建
 
-1. Migration 为 `knowledge_items` 增加 `entities jsonb NOT NULL DEFAULT '[]'` 并更新 Drizzle/schema manifest；不建立旧/新双读。
-2. Query/Trace 结构直接切换到 typed entity mentions、resolution 和 answerability；旧 `retrieval_policy_version` 不作为兼容路径。
-3. `context_prefix_version` 从 `source-context-v1` 提升到 `source-entity-context-v2`，确保 `startIndexRebuild` 创建独立 building index，不复用当前 active vectors。
-4. 通过 `rebuild-knowledge-rag --execute --activate` 重新组织全部现有 Materials，生成 evidence-bound entities，并重建 Material/Wiki/Repository 派生索引；旧 Knowledge Item 与旧 index 是可替换派生数据。
-5. 新 index 完整、实体回归和索引 smoke 通过后原子激活；当前项目未上线，不保留旧 Query/Entity Policy、feature flag 或兼容 fallback。
-6. 应用失败可以重新运行维护入口；数据库 migration 不删除账号、原始 Material/Artifact、Repository、权限、Publication 或会话。已 superseded index 只用于诊断/受控清理，不参与查询。
+1. Query Semantics、entity role、adjudication 和 temporal annotation 都是请求/Trace JSON 内的派生状态，不新增业务表或第二事实源；当前消息 outcome 保持 `answered | refused | insufficient_evidence`，clarify 使用稳定 reason。
+2. `retrieval_policy_version` 直接切换为 `query-understood-rag-v4`；旧 V3 Query/Entity Policy 不作为兼容 fallback 或 feature flag。Provider 全失败只回到同版本 deterministic semantics。
+3. `context_prefix_version=source-entity-context-v2`、Embedding model/dimension 和 chunk schema 不变，因此 Query policy 本身不要求重新 Embedding。PLAN-026 仍执行一次全量 Knowledge/RAG 重建，用于清除潜在旧 organization 漂移并在干净派生数据上完成真实验收，不把重建伪装成代码必要 migration。
+4. 通过 `rebuild-knowledge-rag --execute --activate` 重新组织全部现有 Materials，并重建 Material/Wiki/Repository 派生索引；新 index 完整、Query Semantics/Entity 成对回归和索引 smoke 通过后原子激活，旧 index 进入 superseded。
+5. 应用或重建失败可以幂等重跑；旧 active 在新版本激活前继续服务。维护入口不得删除账号、原始 Material/Artifact、Repository、权限、Publication 或会话，已 superseded index 只用于诊断/受控清理。
 
 本地真实部署必须记录前后 users/materials/repositories/publications/conversations/messages 数量并保持不变；Knowledge Item、legacy chunks、rag source/parent/child/vector 数量必须按重建结果诚实变化和对账。
 
 ## 14. Golden Dataset 与验证
 
-仓库 fixture 使用至少三名虚构 Candidate，材料、Entity Catalog 与 Evidence ID 稳定。既有 120 case 加至少 12 个 entity-grounding case，以 JSON/JSONL 保存 question、conversation turns、caller、expected entity resolution/scope、coverage/outcome、required/forbidden evidence IDs、可支持目标 Claim 的 acceptable Citation IDs 和 tags；`requiredEvidenceIds` 只约束必须召回的 canonical evidence，不能误作唯一合法 Citation。Eval runner 分两层：
+仓库 fixture 使用至少三名虚构 Candidate，材料、Entity Catalog 与 Evidence ID 稳定。既有 120 case、至少 12 个 entity-grounding case 加至少 18 个 Query Semantics 成对 case，以 JSON/JSONL 保存 question、conversation turns、trusted trace focus、deterministic/catalog candidates、expected intent/subject/mode/scope/entity role/constraints/requested fields、是否 adjudicate、entity resolution/scope、coverage/outcome、required/forbidden evidence IDs、可支持目标 Claim 的 acceptable Citation IDs 和 tags；`requiredEvidenceIds` 只约束必须召回的 canonical evidence，不能误作唯一合法 Citation。Eval runner 分三层：
 
-1. 离线层调用生产 `DeterministicQueryAnalyzer`、纯函数 `resolveEntityMentions`、RRF、Evidence Pack/Coverage 与 permission filter；route fixture/stub 只模拟数据库候选，不用 tag/关键词直接生成 outcome；
-2. `eval-rag-runtime.ts` 在隔离真实 PostgreSQL fixture 上创建至少两个相似项目和不同 visibility，调用真实 Planner、Embedding、四 Route SQL、Rerank、Final Answerability、Answer、Claim Verifier 与 Citation Validator，运行至少 12 个 known/unknown/alias/multi-entity/context/permission case；结束删除 fixture owner 与 artifact。
+1. 纯函数层调用生产 `DeterministicQueryAnalyzer`、Host Query Semantics validator/fallback、Required Entity Resolver、time overlap、RRF、Evidence Pack/Coverage 与 permission filter；不使用 tag/关键词直接生成预测；
+2. Query Agent 层使用合成 Context Packet 调用真实初始 Agent 与按条件触发的 adjudication，成对校验 focused/discovery/clarify、required/context role、subject、fields、time 和 fallback；
+3. `eval-rag-runtime.ts` 在隔离真实 PostgreSQL fixture 上调用真实 Query Agent、Embedding、四 Route SQL、Rerank、Final Answerability、Answer、Claim Verifier 与 Citation Validator，运行至少 18 个 discovery/focused/clarify/known/unknown/incidental/context/permission/provider-failure case；结束删除 fixture owner 与 artifact。
 
-Provider 非确定输出不以逐字答案为 gold；gold 只约束 outcome、Claim key facts 和 Evidence IDs。Prompt Injection、conflict、duplicate family、Repository commit 切换、强撤销和所有降级模式必须有 case。
+Provider 非确定输出不以逐字答案为 gold；gold 约束结构化 semantics/entity role、outcome、Claim key facts 和 Evidence IDs。Approved Query Semantics 集的 required-role 假阳性、Required Entity 漏识别、discovery false-none 和跨实体替代必须为 0；开放语言不声称数学上绝对零错误，任何新失败先进入可复现 eval 再调整 Agent/Host policy。Prompt Injection、conflict、duplicate family、Repository commit 切换、强撤销和所有降级模式必须有 case。
 
-自动化门禁包括 unit、PostgreSQL integration、migration-from-current-data、provider contract、worker lease、security、API 和 full build。真实验收使用当前本地 Candidate/Public Agent：Candidate Preview 验证私有授权 Askme/职业资料，Public Chat 验证 OneCat 正常回答、未知 Askme 在检索前拒答、OneCat + 未知实体只形成安全 partial/none、Citation/Trace/会话持久化以及无 Console/Network 错误。
+自动化门禁包括 unit、PostgreSQL integration、migration-from-current-data、provider contract、worker lease、security、API 和 full build。真实验收使用当前本地 Candidate/Public Agent：两端都验证 `2022–2024 在哪家公司、职位和职责`、`做过哪些项目` 等 discovery 问题正确回答；`Askme 是什么` focused、未知实体 failed-close、incidental Askme 不错误 hard scope、多轮指代/clarify、Citation/Trace/会话持久化以及无 Console/Network 错误。
 
 ## 15. 隔离源码分析保留边界
 
-现有 `src/server/code-agent`、`analysis_runs`、BoxLite microVM、Pi guest 只读工具、SSE 和 Host Citation 校验继续服务 `deep`。本修订只改变 Repository 选择前提：Host Entity Gate 允许继续后，Router 才能在文档 RAG 后提出 deep 建议；确定性源码检查语法只负责产生 explicit Repository mention，最终仍必须由 Entity Resolver 唯一解析到同一个授权 Repository 后才能排队。最终 Citation 继续进入统一授权投影，Trace 记录 route transition。
+现有 `src/server/code-agent`、`analysis_runs`、BoxLite microVM、Pi guest 只读工具、SSE 和 Host Citation 校验继续服务 `deep`。本修订只改变 Repository 选择前提：Query Understanding 最终为 focused、Required Entity Resolver 唯一解析到一个授权 Repository 且 Host Entity Gate 允许继续后，Router 才能在文档 RAG 后提出 deep 建议；Context Mention、discovery、clarify 或 unknown required entity 均不能排队。最终 Citation 继续进入统一授权投影，Trace 记录 route transition。
 
 Deep run 仍绑定一个 owner、Repository、完整 SHA 和 artifact checksum；每 run 新 microVM，不挂载 Host 工作树，不持有 GitHub Token，不执行 Shell/build/test/install/network。中间 reasoning/tool output 不持久化，cleanup 成功后才提交最终回答；失败不回退成伪成功 RAG。
 

@@ -492,7 +492,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
     const assessment = assessAgentQuestion(input.question);
     const retrievalStartedAt = performance.now();
     const retrieval = assessment.allowed
-      ? await retrieveRagForQuestion({ pool: getPool(), config, ownerId, consumer: "candidate_preview", question: assessment.question, conversationId: exchange.conversationId, conversation: await priorConversationMessages(exchange.conversationId, exchange.userMessageId) })
+      ? await retrieveRagForQuestion({ pool: getPool(), config, ownerId, consumer: "candidate_preview", question: assessment.question, conversationId: exchange.conversationId, conversation: await priorConversationMessages(exchange.conversationId, exchange.userMessageId), currentDate })
       : null;
     const evidence = retrieval?.candidates ?? [];
     if (retrieval) {
@@ -560,6 +560,7 @@ export async function chatPreview(ownerId: string, input: ChatInput, requestId?:
       ] : [],
       ambiguousEntities: retrieval?.entityResolution.ambiguous.map((item) => item.mention.text) ?? [],
       entityReferenceIssue: retrieval?.entityResolution.contextReference?.status,
+      queryClarification: retrieval?.entityResolution.gateReason === "query_clarification_required",
       answerAspects: retrieval?.plan.answerAspects,
       currentDate,
       settings,
