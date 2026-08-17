@@ -11,4 +11,5 @@
 | 2026-08-12-plan-010-simplified-harness | 2026-08-12：OBJ-005 简化 Harness 迁移收口 | [2026-08-12-plan-010-simplified-harness.md](2026-08-12-plan-010-simplified-harness.md) |
 | 2026-08-13-plan-014-spec002-gate | 2026-08-13：PLAN-014 SPEC-002 真实环境 Human Gate | [2026-08-13-plan-014-spec002-gate.md](2026-08-13-plan-014-spec002-gate.md) |
 | 2026-08-14-hybrid-rag-v2-design-handoff | 2026-08-14 Hybrid Agentic RAG V2 设计交接 | [2026-08-14-hybrid-rag-v2-design-handoff.md](2026-08-14-hybrid-rag-v2-design-handoff.md) |
+| 2026-08-17-smtp-env-layering | 2026-08-17：SMTP 环境配置分层修订 | [2026-08-17-smtp-env-layering.md](2026-08-17-smtp-env-layering.md) |
 <!-- AGENT-HARNESS:END INDEX -->

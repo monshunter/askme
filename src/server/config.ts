@@ -279,9 +279,11 @@ export function parseAllowedEnv(source: string): Record<string, string> {
   return result;
 }
 
-export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string): RuntimeConfig {
+export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string, projectEnvFile = ""): RuntimeConfig {
+  const projectEnv = parseAllowedEnv(projectEnvFile);
   const fileEnv = parseAllowedEnv(userEnvFile);
-  const read = (key: string) => processEnv[key]?.trim() || fileEnv[key]?.trim() || null;
+  // Precedence: process env > project .env > ~/.env (machine-level overrides) > defaults.
+  const read = (key: string) => processEnv[key]?.trim() || projectEnv[key]?.trim() || fileEnv[key]?.trim() || null;
   const mailHost = read("ASKME_SMTP_HOST");
   const mailPortSource = read("ASKME_SMTP_PORT");
   const mailSecureSource = read("ASKME_SMTP_SECURE");
@@ -536,14 +538,18 @@ let cachedConfig: RuntimeConfig | undefined;
 
 export function getRuntimeConfig() {
   if (cachedConfig) return cachedConfig;
-  let userEnvFile = "";
-  try {
-    userEnvFile = readFileSync(path.join(os.homedir(), ".env"), "utf8");
-  } catch (error) {
-    const code = error instanceof Error && "code" in error ? error.code : null;
-    if (code !== "ENOENT") throw error;
-  }
-  cachedConfig = loadConfigFromSources(process.env, userEnvFile);
+  const readEnvFile = (pathname: string): string => {
+    try {
+      return readFileSync(pathname, "utf8");
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? error.code : null;
+      if (code !== "ENOENT") throw error;
+      return "";
+    }
+  };
+  const projectEnvFile = readEnvFile(path.resolve(process.cwd(), ".env"));
+  const userEnvFile = readEnvFile(path.join(os.homedir(), ".env"));
+  cachedConfig = loadConfigFromSources(process.env, userEnvFile, projectEnvFile);
   return cachedConfig;
 }
 

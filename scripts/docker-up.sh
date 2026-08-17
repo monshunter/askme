@@ -7,8 +7,16 @@ if [[ -z "${ASKME_CODE_AGENT_IMAGE_DIGEST:-}" && -r "${project_root}/data/code-a
   export ASKME_CODE_AGENT_IMAGE_DIGEST="${image_digest}"
 fi
 
+# Layer env files for Compose interpolation (later --env-file wins over earlier):
+#   shell env > project .env > ~/.env (machine-level secrets/overrides) > compose defaults.
+# The project .env must stay readable so e.g. ASKME_SMTP_* can switch between
+# Mailpit (local) and a real production SMTP server without touching ~/.env.
+env_files=()
 if [[ -f "${HOME}/.env" ]]; then
-  docker compose --env-file "${HOME}/.env" up --build "$@"
-else
-  docker compose up --build "$@"
+  env_files+=(--env-file "${HOME}/.env")
 fi
+if [[ -f "${project_root}/.env" ]]; then
+  env_files+=(--env-file "${project_root}/.env")
+fi
+
+docker compose "${env_files[@]}" up --build "$@"

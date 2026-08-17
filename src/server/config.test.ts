@@ -204,6 +204,39 @@ describe("runtime config", () => {
     expect(invalid.mail.status).toBe("invalid_configuration");
   });
 
+  it("resolves SMTP from the project env file over ~/.env, with process env winning", () => {
+    const projectEnv = "ASKME_SMTP_HOST=smtp.163.com\nASKME_SMTP_PORT=587\nASKME_SMTP_SECURE=true\nASKME_SMTP_USER=mailer@163.com\nASKME_SMTP_PASSWORD=secret\nASKME_SMTP_FROM=Askme <mailer@163.com>\n";
+    const userEnv = "ASKME_SMTP_HOST=mailpit\nASKME_SMTP_PORT=1025\nASKME_SMTP_SECURE=false\nASKME_SMTP_USER=\nASKME_SMTP_PASSWORD=\nASKME_SMTP_FROM=Askme <noreply@askme.local>\n";
+
+    const fromProject = loadConfigFromSources({}, userEnv, projectEnv);
+    expect(fromProject.mail).toEqual({
+      status: "configured",
+      host: "smtp.163.com",
+      port: 587,
+      secure: true,
+      user: "mailer@163.com",
+      password: "secret",
+      from: "Askme <mailer@163.com>",
+    });
+
+    // Empty values in a higher-precedence file do not mask lower-precedence values.
+    const emptyProjectOverride = loadConfigFromSources(
+      {},
+      userEnv,
+      "ASKME_SMTP_HOST=\nASKME_SMTP_PORT=\n",
+    );
+    expect(emptyProjectOverride.mail.host).toBe("mailpit");
+    expect(emptyProjectOverride.mail.port).toBe(1025);
+
+    const fromProcess = loadConfigFromSources(
+      { ASKME_SMTP_HOST: "process-host", ASKME_SMTP_PORT: "25" },
+      userEnv,
+      projectEnv,
+    );
+    expect(fromProcess.mail.host).toBe("process-host");
+    expect(fromProcess.mail.port).toBe(25);
+  });
+
   it("normalizes an allowlisted public base URL and rejects unsafe or non-root values", () => {
     expect(parseAllowedEnv("ASKME_PUBLIC_BASE_URL=https://careers.example.test\n")).toEqual({
       ASKME_PUBLIC_BASE_URL: "https://careers.example.test",
