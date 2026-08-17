@@ -27,6 +27,12 @@ describe("locale core", () => {
     expect(translate("zh-CN", "agent.title")).toBe("智能体");
   });
 
+  it("translates the profile document module copy", () => {
+    expect(translate("en", "agent.profile.title")).toBe("Profile Document");
+    expect(translate("zh-CN", "agent.profile.title")).toBe("个人档案文档");
+    expect(translate("zh-CN", "agent.profile.empty")).toContain("公开预览");
+  });
+
   it("defines a one-year same-site cookie contract", () => {
     expect(LOCALE_COOKIE).toBe("askme_locale");
     expect(localeCookieOptions(false)).toMatchObject({ httpOnly: true, maxAge: 31_536_000, path: "/", sameSite: "lax", secure: false });

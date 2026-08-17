@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, FileText, LoaderCircle, X } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { createTranslator, type Locale } from "@/i18n/core";
@@ -71,12 +71,14 @@ export function SourceLink({
   mode,
   locale,
   className = "",
+  icon,
 }: {
   title: string;
   href: string | null;
   mode: SourceOpenMode;
   locale: Locale;
   className?: string;
+  icon?: ReactNode;
 }) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [open, setOpen] = useState(false);
@@ -103,16 +105,16 @@ export function SourceLink({
 
   if (!href) return <strong className={`source-file-name ${className}`.trim()}>{title}</strong>;
   if (mode === "new_tab") {
-    return <a className={`source-file-link ${className}`.trim()} href={href} target="_blank" rel="noreferrer noopener">{title}<ExternalLink size={13} aria-hidden="true" /></a>;
+    return <a className={`source-file-link ${className}`.trim()} href={href} target="_blank" rel="noreferrer noopener" aria-label={icon ? title : undefined}>{icon ?? <>{title}<ExternalLink size={13} aria-hidden="true" /></>}</a>;
   }
 
   return (
     <>
-      <button className={`source-file-link source-file-button ${className}`.trim()} type="button" onClick={() => {
+      <button className={`source-file-link source-file-button ${className}`.trim()} type="button" aria-label={icon ? title : undefined} onClick={() => {
         setMarkdown(null);
         setLoadFailed(false);
         setOpen(true);
-      }}>{title}<FileText size={14} aria-hidden="true" /></button>
+      }}>{icon ?? <>{title}<FileText size={14} aria-hidden="true" /></>}</button>
       {open ? createPortal((
         <div className="source-preview-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setOpen(false);

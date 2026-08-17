@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const clientSource = readFileSync(new URL("./public-agent-client.tsx", import.meta.url), "utf8");
+const profileRouteSource = readFileSync(new URL("../../app/api/public/agents/[slug]/profile/route.ts", import.meta.url), "utf8");
 
 describe("public source presentation contract", () => {
   it("renders only the source name with its projected access capability", () => {
@@ -13,6 +14,15 @@ describe("public source presentation contract", () => {
 
   it("has a dedicated public source route that can recheck current permission", () => {
     expect(existsSync(new URL("../../app/api/public/agents/[slug]/materials/[materialId]/route.ts", import.meta.url))).toBe(true);
+  });
+
+  it("serves the designated profile document without any visitor conversation", () => {
+    expect(existsSync(new URL("../../app/api/public/agents/[slug]/profile/route.ts", import.meta.url))).toBe(true);
+    expect(profileRouteSource).toContain("getPublicProfileMaterialContent");
+    expect(profileRouteSource).not.toContain("requirePublicConversation");
+    expect(profileRouteSource).not.toContain("conversationId");
+    expect(clientSource).toContain("initialProjection.profileDocument ?");
+    expect(clientSource).toContain("`/api/public/agents/${slug}/profile`");
   });
 
   it("owns public visitor identity in localStorage and sends it on API requests", () => {

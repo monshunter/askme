@@ -92,4 +92,12 @@ describe("Candidate Workspace consolidation contract", () => {
     }
     expect(existsSync(new URL("../../app/api/materials/[materialId]/content/route.ts", import.meta.url))).toBe(true);
   });
+
+  it("lets the Candidate designate one public-preview file as the profile document", () => {
+    expect(agentClientSource).toContain('t("agent.profile.title")');
+    expect(agentClientSource).toContain('t("agent.profile.empty")');
+    expect(agentClientSource).toContain('requestApi<ApiEnvelope<{ items: Array<{ id: string; title: string; mimeType: string | null; kind: "file" | "notion" | "website"; visibility: Visibility }> }>>(');
+    expect(agentClientSource).toContain('updateSetting("profileMaterialId", null)');
+    expect(agentClientSource).toContain('updateSetting("profileMaterialId", item.id)');
+  });
 });

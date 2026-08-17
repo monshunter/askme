@@ -7,6 +7,7 @@ const agentSettingsPatchSchema = z
     answerTone: z.enum(["professional", "concise", "conversational"]).optional(),
     publicMode: z.boolean().optional(),
     privacySafeMode: z.boolean().optional(),
+    profileMaterialId: z.string().uuid().nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0);

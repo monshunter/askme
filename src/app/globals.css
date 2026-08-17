@@ -797,6 +797,28 @@ details > summary::-webkit-details-marker { display: none; }
 .agent-highlight-lines li { display: flex; align-items: flex-start; gap: 5px; color: #4f5a57; font-size: 9px; line-height: 1.4; }
 .agent-highlight-lines svg { flex: 0 0 auto; margin-top: 2px; color: #1f7a5f; }
 .agent-highlights-empty { margin: 0; padding: 14px 0; color: #8b918e; font-size: 10px; }
+.agent-profile-panel { margin-top: 12px; padding: 22px; }
+.agent-profile-heading { display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 11px; }
+.agent-profile-heading h2, .agent-profile-heading p { margin: 0; }
+.agent-profile-heading p { margin-top: 4px; color: #747b79; font-size: 10px; }
+.agent-profile-current { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 14px; border: 1px solid #dce7df; border-radius: 8px; background: rgba(232,241,235,.5); }
+.agent-profile-current-label { color: #5d6a66; font-size: 9px; font-weight: 700; }
+.agent-profile-current .source-file-link { font-size: 10px; font-weight: 650; }
+.agent-profile-stale { width: 100%; margin: 0; color: #a0631f; font-size: 9px; }
+.agent-profile-status { display: flex; align-items: center; gap: 6px; margin: 18px 0 0; color: #8b918e; font-size: 10px; }
+.agent-profile-empty { display: grid; gap: 10px; margin: 18px 0 0; padding: 14px 0; color: #8b918e; font-size: 10px; }
+.agent-profile-empty p { margin: 0; }
+.agent-profile-empty .secondary-button { width: fit-content; }
+.agent-profile-list { list-style: none; display: grid; gap: 8px; margin: 18px 0 0; padding: 0; }
+.agent-profile-list li { min-height: 50px; display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid #e4dfd6; border-radius: 8px; background: rgba(255,255,255,.55); }
+.agent-profile-list li.selected { border-color: #b9d0c7; background: #e8f1eb; }
+.agent-profile-list li > div { min-width: 0; }
+.agent-profile-list strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.agent-profile-list small { display: block; margin-top: 3px; color: #757c79; font-size: 8px; }
+.agent-profile-file { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 6px; color: #4c6a64; background: #eef3ee; }
+.agent-profile-list button { min-height: 30px; padding: 0 11px; border: 1px solid #155b54; border-radius: 6px; color: #155b54; background: #fff; font-size: 9px; font-weight: 700; }
+.agent-profile-list button:hover:not(:disabled) { background: #e5f0e9; }
+.agent-profile-list button:disabled { border-color: #d8deda; color: #b6bcb8; background: #f5f6f3; }
 .inline-feedback .inline-retry { width: auto; min-width: 78px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; margin-left: auto; padding: 0 10px; border: 1px solid currentColor; border-radius: 5px; }
 .inline-feedback .inline-retry + button { margin-left: 0; }
 @media (max-width: 1120px) {
@@ -887,7 +909,10 @@ details > summary::-webkit-details-marker { display: none; }
 .public-candidate-card { min-height: 440px; padding: 27px 22px; border: 1px solid #e2dcd3; border-radius: 10px; background: linear-gradient(180deg,rgba(255,255,255,.9) 0 55%,rgba(244,247,241,.92)),url("../../asserts/images/frontend_bg_left.png") bottom center / 100% auto no-repeat; text-align: center; }
 .public-candidate-avatar { width: 90px; height: 90px; display: grid; place-items: center; margin: 0 auto; overflow: hidden; border-radius: 50%; color: #fff; background: #285d58; font: 600 25px/1 Georgia,serif; }
 .public-candidate-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.public-candidate-card h1 { margin: 13px 0 7px; font: 600 26px/1.15 Georgia,serif; }
+.public-candidate-name-row { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 13px 0 7px; }
+.public-candidate-name-row h1 { margin: 0; font: 600 26px/1.15 Georgia,serif; }
+.public-profile-icon { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid #d8e3db; border-radius: 50%; color: #176149; background: #e3f0e7; }
+.public-profile-icon:hover { border-color: #b9d0c7; background: #d6e9de; }
 .public-agent-label { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 4px; color: #176149; background: #e3f0e7; font-size: 9px; font-weight: 700; }
 .public-candidate-card h2 { margin: 15px 0 7px; font-size: 11px; }
 .public-location { display: flex; align-items: center; justify-content: center; gap: 4px; margin: 0; color: #6f7774; font-size: 9px; }

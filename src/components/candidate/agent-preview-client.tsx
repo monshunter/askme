@@ -98,7 +98,15 @@ type AgentSettings = {
   answerTone: "professional" | "concise" | "conversational";
   publicMode: boolean;
   privacySafeMode: boolean;
+  profileMaterialId: string | null;
   updatedAt: string;
+};
+type ProfileMaterialItem = {
+  id: string;
+  title: string;
+  mimeType: string | null;
+  kind: "file";
+  visibility: Visibility;
 };
 type HighlightKnowledgeType = "project" | "experience" | "skill" | "article" | "repository" | "summary";
 type FeaturedHighlightItem = {
@@ -151,7 +159,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
-  const [savingSetting, setSavingSetting] = useState<keyof Pick<AgentSettings, "answerTone" | "publicMode" | "privacySafeMode"> | null>(null);
+  const [savingSetting, setSavingSetting] = useState<keyof Pick<AgentSettings, "answerTone" | "publicMode" | "privacySafeMode" | "profileMaterialId"> | null>(null);
   const [feedbackSaving, setFeedbackSaving] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [pendingReset, setPendingReset] = useState(false);
@@ -162,6 +170,8 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   const [highlightPage, setHighlightPage] = useState(initialHighlights.page);
   const [savingHighlights, setSavingHighlights] = useState(false);
   const [rotatingHighlights, setRotatingHighlights] = useState(false);
+  const [profileMaterials, setProfileMaterials] = useState<ProfileMaterialItem[]>([]);
+  const [profileLoading, setProfileLoading] = useState(true);
   const runEvents = useRef(new Map<string, EventSource>());
   const resetDialogRef = useModalFocus(pendingReset, () => setPendingReset(false), resetting);
 
@@ -212,6 +222,22 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
 
   useEffect(() => closeRunEvents, [closeRunEvents]);
 
+  const selectedProfileMaterial = useMemo(() => profileMaterials.find((item) => item.id === settings.profileMaterialId) ?? null, [profileMaterials, settings.profileMaterialId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void requestApi<ApiEnvelope<{ items: Array<{ id: string; title: string; mimeType: string | null; kind: "file" | "notion" | "website"; visibility: Visibility }> }>>(
+      "/api/materials?pageSize=100&status=indexed&kind=file",
+      { cache: "no-store" },
+    ).then(({ response, payload }) => {
+      if (cancelled || !response.ok || !payload.data) return;
+      setProfileMaterials(payload.data.items.filter((item) => item.kind === "file" && item.visibility === "public_preview").map((item) => ({ id: item.id, title: item.title, mimeType: item.mimeType, kind: "file" as const, visibility: item.visibility })));
+    }).catch(() => undefined).finally(() => {
+      if (!cancelled) setProfileLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   async function sendQuestion(value: string) {
     const normalized = value.trim();
     if (!normalized || sending) return;
@@ -252,7 +278,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     void sendQuestion(question);
   }
 
-  async function updateSetting<Key extends "answerTone" | "publicMode" | "privacySafeMode">(key: Key, value: AgentSettings[Key]) {
+  async function updateSetting<Key extends "answerTone" | "publicMode" | "privacySafeMode" | "profileMaterialId">(key: Key, value: AgentSettings[Key]) {
     const previous = settings;
     setSavingSetting(key);
     setSettings((current) => ({ ...current, [key]: value }));
@@ -265,7 +291,7 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
       });
       if (!response.ok) {
         setSettings(previous);
-        setNotice({ tone: "error", message: t("agent.settingFailed") });
+        setNotice({ tone: "error", message: payload.error?.code === "MATERIAL_NOT_ELIGIBLE" ? t("agent.profile.ineligible") : t("agent.settingFailed") });
         return;
       }
       if (!payload.data) throw new ApiClientError("invalid_response");
@@ -465,6 +491,20 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
         <label className="paper-card agent-setting"><span className="setting-icon"><Sparkles size={19} /></span><span><strong>{t("agent.settings.tone")}</strong><small>{t("agent.settings.toneCopy")}</small></span><select value={settings.answerTone} disabled={savingSetting === "answerTone"} onChange={(event) => void updateSetting("answerTone", event.target.value as AgentSettings["answerTone"])}><option value="professional">{t("agent.settings.professional")}</option><option value="concise">{t("agent.settings.concise")}</option><option value="conversational">{t("agent.settings.conversational")}</option></select></label>
         <label className="paper-card agent-setting"><span className="setting-icon"><Globe2 size={19} /></span><span><strong>{t("agent.settings.public")}</strong><small>{t("agent.settings.publicCopy")}</small></span><select value={settings.publicMode ? "on" : "off"} disabled={savingSetting === "publicMode"} onChange={(event) => void updateSetting("publicMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
         <label className="paper-card agent-setting"><span className="setting-icon"><ShieldCheck size={19} /></span><span><strong>{t("agent.settings.privacy")}</strong><small>{t("agent.settings.privacyCopy")}</small></span><select value={settings.privacySafeMode ? "on" : "off"} disabled={savingSetting === "privacySafeMode"} onChange={(event) => void updateSetting("privacySafeMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
+      </section>
+
+      <section className="agent-profile-panel paper-card" aria-labelledby="agent-profile-title">
+        <header className="agent-profile-heading"><span className="setting-icon"><FileText size={19} /></span><span><h2 id="agent-profile-title">{t("agent.profile.title")}</h2><p>{t("agent.profile.copy")}</p></span></header>
+        {settings.profileMaterialId ? <div className="agent-profile-current"><span className="agent-profile-current-label">{t("agent.profile.current")}</span><CandidateSourceLink materialId={settings.profileMaterialId} title={selectedProfileMaterial?.title ?? t("agent.profile.unknown")} kind="file" mimeType={selectedProfileMaterial?.mimeType ?? null} externalUrl={null} locale={locale} />{!selectedProfileMaterial ? <p className="agent-profile-stale">{t("agent.profile.stale")}</p> : null}<button className="secondary-button" type="button" disabled={savingSetting === "profileMaterialId"} onClick={() => void updateSetting("profileMaterialId", null)}>{savingSetting === "profileMaterialId" ? <LoaderCircle className="spin" size={15} /> : <X size={15} />} {t("agent.profile.clear")}</button></div> : null}
+        {profileLoading ? <p className="agent-profile-status"><LoaderCircle className="spin" size={15} /> {t("shared.loading")}</p> : profileMaterials.length === 0 ? <div className="agent-profile-empty"><p>{t("agent.profile.empty")}</p><Link className="secondary-button" href="/workspace/privacy">{t("agent.profile.manage")}</Link></div> : (
+          <ul className="agent-profile-list">{profileMaterials.map((item) => (
+            <li key={item.id} className={item.id === settings.profileMaterialId ? "selected" : ""}>
+              <span className="agent-profile-file"><FileText size={16} /></span>
+              <div><strong>{item.title}</strong>{item.mimeType ? <small>{item.mimeType}</small> : null}</div>
+              <button type="button" disabled={savingSetting === "profileMaterialId" || item.id === settings.profileMaterialId} onClick={() => void updateSetting("profileMaterialId", item.id)}>{t("agent.profile.pick")}</button>
+            </li>
+          ))}</ul>
+        )}
       </section>
 
       <section className="agent-highlights-panel paper-card" aria-labelledby="agent-highlights-title">

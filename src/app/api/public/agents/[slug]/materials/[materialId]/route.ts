@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 
 import { apiFailure, requestId, withRequestId } from "@/server/http";
-import { getPublicMaterialContent, materialContentResponse } from "@/server/materials/material-content-service";
+import { materialContentResponse } from "@/server/materials/material-content-response";
+import { getPublicMaterialContent } from "@/server/materials/material-content-service";
 import { requirePublicConversation } from "@/server/public-chat/session-service";
 import { requestVisitorToken } from "@/server/public-chat/visitor-credential";
 import { parsePublicSlug } from "@/server/publication/publication-policy";

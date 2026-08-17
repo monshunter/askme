@@ -375,6 +375,7 @@ export const agentSettings = pgTable("agent_settings", {
   answerTone: text("answer_tone").default("professional").notNull(),
   publicMode: boolean("public_mode").default(false).notNull(),
   privacySafeMode: boolean("privacy_safe_mode").default(true).notNull(),
+  profileMaterialId: uuid("profile_material_id").references(() => materials.id, { onDelete: "set null" }),
   suggestedQuestions: jsonb("suggested_questions").$type<string[]>().default([]).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

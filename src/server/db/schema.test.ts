@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   adminInvitations,
+  agentSettings,
   analysisRunEvents,
   analysisRuns,
   contentFlags,
@@ -130,5 +131,9 @@ describe("database schema alignment", () => {
 
   it("persists curated public highlight selection on knowledge items", () => {
     expect(getTableColumns(knowledgeItems).featuredAt?.name).toBe("featured_at");
+  });
+
+  it("owns the nullable public profile document designation on Agent settings", () => {
+    expect(getTableColumns(agentSettings).profileMaterialId?.name).toBe("profile_material_id");
   });
 });

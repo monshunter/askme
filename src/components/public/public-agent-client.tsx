@@ -7,7 +7,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { ApiClientError, requestApi } from "@/components/candidate/api-client";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MarkdownContent } from "@/components/markdown-content";
-import { SourceLink, type SourceOpenMode } from "@/components/source-viewer";
+import { SourceLink, sourceOpenMode, type SourceOpenMode } from "@/components/source-viewer";
 import { useModalFocus } from "@/components/use-modal-focus";
 import { createTranslator, type Locale } from "@/i18n/core";
 import { PUBLIC_VISITOR_HEADER, PUBLIC_VISITOR_STORAGE_KEY } from "@/shared/public-visitor";
@@ -21,6 +21,7 @@ type PublicProjection = {
   agent: { slug: string; status: "published"; publishedAt: string; updatedAt: string };
   stats: { publicKnowledgeItems: number; publicSources: number };
   highlights: Array<{ id: string; type: string; title: string; summary: string; highlights: string[] }>;
+  profileDocument: { id: string; title: string; kind: "file"; mimeType: string | null } | null;
   suggestedQuestions: string[];
 };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; details?: { retryAfterSeconds?: number } } | null };
@@ -363,7 +364,7 @@ export function PublicAgentClient({ slug, initialProjection, locale }: { slug: s
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {initialProjection.profile.avatarUrl ? <img src={initialProjection.profile.avatarUrl} alt="" /> : initials}
             </span>
-            <h1>{initialProjection.profile.displayName}</h1><span className="public-agent-label"><Globe2 size={13} /> {t("public.badge")}</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? t("public.bioFallback")}</p>
+            <div className="public-candidate-name-row"><h1>{initialProjection.profile.displayName}</h1>{initialProjection.profileDocument ? <SourceLink title={initialProjection.profileDocument.title} href={`/api/public/agents/${slug}/profile`} mode={sourceOpenMode({ kind: "file", title: initialProjection.profileDocument.title, mimeType: initialProjection.profileDocument.mimeType })} locale={locale} icon={<FileText size={16} />} className="public-profile-icon" /> : null}</div><span className="public-agent-label"><Globe2 size={13} /> {t("public.badge")}</span><h2>{initialProjection.profile.headline}</h2>{initialProjection.profile.location ? <p className="public-location"><MapPin size={13} /> {initialProjection.profile.location}</p> : null}<p className="public-candidate-bio">{initialProjection.profile.bio ?? t("public.bioFallback")}</p>
             <div className="public-candidate-facts"><span><i className="ready" /> {t("public.facts.status")} <strong>{t("status.ready")}</strong></span><span><Clock3 size={15} /> {t("public.facts.updated")} <strong>{new Date(initialProjection.agent.updatedAt).toLocaleDateString(locale === "zh-CN" ? "zh-CN" : "en-US", { timeZone: "UTC" })}</strong></span><span><BookOpen size={15} /> {t("public.facts.knowledge")} <strong>{initialProjection.stats.publicKnowledgeItems}</strong></span><span><FileText size={15} /> {t("public.facts.sources")} <strong>{initialProjection.stats.publicSources}</strong></span></div>
           </section>
           <section className="public-session-panel" aria-labelledby="public-session-list-title">

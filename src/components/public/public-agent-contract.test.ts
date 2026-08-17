@@ -23,4 +23,11 @@ describe("Public Agent sharing contract", () => {
     expect(publicAgentSource).not.toContain("public.learn.title");
     expect(publicAgentSource).not.toContain("public-learn-more");
   });
+
+  it("gates the profile document icon entry on the projected designation", () => {
+    expect(publicAgentSource).toContain("sourceOpenMode({ kind: \"file\"");
+    expect(publicAgentSource).toContain('icon={<FileText size={16} />}');
+    expect(publicAgentSource).toContain('className="public-profile-icon"');
+    expect(publicAgentSource).not.toContain("public.profile.label");
+  });
 });

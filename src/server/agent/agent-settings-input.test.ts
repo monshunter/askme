@@ -8,8 +8,13 @@ describe("parseAgentSettingsPatch", () => {
     expect(parseAgentSettingsPatch({ privacySafeMode: false })).toEqual({ privacySafeMode: false });
   });
 
+  it("accepts setting or clearing the profile document id", () => {
+    expect(parseAgentSettingsPatch({ profileMaterialId: "11111111-1111-4111-8111-111111111111" })).toEqual({ profileMaterialId: "11111111-1111-4111-8111-111111111111" });
+    expect(parseAgentSettingsPatch({ profileMaterialId: null })).toEqual({ profileMaterialId: null });
+  });
+
   it("rejects empty, unknown, or invalid settings", () => {
-    for (const input of [{}, { answerTone: "verbose" }, { publicMode: "yes" }, { answerTone: "professional", extra: true }]) {
+    for (const input of [{}, { answerTone: "verbose" }, { publicMode: "yes" }, { answerTone: "professional", extra: true }, { profileMaterialId: "not-a-uuid" }, { profileMaterialId: "" }]) {
       expect(() => parseAgentSettingsPatch(input)).toThrowError(expect.objectContaining({ code: "INVALID_AGENT_SETTINGS" }));
     }
   });

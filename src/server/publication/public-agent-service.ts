@@ -24,6 +24,13 @@ type PublicHighlight = {
   highlights: string[];
 };
 
+type ProfileDocumentProjection = {
+  id: string;
+  title: string;
+  kind: "file" | "notion" | "website";
+  mimeType: string | null;
+};
+
 export type PublicationContext = {
   publicationId: string;
   ownerId: string;
@@ -35,7 +42,7 @@ export type PublicationContext = {
 
 async function projectPublicAgent(context: PublicationContext, locale: SuggestionLocale) {
   const pool = getPool();
-  const [identityResult, statsResult, highlightsResult, suggestionItemsResult] = await Promise.all([
+  const [identityResult, statsResult, highlightsResult, suggestionItemsResult, profileDocumentResult] = await Promise.all([
     pool.query<PublicIdentity>(
       `SELECT display_name AS "displayName",headline,location,bio,avatar_url AS "avatarUrl"
        FROM users WHERE id=$1 AND status='active'`,
@@ -70,6 +77,17 @@ async function projectPublicAgent(context: PublicationContext, locale: Suggestio
       [context.ownerId],
     ),
     loadSuggestionTopics(context.ownerId, "public_answer"),
+    pool.query<ProfileDocumentProjection>(
+      `SELECT material.id,material.title,material.kind,material.mime_type AS "mimeType"
+       FROM agent_settings settings
+       JOIN materials material
+         ON material.id=settings.profile_material_id
+        AND material.owner_id=settings.owner_id
+        AND material.kind='file' AND material.status='indexed'
+        AND material.visibility=ANY($2::visibility[])
+       WHERE settings.owner_id=$1`,
+      [context.ownerId, allowedVisibilities("public_file")],
+    ),
   ]);
   const profile = identityResult.rows[0];
   if (!profile) throw new AppError("PUBLIC_AGENT_UNAVAILABLE", "This public Agent is unavailable.", 404);
@@ -83,6 +101,7 @@ async function projectPublicAgent(context: PublicationContext, locale: Suggestio
     },
     stats: statsResult.rows[0] ?? { publicKnowledgeItems: 0, publicSources: 0 },
     highlights: highlightsResult.rows.map((item) => ({ ...item, highlights: item.highlights.slice(0, 3) })),
+    profileDocument: profileDocumentResult.rows[0] ?? null,
     suggestedQuestions: buildInitialSuggestedQuestions(suggestionItemsResult, locale, 0),
   };
 }
