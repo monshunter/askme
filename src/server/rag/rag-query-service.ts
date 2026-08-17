@@ -73,21 +73,27 @@ export function resolveRagPlanEntities(input: {
   return { plan, entityResolution: resolveAuthorizedEntities(plan.entityMentions, input.catalog, contextReference) };
 }
 
-function isProfileOverviewPlan(plan: RagQueryPlan) {
+function isProfileOwnerQuestion(plan: RagQueryPlan) {
   if (plan.entityMentions.some((mention) => mention.role === "required")) return false;
-  return plan.intent === "career_summary" || (plan.intent === "general_career" && plan.subject === "profile_owner");
+  return plan.subject === "profile_owner";
 }
 
-// Profile-overview questions (自我介绍 / introduce yourself) ask about the candidate
-// themselves, but the candidate's own repository/wiki documentation describes the products
-// they built — semantically close ("职业知识库", "候选人" appear throughout) yet it says
-// nothing about the candidate's career, and it dominates retrieval (observed: SPEC.md
-// reranks 0.45-0.67 above resume material at 0.36). Narrow the evidence scope to
-// material/knowledge BEFORE retrieval so product documentation never enters the candidate
-// set; the answerability gate then only judges candidate-owned career evidence. The
-// overview fallback stays as a second chance when even that yields no supported evidence.
-function profileOverviewEvidenceScope(plan: RagQueryPlan): RagQueryPlan {
-  if (!isProfileOverviewPlan(plan)) return plan;
+// Questions that ask about the candidate themselves (自我介绍, 你有哪些技能, 你做过哪些项目,
+// 你在哪些公司工作过 — any intent with subject=profile_owner and no required entity) must be
+// answered from the candidate's own organized material. The candidate's repository/wiki
+// documentation describes the products they built and even the tooling configuration of
+// their repositories (READMEs, SPECs, AGENTS.md skill lists), which is semantically close
+// ("技能", "候选人" appear throughout) yet says nothing about the candidate's own career;
+// it dominates retrieval (observed: SPEC.md reranks 0.45-0.67 above resume material at
+// 0.36; AGENTS.md skill lists answer "你有哪些技能" with repository tooling) and fools the
+// answerability gate into supporting a product/tooling answer. Narrow the evidence scope
+// to material/knowledge BEFORE retrieval so product documentation never enters the
+// candidate set; the answerability gate then only judges candidate-owned career evidence.
+// The overview fallback stays as a second chance when even that yields no supported
+// evidence. Questions with a required entity (「我在富途的经历」「Askme 项目怎么样」) keep the
+// full scope because repository documentation is legitimate evidence there.
+function profileEvidenceScope(plan: RagQueryPlan): RagQueryPlan {
+  if (!isProfileOwnerQuestion(plan)) return plan;
   const narrowed = plan.desiredEvidenceTypes.filter((type) => type === "material" || type === "knowledge");
   if (narrowed.length === plan.desiredEvidenceTypes.length) return plan;
   return {
@@ -208,7 +214,7 @@ export async function retrieveRagForQuestion(input: {
       entityResolution,
     };
   }
-  const retrievalPlan = profileOverviewEvidenceScope(effectivePlan);
+  const retrievalPlan = profileEvidenceScope(effectivePlan);
   const result = await runBoundedRetrieval({
     initialPlan: retrievalPlan,
     config: input.config,
@@ -229,7 +235,7 @@ export async function retrieveRagForQuestion(input: {
     entityResolution,
     evidence,
     temporalAnnotations: annotations,
-    profileOwnerEvidence: isProfileOverviewPlan(plan),
+    profileOwnerEvidence: isProfileOwnerQuestion(plan),
     client: gateClient,
   });
   const runRetrieval = (retrievalPlan: RagQueryPlan) => runBoundedRetrieval({
@@ -262,7 +268,7 @@ export async function retrieveRagForQuestion(input: {
     };
   };
   let finalResult = result;
-  if (answerability.coverage === "none" && isProfileOverviewPlan(result.plan)) {
+  if (answerability.coverage === "none" && isProfileOwnerQuestion(result.plan)) {
     const fallbackPlan = overviewFallbackPlan(result.plan);
     const fallbackResult = await runRetrieval(fallbackPlan);
     const fallbackAnnotations = annotateTemporalEvidence(fallbackResult.candidates, fallbackResult.plan.constraints.timeRange, input.currentDate?.slice(0, 7));

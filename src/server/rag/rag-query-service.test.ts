@@ -730,6 +730,125 @@ describe("retrieveRagForQuestion", () => {
     expect(result.degradations).toContain("profile_evidence_scope");
   });
 
+  it("narrows skill questions about the profile owner so repository tooling cannot answer for them", async () => {
+    const skillId = "55555555-5555-4555-8555-555555555555";
+    const row = (evidenceId: string, parentContent: string) => ({
+      evidenceId,
+      parentId: `parent-${evidenceId}`,
+      stableKey: "a".repeat(64),
+      sourceVersionId: "33333333-3333-4333-8333-333333333333",
+      indexVersionId: "44444444-4444-4444-8444-444444444444",
+      sourceKind: "material",
+      sourceId: skillId,
+      repositoryId: null,
+      sourceRevision: "revision",
+      evidenceFamilyId: `family-${evidenceId}`,
+      visibility: "citation_allowed",
+      title: "02-简历.md",
+      path: null,
+      commitSha: null,
+      revisionId: null,
+      sourceContentHash: null,
+      structurePath: "Skills",
+      content: parentContent,
+      parentContent,
+      tokenCount: 10,
+      sourceRange: { lineStart: 1, lineEnd: 2 },
+      contentChecksum: "f".repeat(64),
+    });
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
+      if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(skillId, "## 技能 具备 Kubernetes、云原生与控制器工程能力")] });
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const plannerComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        intent: "skill_profile", subject: "profile_owner", queryMode: "discovery", knowledgeScope: "skill",
+        standaloneQuery: "你有哪些技能", entityMentions: [],
+        constraints: { timeRange: null }, requestedFields: ["skills"], confidence: 0.9, ambiguities: [],
+        mustTerms: ["技能"], shouldTerms: ["技能"], semanticQueries: ["你有哪些技能"],
+        desiredEvidenceTypes: ["material", "knowledge", "approved_wiki", "repository_document"],
+      }), inputTokens: 10, outputTokens: 10,
+    });
+    const answerabilityComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [skillId] }] }), inputTokens: 5, outputTokens: 5,
+    });
+    const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
+    const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
+
+    const result = await retrieveRagForQuestion({
+      pool: { query } as never, config: getRuntimeConfig(), ownerId: "66666666-6666-4666-8666-666666666666",
+      consumer: "candidate_preview", question: "你有哪些技能", currentDate: "2026-08-15",
+    }, {
+      plannerClient: { complete: plannerComplete },
+      embeddingClient: { embed }, rerankClient: { rerank }, answerabilityClient: { complete: answerabilityComplete },
+    });
+
+    expect(result.plan.desiredEvidenceTypes).toEqual(["material", "knowledge"]);
+    expect(result.degradations).toContain("profile_evidence_scope");
+    const routeCalls = query.mock.calls.filter((call) => String(call[0]).includes("rag-route:"));
+    for (const call of routeCalls) expect(call[1]?.[4]).toEqual(["material"]);
+    expect(answerabilityComplete.mock.calls[0]?.[0]?.[0]?.content).toContain("profileOwnerEvidence=true");
+  });
+
+  it("narrows project questions about the profile owner as well", async () => {
+    const projectId = "55555555-5555-4555-8555-555555555555";
+    const row = (evidenceId: string, parentContent: string) => ({
+      evidenceId,
+      parentId: `parent-${evidenceId}`,
+      stableKey: "a".repeat(64),
+      sourceVersionId: "33333333-3333-4333-8333-333333333333",
+      indexVersionId: "44444444-4444-4444-8444-444444444444",
+      sourceKind: "material",
+      sourceId: projectId,
+      repositoryId: null,
+      sourceRevision: "revision",
+      evidenceFamilyId: `family-${evidenceId}`,
+      visibility: "citation_allowed",
+      title: "02-简历.md",
+      path: null,
+      commitSha: null,
+      revisionId: null,
+      sourceContentHash: null,
+      structurePath: "Projects",
+      content: parentContent,
+      parentContent,
+      tokenCount: 10,
+      sourceRange: { lineStart: 1, lineEnd: 2 },
+      contentChecksum: "f".repeat(64),
+    });
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
+      if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(projectId, "## 项目经历 负责 Askme 与 EasyInterview 的架构设计")] });
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const plannerComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        intent: "project_experience", subject: "profile_owner", queryMode: "discovery", knowledgeScope: "project",
+        standaloneQuery: "你做过哪些项目", entityMentions: [],
+        constraints: { timeRange: null }, requestedFields: ["project_name"], confidence: 0.9, ambiguities: [],
+        mustTerms: ["项目"], shouldTerms: ["项目"], semanticQueries: ["你做过哪些项目"],
+        desiredEvidenceTypes: ["material", "knowledge", "approved_wiki", "repository_document"],
+      }), inputTokens: 10, outputTokens: 10,
+    });
+    const answerabilityComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [projectId] }] }), inputTokens: 5, outputTokens: 5,
+    });
+    const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
+    const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
+
+    const result = await retrieveRagForQuestion({
+      pool: { query } as never, config: getRuntimeConfig(), ownerId: "66666666-6666-4666-8666-666666666666",
+      consumer: "candidate_preview", question: "你做过哪些项目？", currentDate: "2026-08-15",
+    }, {
+      plannerClient: { complete: plannerComplete },
+      embeddingClient: { embed }, rerankClient: { rerank }, answerabilityClient: { complete: answerabilityComplete },
+    });
+
+    expect(result.plan.desiredEvidenceTypes).toEqual(["material", "knowledge"]);
+    expect(result.degradations).toContain("profile_evidence_scope");
+  });
+
   it("keeps the full evidence scope when the question resolves a required entity", async () => {
     const materialId = "55555555-5555-4555-8555-555555555555";
     const row = (evidenceId: string, parentContent: string) => ({

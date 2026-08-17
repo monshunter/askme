@@ -22,10 +22,16 @@
 - `src/server/config.ts`：`profile()` 增加 `defaultMaxRetries` 参数；verifier 改为 `timeoutMs=90_000, maxRetries=0`——单次长尝试替代「30s 超时 + 重试」，消除超时+重试成功的 2 倍耗时叠加。
 - 测试：`rag-query-service.test.ts` +3（career_summary 收窄且全部路由只查 material kind、general_career+profile_owner 收窄、带必需实体不收窄）；`answerability-gate.test.ts` +2（profileOwnerEvidence 约束进提示、非 profile 问题不加）；`config.test.ts` +2（verifier 90s/0 与其他 profile 保持重试、env 覆盖仍生效）。全量 Vitest `108 files / 456 tests`、ESLint、tsc 全绿。
 
+## 范围扩展（同日第二版）
+
+- 实测发现收窄只覆盖概述类（career_summary/general_career）不够：「你有哪些技能」（`skill_profile/profile_owner`）被仓库 **AGENTS.md 工具配置**（`/tdd`、`/bug-report` 等 18 个 Claude Code skills）当作候选人技能回答；「你本人有哪些技能，即是会哪些技术」则返回 INSUFFICIENT_EVIDENCE。两类都失败。
+- 扩展：`isProfileOverviewPlan` → `isProfileOwnerQuestion`——**所有 `subject=profile_owner` 且无必需实体的计划**（career_summary、general_career、skill_profile、project_experience、employment_history、education_history）一律在检索前收窄到 material/knowledge，gate 约束同步生效。带必需实体（「我在富途的经历」「Askme 项目怎么样」）仍保留全部证据类型。
+- 实测（新发布 slug `dAqpkB8ioLc5xZpCLG6Ypc7Wfg2oj7qp`）：「你有哪些技能」「你本人有哪些技能，即是会哪些技术」「你做过哪些项目」均正确回答候选人技术栈与项目经历，Trace `skill_profile/project_experience + profile_owner / degradations=[profile_evidence_scope] / desiredEvidenceTypes=[material,knowledge] / 证据全部 material`，检索 3.7–5.5s，总耗时 17–26s。
+
 ## 验证
 
-- 单测覆盖三类路径：概述类问题收窄并打标、必需实体问题保留仓库文档、gate 提示含主体约束。
-- 修复后真实 API 实测 3 次（`scripts/docker-up.sh -d` 重建容器后，public agent `C3zvY0BaYzfGSLaWXKjRINx6bR8hk1y3`）：「你好，麻烦你做一个简单的自我介绍」×2、「介绍一下你自己」×1，回答均为候选人本人职业介绍（欢聚时代/探迹→富途→圆币科技），1–3 条 Citation 全部 `material · 小马田-职业profile.md`；Trace `coverage=full / roundCount=2 / degradations=[profile_evidence_scope] / desiredEvidenceTypes=[material,knowledge] / 检索阶段 4.1–5.1s`，总耗时 10–19s。
+- 单测覆盖四类路径：概述类/技能类/项目类收窄并打标、必需实体问题保留仓库文档、gate 提示含主体约束。
+- 修复后真实 API 实测（`scripts/docker-up.sh -d` 重建容器后）：「你好，麻烦你做一个简单的自我介绍」×2、「介绍一下你自己」×1（slug `C3zvY0BaYzfGSLaWXKjRINx6bR8hk1y3`），回答均为候选人本人职业介绍（欢聚时代/探迹→富途→圆币科技），1–3 条 Citation 全部 `material · 小马田-职业profile.md`；Trace `coverage=full / roundCount=2 / degradations=[profile_evidence_scope] / desiredEvidenceTypes=[material,knowledge] / 检索阶段 4.1–5.1s`，总耗时 10–19s。
 - 修复前对照（11:36:45，`322f94f0`）：desiredEvidenceTypes 含 repository_document、degradations=[]（fallback 被绕过）、证据为 SPEC.md、检索阶段 67.8s、总耗时 ~71s。
 
 ## 恢复方式
