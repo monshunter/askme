@@ -44,7 +44,7 @@ describe("runtime config", () => {
         rag: expect.objectContaining({ id: "rag", model: "deepseek-v4-flash", thinking: "off" }),
         code: expect.objectContaining({ id: "code", model: "deepseek-v4-flash", thinking: "high", contextWindow: 1_000_000, maxTokens: 200_000 }),
         planner: expect.objectContaining({ id: "planner", model: "deepseek-v4-flash", thinking: "off" }),
-        verifier: expect.objectContaining({ id: "verifier", model: "deepseek-v4-flash", thinking: "off" }),
+        verifier: expect.objectContaining({ id: "verifier", model: "deepseek-v4-flash", thinking: "off", timeoutMs: 90_000, maxRetries: 0 }),
       },
     });
     expect(config.embedding).toEqual({
@@ -117,6 +117,24 @@ describe("runtime config", () => {
         conversationAnalysis: { analysisTimeoutMs: 120_000, maxRounds: 100, maxToolCalls: 300 },
       },
     });
+  });
+
+  it("gives the answerability verifier one long attempt instead of a timeout-plus-retry doubling", () => {
+    const config = loadConfigFromSources({ DATABASE_URL: "postgresql://db" }, "");
+    expect(config.ai.profiles.verifier).toMatchObject({ timeoutMs: 90_000, maxRetries: 0 });
+    // other profiles keep the retrying behavior so transient provider hiccups on
+    // answer/planner calls do not immediately fail the request
+    expect(config.ai.profiles.rag).toMatchObject({ timeoutMs: 45_000, maxRetries: 1 });
+    expect(config.ai.profiles.planner).toMatchObject({ timeoutMs: 15_000, maxRetries: 1 });
+  });
+
+  it("still honors explicit verifier timeout and retry overrides", () => {
+    const config = loadConfigFromSources({
+      DATABASE_URL: "postgresql://db",
+      ASKME_AI_VERIFIER_TIMEOUT_MS: "60000",
+      ASKME_AI_VERIFIER_MAX_RETRIES: "2",
+    }, "");
+    expect(config.ai.profiles.verifier).toMatchObject({ timeoutMs: 60_000, maxRetries: 2 });
   });
 
   it("loads Embedding and Rerank providers independently without deriving credentials or endpoints", () => {

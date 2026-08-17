@@ -12,4 +12,6 @@
 | 2026-08-13-plan-014-spec002-gate | 2026-08-13：PLAN-014 SPEC-002 真实环境 Human Gate | [2026-08-13-plan-014-spec002-gate.md](2026-08-13-plan-014-spec002-gate.md) |
 | 2026-08-14-hybrid-rag-v2-design-handoff | 2026-08-14 Hybrid Agentic RAG V2 设计交接 | [2026-08-14-hybrid-rag-v2-design-handoff.md](2026-08-14-hybrid-rag-v2-design-handoff.md) |
 | 2026-08-17-smtp-env-layering | 2026-08-17：SMTP 环境配置分层修订 | [2026-08-17-smtp-env-layering.md](2026-08-17-smtp-env-layering.md) |
+| 2026-08-17-overview-fallback | 2026-08-17：预览「自我介绍」类问题证据不足修复与 RAG 概述兜底 | [2026-08-17-overview-fallback.md](2026-08-17-overview-fallback.md) |
+| 2026-08-17-profile-overview-evidence-scope | 2026-08-17：自我介绍被仓库文档污染与 gate 慢响应修复 | [2026-08-17-profile-overview-evidence-scope.md](2026-08-17-profile-overview-evidence-scope.md) |
 <!-- AGENT-HARNESS:END INDEX -->

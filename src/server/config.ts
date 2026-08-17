@@ -362,12 +362,13 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
     defaultTimeoutMs: number,
     defaultMaxTokens: number,
     defaultContextWindow: number,
+    defaultMaxRetries = 1,
   ): AiProfile => ({
     id,
     model: read(modelKey) ?? defaultModel,
     thinking: thinking(`ASKME_AI_${id.toUpperCase()}_THINKING`, defaultThinking),
     timeoutMs: integer(`ASKME_AI_${id.toUpperCase()}_TIMEOUT_MS`, defaultTimeoutMs, 1_000, 600_000),
-    maxRetries: integer(`ASKME_AI_${id.toUpperCase()}_MAX_RETRIES`, 1, 0, 3),
+    maxRetries: integer(`ASKME_AI_${id.toUpperCase()}_MAX_RETRIES`, defaultMaxRetries, 0, 3),
     maxTokens: integer(`ASKME_AI_${id.toUpperCase()}_MAX_TOKENS`, defaultMaxTokens, 1, 1_000_000),
     contextWindow: integer(`ASKME_AI_${id.toUpperCase()}_CONTEXT_WINDOW`, defaultContextWindow, 1, 2_000_000),
   });
@@ -423,10 +424,14 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       baseUrl: read("ASKME_AI_BASE_URL") ?? "https://api.deepseek.com/v1",
       profiles: {
         router: profile("router", "ASKME_AI_ROUTER_MODEL", "deepseek-v4-flash", "off", 15_000, 800, 1_000_000),
-        rag: profile("rag", "ASKME_AI_RAG_MODEL", "deepseek-v4-flash", "off", 45_000, 4_000, 1_000_000),
+        rag: profile("rag", "ASKME_AI_RAG_MODEL", "deepseek-v4-flash", "off", 45_000, 8_000, 1_000_000),
         code: profile("code", "ASKME_AI_CODE_MODEL", "deepseek-v4-flash", "high", 120_000, 200_000, 1_000_000),
         planner: profile("planner", "ASKME_AI_PLANNER_MODEL", "deepseek-v4-flash", "off", 15_000, 1_200, 1_000_000),
-        verifier: profile("verifier", "ASKME_AI_VERIFIER_MODEL", "deepseek-v4-flash", "off", 30_000, 2_000, 1_000_000),
+        // The answerability gate is the last defense before any answer is produced, and
+        // the provider intermittently answers it slowly (observed ~68s total = 30s timeout
+        // plus a ~38s retried success). Give it a single long attempt with no retries so a
+        // slow call completes once instead of timing out and paying the full cost twice.
+        verifier: profile("verifier", "ASKME_AI_VERIFIER_MODEL", "deepseek-v4-flash", "off", 90_000, 2_000, 1_000_000, 0),
       },
     },
     embedding: {

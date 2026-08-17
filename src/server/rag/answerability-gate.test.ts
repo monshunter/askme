@@ -144,6 +144,56 @@ describe("runAnswerabilityGate", () => {
     expect(result.evidence.map((item) => item.evidenceId)).toEqual([first.evidenceId]);
   });
 
+  it("requires evidence about the candidate themselves for profile-owner questions", async () => {
+    const resume = evidence("11111111-1111-4111-8111-111111111111", "family-1", "2017 年起从事后台研发与平台工作，负责核心项目交付。");
+    const profileResolution: EntityResolution = {
+      ...resolution,
+      mentions: [],
+      resolved: [],
+      missing: [],
+      scope: null,
+      gateReason: "no_required_entity",
+    };
+    const complete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [resume.evidenceId] }] }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    const result = await runAnswerabilityGate({
+      question: "麻烦你做一个简单的自我介绍",
+      answerAspects: [{ aspectId: "a1", label: "职业概述" }],
+      entityResolution: profileResolution,
+      evidence: [resume],
+      profileOwnerEvidence: true,
+      client: { complete },
+    });
+
+    expect(result.coverage).toBe("full");
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).toContain("profileOwnerEvidence=true");
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).toContain("describes the candidate's own career experience");
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).toContain("is not supporting evidence for such questions");
+  });
+
+  it("omits the candidate-subject constraint for questions that are not profile-owner", async () => {
+    const project = evidence("11111111-1111-4111-8111-111111111111", "family-1", "OneCat 是声明式 HTTP 网关。");
+    const complete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [project.evidenceId] }] }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    await runAnswerabilityGate({
+      question: "OneCat 项目的定位是什么？",
+      answerAspects: [{ aspectId: "a1", label: "OneCat 项目的定位是什么" }],
+      entityResolution: resolution,
+      evidence: [project],
+      client: { complete },
+    });
+
+    expect(complete.mock.calls[0]?.[0]?.[0]?.content).not.toContain("profileOwnerEvidence");
+  });
+
   it("rejects conflicted verdicts without two independent evidence families", async () => {
     const first = evidence("11111111-1111-4111-8111-111111111111", "same-family", "OneCat 使用 Go。");
     const second = evidence("22222222-2222-4222-8222-222222222222", "same-family", "OneCat 不使用 Go。");

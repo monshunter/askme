@@ -18,7 +18,7 @@ import {
   type EntityMention,
 } from "./entity-catalog";
 import { runBoundedRetrieval } from "./evidence-orchestrator";
-import { retrieveHybridEvidence } from "./hybrid-retriever";
+import { retrieveHybridEvidence, type RetrievedRagEvidence } from "./hybrid-retriever";
 import {
   adjudicateRagQuery,
   applyHostEntityMentions,
@@ -29,7 +29,7 @@ import {
   type RagQueryPlan,
 } from "./query-planner";
 import { deterministicTokenCount } from "./structure-chunker";
-import { annotateTemporalEvidence } from "./temporal-evidence";
+import { annotateTemporalEvidence, type TemporalEvidenceAnnotation } from "./temporal-evidence";
 
 type RagQueryDependencies = {
   plannerClient?: Pick<OpenAiChatClient, "complete">;
@@ -71,6 +71,59 @@ export function resolveRagPlanEntities(input: {
     ...contextualMentions,
   ]);
   return { plan, entityResolution: resolveAuthorizedEntities(plan.entityMentions, input.catalog, contextReference) };
+}
+
+function isProfileOverviewPlan(plan: RagQueryPlan) {
+  if (plan.entityMentions.some((mention) => mention.role === "required")) return false;
+  return plan.intent === "career_summary" || (plan.intent === "general_career" && plan.subject === "profile_owner");
+}
+
+// Profile-overview questions (自我介绍 / introduce yourself) ask about the candidate
+// themselves, but the candidate's own repository/wiki documentation describes the products
+// they built — semantically close ("职业知识库", "候选人" appear throughout) yet it says
+// nothing about the candidate's career, and it dominates retrieval (observed: SPEC.md
+// reranks 0.45-0.67 above resume material at 0.36). Narrow the evidence scope to
+// material/knowledge BEFORE retrieval so product documentation never enters the candidate
+// set; the answerability gate then only judges candidate-owned career evidence. The
+// overview fallback stays as a second chance when even that yields no supported evidence.
+function profileOverviewEvidenceScope(plan: RagQueryPlan): RagQueryPlan {
+  if (!isProfileOverviewPlan(plan)) return plan;
+  const narrowed = plan.desiredEvidenceTypes.filter((type) => type === "material" || type === "knowledge");
+  if (narrowed.length === plan.desiredEvidenceTypes.length) return plan;
+  return {
+    ...plan,
+    desiredEvidenceTypes: narrowed,
+    degradations: [...new Set([...plan.degradations, "profile_evidence_scope"])],
+  };
+}
+
+// Overview questions (自我介绍 / introduce yourself) rarely share literal terms with
+// evidence, and the vector route's top-N can be drowned by large repositories, so a
+// candidate's own profile/resume material never surfaces. When the normal pipeline
+// yields no supported evidence, re-query against the material corpus with an
+// overview-flavored query and drop the literal-term signals; the answerability gate
+// still validates the evidence before any answer is produced.
+function overviewFallbackPlan(plan: RagQueryPlan): RagQueryPlan {
+  const zh = /[\u3400-\u9fff]/u.test(plan.normalizedQuestion);
+  const overviewQuery = zh
+    ? "候选人的职业概述、主要工作经历、核心技能与项目总结"
+    : "the candidate's career overview, key work experience, core skills, and project summary";
+  const overviewTerms = zh
+    ? ["职业概述", "工作经历", "核心技能", "项目"]
+    : ["career overview", "work experience", "core skills", "projects"];
+  return {
+    ...plan,
+    entityMentions: [],
+    entities: [],
+    mustTerms: [],
+    exactPhrases: [],
+    shouldTerms: overviewTerms,
+    lexicalTerms: overviewTerms,
+    trigramProbes: [...plan.trigramProbes.slice(0, 8), ...overviewTerms].slice(0, 24),
+    semanticQueries: [overviewQuery],
+    desiredEvidenceTypes: ["material", "knowledge"],
+    degradations: [...new Set([...plan.degradations, "overview_fallback"])],
+  };
 }
 
 export async function retrieveRagForQuestion(input: {
@@ -155,8 +208,32 @@ export async function retrieveRagForQuestion(input: {
       entityResolution,
     };
   }
+  const retrievalPlan = profileOverviewEvidenceScope(effectivePlan);
   const result = await runBoundedRetrieval({
-    initialPlan: effectivePlan,
+    initialPlan: retrievalPlan,
+    config: input.config,
+    retrieve: (roundPlan) => retrieveHybridEvidence(input.pool, input.ownerId, input.consumer, roundPlan, input.config, {
+      embeddingClient: dependencies.embeddingClient,
+      scope: entityResolution.scope,
+    }),
+    rerankClient: dependencies.rerankClient ?? new RerankClient(input.config.rerank),
+  });
+  const gateClient = dependencies.answerabilityClient ?? new OpenAiChatClient({
+    apiKey: input.config.ai.apiKey,
+    baseUrl: input.config.ai.baseUrl,
+    profile: input.config.ai.profiles.verifier,
+  });
+  const runGate = (plan: RagQueryPlan, evidence: RetrievedRagEvidence[], annotations: TemporalEvidenceAnnotation[]) => runAnswerabilityGate({
+    question: input.question,
+    answerAspects: plan.answerAspects,
+    entityResolution,
+    evidence,
+    temporalAnnotations: annotations,
+    profileOwnerEvidence: isProfileOverviewPlan(plan),
+    client: gateClient,
+  });
+  const runRetrieval = (retrievalPlan: RagQueryPlan) => runBoundedRetrieval({
+    initialPlan: retrievalPlan,
     config: input.config,
     retrieve: (roundPlan) => retrieveHybridEvidence(input.pool, input.ownerId, input.consumer, roundPlan, input.config, {
       embeddingClient: dependencies.embeddingClient,
@@ -167,30 +244,38 @@ export async function retrieveRagForQuestion(input: {
   const temporalAnnotations = annotateTemporalEvidence(result.candidates, result.plan.constraints.timeRange, input.currentDate?.slice(0, 7));
   const outsideEvidenceIds = new Set(temporalAnnotations.filter((item) => item.status === "outside").map((item) => item.evidenceId));
   const answerabilityEvidence = result.candidates.filter((item) => !outsideEvidenceIds.has(item.evidenceId));
-  const answerability = await runAnswerabilityGate({
-    question: input.question,
-    answerAspects: result.plan.answerAspects,
-    entityResolution,
-    evidence: answerabilityEvidence,
-    temporalAnnotations: temporalAnnotations.filter((item) => !outsideEvidenceIds.has(item.evidenceId)),
-    client: dependencies.answerabilityClient ?? new OpenAiChatClient({
-      apiKey: input.config.ai.apiKey,
-      baseUrl: input.config.ai.baseUrl,
-      profile: input.config.ai.profiles.verifier,
-    }),
-  });
-  const finalCandidates = answerability.evidence;
-  return {
-    ...result,
-    provisionalCoverage: result.coverage,
-    coverage: answerability.coverage,
-    candidates: finalCandidates,
-    actualTokens: finalCandidates.reduce((total, item) => total + Math.max(item.tokenCount, deterministicTokenCount(item.parentContent)), 0),
-    independentFamilyCount: new Set(finalCandidates.map((item) => item.evidenceFamilyId)).size,
-    unsupportedAspects: answerability.unsupportedAspects,
-    answerabilityAspects: answerability.aspects,
-    answerabilityUsage: answerability.usage,
-    temporalAnnotations,
-    entityResolution,
+  const answerability = await runGate(result.plan, answerabilityEvidence, temporalAnnotations.filter((item) => !outsideEvidenceIds.has(item.evidenceId)));
+  const finalize = (retrieval: Awaited<ReturnType<typeof runBoundedRetrieval>>, gateResult: Awaited<ReturnType<typeof runAnswerabilityGate>>, annotations: TemporalEvidenceAnnotation[]) => {
+    const candidates = gateResult.evidence;
+    return {
+      ...retrieval,
+      provisionalCoverage: retrieval.coverage,
+      coverage: gateResult.coverage,
+      candidates,
+      actualTokens: candidates.reduce((total, item) => total + Math.max(item.tokenCount, deterministicTokenCount(item.parentContent)), 0),
+      independentFamilyCount: new Set(candidates.map((item) => item.evidenceFamilyId)).size,
+      unsupportedAspects: gateResult.unsupportedAspects,
+      answerabilityAspects: gateResult.aspects,
+      answerabilityUsage: gateResult.usage,
+      temporalAnnotations: annotations,
+      entityResolution,
+    };
   };
+  let finalResult = result;
+  if (answerability.coverage === "none" && isProfileOverviewPlan(result.plan)) {
+    const fallbackPlan = overviewFallbackPlan(result.plan);
+    const fallbackResult = await runRetrieval(fallbackPlan);
+    const fallbackAnnotations = annotateTemporalEvidence(fallbackResult.candidates, fallbackResult.plan.constraints.timeRange, input.currentDate?.slice(0, 7));
+    const fallbackOutsideIds = new Set(fallbackAnnotations.filter((item) => item.status === "outside").map((item) => item.evidenceId));
+    const fallbackAnswerability = await runGate(
+      fallbackResult.plan,
+      fallbackResult.candidates.filter((item) => !fallbackOutsideIds.has(item.evidenceId)),
+      fallbackAnnotations.filter((item) => !fallbackOutsideIds.has(item.evidenceId)),
+    );
+    if (fallbackAnswerability.coverage !== "none") {
+      return finalize(fallbackResult, fallbackAnswerability, fallbackAnnotations);
+    }
+    finalResult = { ...result, degradations: [...new Set([...result.degradations, "overview_fallback"])] };
+  }
+  return finalize(finalResult, answerability, temporalAnnotations);
 }
