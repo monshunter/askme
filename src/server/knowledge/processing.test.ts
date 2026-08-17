@@ -43,7 +43,87 @@ describe("knowledge organization", () => {
     const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({ content: JSON.stringify(payload), inputTokens: 100, outputTokens: 40 });
     const result = await organizeMaterialKnowledge({ title: "Askme overview", kind: "website", chunks: chunkMaterialText("Askme is an owner-isolated career knowledge base.") }, { complete });
     expect(result.organization).toEqual(payload);
-    expect(complete.mock.calls[0]?.[1]).toEqual({ jsonObject: true, maxTokens: 4_000, temperature: 0.1 });
+    expect(complete.mock.calls[0]?.[1]).toEqual({ jsonObject: true, maxTokens: 8_000, temperature: 0.1 });
+  });
+
+  it("accepts more than twelve items when the evidence supports them", async () => {
+    const chunks = chunkMaterialText(Array.from({ length: 13 }, (_, index) => `Project-${index} is a grounded candidate project.`).join("\n\n"), 400, 0);
+    const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
+      content: JSON.stringify({
+        materialSummary: "Thirteen grounded projects.",
+        items: Array.from({ length: 13 }, (_, index) => {
+          const chunk = chunks.find((candidate) => candidate.content.includes(`Project-${index}`));
+          if (!chunk) throw new Error("Missing evidence chunk");
+          return {
+            type: "project",
+            title: `Project-${index}`,
+            summary: `Project-${index} summary.`,
+            highlights: [],
+            confidence: 0.9,
+            evidencePositions: [chunk.position],
+            entities: [{ type: "project", canonicalName: `Project-${index}`, aliases: [] }],
+          };
+        }),
+      }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+    const result = await organizeMaterialKnowledge({ title: "Profile", kind: "file", chunks }, { complete });
+    expect(result.organization.items).toHaveLength(13);
+  });
+
+  it("truncates over-generated items instead of rejecting them", async () => {
+    const chunks = chunkMaterialText(Array.from({ length: 30 }, (_, index) => `Feature-${index} of a large project suite.`).join("\n\n"), 400, 0);
+    const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
+      content: JSON.stringify({
+        materialSummary: "A large project suite.",
+        items: Array.from({ length: 30 }, (_, index) => {
+          const chunk = chunks.find((candidate) => candidate.content.includes(`Feature-${index}`));
+          if (!chunk) throw new Error("Missing evidence chunk");
+          return {
+            type: "project",
+            title: `Feature-${index}`,
+            summary: `Feature-${index} summary.`,
+            highlights: [],
+            confidence: 0.9,
+            evidencePositions: [chunk.position],
+            entities: [{ type: "project", canonicalName: `Feature-${index}`, aliases: [] }],
+          };
+        }),
+      }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+    const result = await organizeMaterialKnowledge({ title: "Suite", kind: "file", chunks }, { complete });
+    expect(result.organization.items).toHaveLength(20);
+    expect(result.organization.items.at(-1)?.title).toBe("Feature-19");
+  });
+
+  it("drops a lazy overflow item lacking entities instead of rejecting the whole response", async () => {
+    const chunks = chunkMaterialText(Array.from({ length: 21 }, (_, index) => `Feature-${index} of a large project suite.`).join("\n\n"), 400, 0);
+    const complete = vi.fn<OrganizationClient["complete"]>().mockResolvedValue({
+      content: JSON.stringify({
+        materialSummary: "A large project suite.",
+        items: Array.from({ length: 21 }, (_, index) => {
+          const chunk = chunks.find((candidate) => candidate.content.includes(`Feature-${index}`));
+          if (!chunk) throw new Error("Missing evidence chunk");
+          return {
+            type: "project",
+            title: `Feature-${index}`,
+            summary: `Feature-${index} summary.`,
+            highlights: [],
+            confidence: 0.9,
+            evidencePositions: [chunk.position],
+            entities: index === 20 ? [] : [{ type: "project", canonicalName: `Feature-${index}`, aliases: [] }],
+          };
+        }),
+      }),
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+    const result = await organizeMaterialKnowledge({ title: "Suite", kind: "file", chunks }, { complete });
+    expect(result.organization.items).toHaveLength(20);
+    expect(result.organization.items.at(-1)?.title).toBe("Feature-19");
   });
 
   it("rejects unsupported categories and empty or malformed JSON", () => {
