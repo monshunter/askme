@@ -215,9 +215,10 @@ export const knowledgeItems = pgTable(
     highlights: jsonb("highlights").$type<string[]>().default([]).notNull(),
     entities: jsonb("entities").$type<Array<{ type: string; canonicalName: string; aliases: string[] }>>().default([]).notNull(),
     confidence: real("confidence").default(0).notNull(),
+    featuredAt: timestamp("featured_at", { withTimezone: true }),
     ...timestamps,
   },
-  (table) => [uniqueIndex("knowledge_items_id_owner_unique").on(table.id, table.ownerId), index("knowledge_items_owner_type_idx").on(table.ownerId, table.type)],
+  (table) => [uniqueIndex("knowledge_items_id_owner_unique").on(table.id, table.ownerId), index("knowledge_items_owner_type_idx").on(table.ownerId, table.type), index("knowledge_items_owner_featured_idx").on(table.ownerId, table.featuredAt).where(sql`featured_at IS NOT NULL`)],
 );
 
 export const knowledgeSources = pgTable(

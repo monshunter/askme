@@ -5,6 +5,7 @@ import { getRequestLocale } from "@/i18n/server";
 import { loadAgentSettings } from "@/server/agent/settings-service";
 import { loadPreviewThread } from "@/server/agent/preview-service";
 import { requirePageUser } from "@/server/auth/current";
+import { loadHighlightCuration } from "@/server/publication/highlight-curation";
 import { loadPublicationOverview } from "@/server/publication/publication-service";
 
 function pageOrigin(values: Headers) {
@@ -17,10 +18,11 @@ function pageOrigin(values: Headers) {
 export default async function AgentPreviewPage() {
   const user = await requirePageUser("candidate");
   const locale = await getRequestLocale();
-  const [thread, settings, publicationOverview, requestHeaders] = await Promise.all([
+  const [thread, settings, publicationOverview, highlights, requestHeaders] = await Promise.all([
     loadPreviewThread(user.id, undefined, locale),
     loadAgentSettings(user.id),
     loadPublicationOverview(user.id),
+    loadHighlightCuration(user.id, 1),
     headers(),
   ]);
   const shareUrl = publicationOverview.publication ? new URL(`/a/${publicationOverview.publication.slug}`, pageOrigin(requestHeaders)).toString() : null;
@@ -29,6 +31,7 @@ export default async function AgentPreviewPage() {
       initialThread={JSON.parse(JSON.stringify(thread))}
       initialSettings={JSON.parse(JSON.stringify(settings))}
       initialPublicationOverview={JSON.parse(JSON.stringify({ ...publicationOverview, shareUrl }))}
+      initialHighlights={JSON.parse(JSON.stringify(highlights))}
       locale={locale}
     />
   );

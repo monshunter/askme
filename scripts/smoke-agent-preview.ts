@@ -42,7 +42,7 @@ try {
   );
   await db.query(
     `INSERT INTO materials(id,owner_id,kind,title,storage_path,status,visibility,summary,indexed_at)
-     VALUES ($1,$2,'file','Atlas Career Agent case study',$3,'indexed','citation_allowed','A grounded recruiting assistant delivery.',now())`,
+     VALUES ($1,$2,'file','Atlas Career Agent case study',$3,'indexed','public_preview','A grounded recruiting assistant delivery.',now())`,
     [materialId, ownerId, `${ownerId}/${materialId}/atlas.md`],
   );
   await db.query(
@@ -115,6 +115,23 @@ try {
     throw new Error("Suggested questions did not refresh");
   }
 
+  const initialHighlights = (await request("/api/agent/highlights?page=1")) as { featured?: { id?: string }[]; items?: { id?: string }[] };
+  if (initialHighlights.featured?.length !== 0 || !initialHighlights.items?.some((item) => item.id === knowledgeItemId)) {
+    throw new Error("The public highlight pool did not expose the eligible knowledge item");
+  }
+  const featured = (await request("/api/agent/highlights", {
+    method: "PUT",
+    body: JSON.stringify({ knowledgeItemIds: [knowledgeItemId] }),
+  })) as { featured?: { id?: string }[] };
+  if (featured.featured?.length !== 1 || featured.featured[0]?.id !== knowledgeItemId) {
+    throw new Error("Featuring a knowledge item did not persist the selection");
+  }
+  const cleared = (await request("/api/agent/highlights", {
+    method: "PUT",
+    body: JSON.stringify({ knowledgeItemIds: [] }),
+  })) as { featured?: { id?: string }[] };
+  if (cleared.featured?.length !== 0) throw new Error("Clearing the highlight selection did not persist");
+
   const injectionClientId = randomUUID();
   const refused = (await request("/api/agent/preview/chat", {
     method: "POST",
@@ -174,7 +191,8 @@ try {
     !pageHtml.includes("Atlas Career Agent case study") ||
     !pageHtml.includes("Answer Tone") ||
     !pageHtml.includes("Privacy-Safe Mode") ||
-    !pageHtml.includes("Publish Your Agent")
+    !pageHtml.includes("Publish Your Agent") ||
+    !pageHtml.includes("Public Highlights")
   ) {
     throw new Error("Agent Preview page did not render the persisted conversation, Citation, and settings controls");
   }
@@ -191,11 +209,11 @@ try {
        (SELECT count(*)::int FROM messages WHERE owner_id=$1) AS messages,
        (SELECT count(*)::int FROM message_citations WHERE owner_id=$1) AS citations,
        (SELECT count(*)::int FROM ai_usage WHERE owner_id=$1 AND purpose='agent.preview' AND outcome='success') AS usage,
-       (SELECT count(*)::int FROM audit_events WHERE actor_id=$1 AND action IN ('agent.preview.answer','agent.answer.feedback','agent.settings.update','agent.question.route')) AS audits`,
+       (SELECT count(*)::int FROM audit_events WHERE actor_id=$1 AND action IN ('agent.preview.answer','agent.answer.feedback','agent.settings.update','agent.question.route','agent.highlights.save')) AS audits`,
     [ownerId],
   );
   const row = counts.rows[0];
-  if (!row || row.conversations !== 1 || row.messages !== 6 || row.citations < 1 || row.usage !== 1 || row.audits !== 7) {
+  if (!row || row.conversations !== 1 || row.messages !== 6 || row.citations < 1 || row.usage !== 1 || row.audits !== 9) {
     throw new Error(`Agent persistence counts are inconsistent: ${JSON.stringify(row)}`);
   }
 
@@ -210,6 +228,7 @@ try {
       feedback: "up",
       settings: "persisted",
       suggestions: "refreshed",
+      highlights: "curated",
       pageRendered: true,
       auditEvents: row.audits,
     }),

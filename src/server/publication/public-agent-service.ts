@@ -59,14 +59,14 @@ async function projectPublicAgent(context: PublicationContext, locale: Suggestio
     pool.query<PublicHighlight>(
       `SELECT knowledge.id,knowledge.type,knowledge.title,knowledge.summary,knowledge.highlights
        FROM knowledge_items knowledge
-       WHERE knowledge.owner_id=$1 AND knowledge.status='active' AND EXISTS (
+       WHERE knowledge.owner_id=$1 AND knowledge.status='active' AND knowledge.featured_at IS NOT NULL AND EXISTS (
          SELECT 1 FROM knowledge_evidence evidence
          JOIN chunks chunk ON chunk.id=evidence.chunk_id AND chunk.owner_id=evidence.owner_id
          JOIN materials material ON material.id=chunk.material_id AND material.owner_id=chunk.owner_id
          WHERE evidence.knowledge_item_id=knowledge.id AND evidence.owner_id=knowledge.owner_id
            AND material.status='indexed' AND material.visibility='public_preview'
        )
-       ORDER BY knowledge.confidence DESC,knowledge.updated_at DESC,knowledge.id DESC LIMIT 5`,
+       ORDER BY knowledge.featured_at ASC,knowledge.id ASC LIMIT 5`,
       [context.ownerId],
     ),
     loadSuggestionTopics(context.ownerId, "public_answer"),

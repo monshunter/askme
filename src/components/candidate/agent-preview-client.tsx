@@ -10,6 +10,7 @@ import {
   Globe2,
   LoaderCircle,
   MessageSquareText,
+  Plus,
   RefreshCw,
   RotateCcw,
   Send,
@@ -99,6 +100,29 @@ type AgentSettings = {
   privacySafeMode: boolean;
   updatedAt: string;
 };
+type HighlightKnowledgeType = "project" | "experience" | "skill" | "article" | "repository" | "summary";
+type FeaturedHighlightItem = {
+  id: string;
+  type: HighlightKnowledgeType;
+  title: string;
+  summary: string;
+  highlights: string[];
+  eligible: boolean;
+};
+type HighlightCandidateItem = {
+  id: string;
+  type: HighlightKnowledgeType;
+  title: string;
+  summary: string;
+  highlights: string[];
+  confidence: number;
+};
+type HighlightCuration = {
+  featured: FeaturedHighlightItem[];
+  items: HighlightCandidateItem[];
+  page: number;
+  totalPages: number;
+};
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string } | null };
 
 function connectionFeedback(error: unknown, action: string, locale: Locale) {
@@ -120,7 +144,7 @@ function visibilityLabel(visibility: Visibility, locale: Locale) {
   return t("agent.visibility.private");
 }
 
-export function AgentPreviewClient({ initialThread, initialSettings, initialPublicationOverview, locale }: { initialThread: PreviewThread; initialSettings: AgentSettings; initialPublicationOverview: PublicationOverview; locale: Locale }) {
+export function AgentPreviewClient({ initialThread, initialSettings, initialPublicationOverview, initialHighlights, locale }: { initialThread: PreviewThread; initialSettings: AgentSettings; initialPublicationOverview: PublicationOverview; initialHighlights: HighlightCuration; locale: Locale }) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [thread, setThread] = useState(initialThread);
   const [settings, setSettings] = useState(initialSettings);
@@ -134,6 +158,10 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
   const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const [highlights, setHighlights] = useState(initialHighlights);
+  const [highlightPage, setHighlightPage] = useState(initialHighlights.page);
+  const [savingHighlights, setSavingHighlights] = useState(false);
+  const [rotatingHighlights, setRotatingHighlights] = useState(false);
   const runEvents = useRef(new Map<string, EventSource>());
   const resetDialogRef = useModalFocus(pendingReset, () => setPendingReset(false), resetting);
 
@@ -269,6 +297,61 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
     }
   }
 
+  async function rotateHighlights() {
+    setRotatingHighlights(true);
+    setNotice(null);
+    try {
+      const next = highlights.totalPages <= 1 ? 1 : (highlightPage % highlights.totalPages) + 1;
+      const { response, payload } = await requestApi<ApiEnvelope<HighlightCuration>>(`/api/agent/highlights?page=${next}`, { cache: "no-store" });
+      if (!response.ok) {
+        setNotice({ tone: "error", message: t("agent.highlights.rotateFailed") });
+        return;
+      }
+      if (!payload.data) throw new ApiClientError("invalid_response");
+      setHighlights(payload.data);
+      setHighlightPage(next);
+    } catch (error) {
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.highlights"), locale) });
+    } finally {
+      setRotatingHighlights(false);
+    }
+  }
+
+  async function toggleHighlight(item: { id: string }, feature: boolean) {
+    if (savingHighlights) return;
+    if (feature && highlights.featured.length >= 5) {
+      setNotice({ tone: "error", message: t("agent.highlights.limit") });
+      return;
+    }
+    setSavingHighlights(true);
+    setNotice(null);
+    try {
+      const nextIds = feature
+        ? [...highlights.featured.map((featured) => featured.id), item.id]
+        : highlights.featured.filter((featured) => featured.id !== item.id).map((featured) => featured.id);
+      const { response, payload } = await requestApi<ApiEnvelope<{ featured: FeaturedHighlightItem[] }>>("/api/agent/highlights", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ knowledgeItemIds: nextIds }),
+      });
+      if (!response.ok) {
+        setNotice({ tone: "error", message: payload.error?.code === "HIGHLIGHT_LIMIT_EXCEEDED" ? t("agent.highlights.limit") : payload.error?.code === "HIGHLIGHT_NOT_ELIGIBLE" ? t("agent.highlights.ineligible") : t("agent.highlights.failed") });
+        return;
+      }
+      if (!payload.data) throw new ApiClientError("invalid_response");
+      setHighlights((current) => ({
+        ...current,
+        featured: payload.data!.featured,
+        items: feature ? current.items.filter((candidate) => candidate.id !== item.id) : current.items,
+      }));
+      setNotice({ tone: "success", message: t("agent.highlights.saved") });
+    } catch (error) {
+      setNotice({ tone: "error", message: connectionFeedback(error, t("agent.action.highlights"), locale) });
+    } finally {
+      setSavingHighlights(false);
+    }
+  }
+
   async function saveFeedback(message: AgentMessage, value: "up" | "down") {
     setFeedbackSaving(message.id);
     setNotice(null);
@@ -382,6 +465,30 @@ export function AgentPreviewClient({ initialThread, initialSettings, initialPubl
         <label className="paper-card agent-setting"><span className="setting-icon"><Sparkles size={19} /></span><span><strong>{t("agent.settings.tone")}</strong><small>{t("agent.settings.toneCopy")}</small></span><select value={settings.answerTone} disabled={savingSetting === "answerTone"} onChange={(event) => void updateSetting("answerTone", event.target.value as AgentSettings["answerTone"])}><option value="professional">{t("agent.settings.professional")}</option><option value="concise">{t("agent.settings.concise")}</option><option value="conversational">{t("agent.settings.conversational")}</option></select></label>
         <label className="paper-card agent-setting"><span className="setting-icon"><Globe2 size={19} /></span><span><strong>{t("agent.settings.public")}</strong><small>{t("agent.settings.publicCopy")}</small></span><select value={settings.publicMode ? "on" : "off"} disabled={savingSetting === "publicMode"} onChange={(event) => void updateSetting("publicMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
         <label className="paper-card agent-setting"><span className="setting-icon"><ShieldCheck size={19} /></span><span><strong>{t("agent.settings.privacy")}</strong><small>{t("agent.settings.privacyCopy")}</small></span><select value={settings.privacySafeMode ? "on" : "off"} disabled={savingSetting === "privacySafeMode"} onChange={(event) => void updateSetting("privacySafeMode", event.target.value === "on")}><option value="on">{t("agent.settings.on")}</option><option value="off">{t("agent.settings.off")}</option></select></label>
+      </section>
+
+      <section className="agent-highlights-panel paper-card" aria-labelledby="agent-highlights-title">
+        <header className="agent-highlights-heading"><span className="setting-icon"><Sparkles size={19} /></span><span><h2 id="agent-highlights-title">{t("agent.highlights.title")}</h2><p>{t("agent.highlights.copy")}</p></span><strong>{t("agent.highlights.count", { count: highlights.featured.length })}</strong></header>
+        <div className="agent-highlights-columns">
+          <section className="agent-highlights-featured" aria-labelledby="agent-highlights-featured-title">
+            <div className="agent-highlights-toolbar"><h3 id="agent-highlights-featured-title">{t("agent.highlights.featured")}</h3></div>
+            {highlights.featured.length === 0 ? <p className="agent-highlights-empty">{t("agent.highlights.featuredEmpty")}</p> : <ul className="agent-highlight-list">{highlights.featured.map((item) => (
+              <li className="agent-highlight-item" key={item.id}>
+                <div><strong>{item.title}</strong>{!item.eligible ? <small className="agent-highlight-warning">{t("agent.highlights.ineligible")}</small> : null}<p>{item.summary}</p>{item.highlights.length > 0 ? <ul className="agent-highlight-lines">{item.highlights.map((line, index) => <li key={`${line}-${index}`}><Check size={12} />{line}</li>)}</ul> : null}</div>
+                <button type="button" disabled={savingHighlights} onClick={() => void toggleHighlight(item, false)} aria-label={t("agent.highlights.remove")}><X size={15} /></button>
+              </li>
+            ))}</ul>}
+          </section>
+          <section className="agent-highlights-pool" aria-labelledby="agent-highlights-pool-title">
+            <div className="agent-highlights-toolbar"><h3 id="agent-highlights-pool-title">{t("agent.highlights.pool")}</h3><button type="button" disabled={rotatingHighlights || highlights.items.length === 0} onClick={() => void rotateHighlights()}>{rotatingHighlights ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {t("agent.highlights.rotate")}</button></div>
+            {highlights.items.length === 0 ? <p className="agent-highlights-empty">{t("agent.highlights.poolEmpty")}</p> : <ul className="agent-highlight-list">{highlights.items.map((item) => (
+              <li className="agent-highlight-item" key={item.id}>
+                <div><strong>{item.title}</strong><p>{item.summary}</p>{item.highlights.length > 0 ? <ul className="agent-highlight-lines">{item.highlights.map((line, index) => <li key={`${line}-${index}`}><Check size={12} />{line}</li>)}</ul> : null}</div>
+                <button type="button" disabled={savingHighlights || highlights.featured.length >= 5} onClick={() => void toggleHighlight(item, true)} aria-label={t("agent.highlights.select")}><Plus size={15} /></button>
+              </li>
+            ))}</ul>}
+          </section>
+        </div>
       </section>
 
       <AgentPublicationControls

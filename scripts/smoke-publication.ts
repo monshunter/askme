@@ -91,11 +91,11 @@ try {
     [citationChunkId, materialId, ownerId, publicChunkId, publicMaterialId, agentChunkId, agentMaterialId, privateChunkId, privateMaterialId],
   );
   await db.query(
-    `INSERT INTO knowledge_items(id,owner_id,type,title,summary,highlights,confidence) VALUES
-       ($1,$2,'experience','Public delivery evidence','Evidence that can support an answer','[]'::jsonb,.8),
-       ($3,$2,'project','Public Spotlight','A deliberately public project highlight','["Public impact"]'::jsonb,1),
-       ($4,$2,'skill','Agent Secret','Candidate-preview knowledge only','[]'::jsonb,.9),
-       ($5,$2,'summary','Private Secret','Private knowledge only','[]'::jsonb,.9)`,
+    `INSERT INTO knowledge_items(id,owner_id,type,title,summary,highlights,confidence,featured_at) VALUES
+       ($1,$2,'experience','Public delivery evidence','Evidence that can support an answer','[]'::jsonb,.8,NULL),
+       ($3,$2,'project','Public Spotlight','A deliberately public project highlight','["Public impact"]'::jsonb,1,now()),
+       ($4,$2,'skill','Agent Secret','Candidate-preview knowledge only','[]'::jsonb,.9,NULL),
+       ($5,$2,'summary','Private Secret','Private knowledge only','[]'::jsonb,.9,NULL)`,
     [citationKnowledgeId, ownerId, publicKnowledgeId, agentKnowledgeId, privateKnowledgeId],
   );
   await db.query(
@@ -173,15 +173,33 @@ try {
   const rawVisitorToken = firstVisitorToken;
   if (!storedVisitor.rows[0]?.visitorTokenHash || storedVisitor.rows[0].visitorTokenHash.includes(rawVisitorToken)) throw new Error("Raw visitor credential was stored in the database");
 
+  const highlightsOf = (data: unknown) => (data as { highlights?: Array<{ title?: string }> })?.highlights ?? [];
   const publicProjection = await request(`/api/public/agents/${firstSlug}`);
   const publicJson = JSON.stringify(publicProjection.data);
   if (
     !publicProjection.response.ok ||
-    !publicJson.includes("Public Spotlight") ||
+    !highlightsOf(publicProjection.data).some((item) => item.title === "Public Spotlight") ||
     publicJson.includes("Agent Secret") ||
     publicJson.includes("Private Secret")
   ) {
     throw new Error("The anonymous public projection leaked hidden knowledge or omitted public evidence");
+  }
+
+  const clearedHighlights = await request("/api/agent/highlights", "PUT", { knowledgeItemIds: [] });
+  if (!clearedHighlights.response.ok || (clearedHighlights.data as { featured?: unknown[] })?.featured?.length !== 0) {
+    throw new Error("Clearing the featured highlight selection did not persist");
+  }
+  const projectionWithout = await request(`/api/public/agents/${firstSlug}`);
+  if (projectionWithout.response.ok && highlightsOf(projectionWithout.data).some((item) => item.title === "Public Spotlight")) {
+    throw new Error("A cleared highlight selection still reached the public projection");
+  }
+  const restoredHighlights = await request("/api/agent/highlights", "PUT", { knowledgeItemIds: [publicKnowledgeId] });
+  if (!restoredHighlights.response.ok || (restoredHighlights.data as { featured?: unknown[] })?.featured?.length !== 1) {
+    throw new Error("Restoring a featured highlight did not persist");
+  }
+  const projectionRestored = await request(`/api/public/agents/${firstSlug}`);
+  if (!projectionRestored.response.ok || !highlightsOf(projectionRestored.data).some((item) => item.title === "Public Spotlight")) {
+    throw new Error("The restored highlight did not return to the public projection");
   }
 
   const agentPage = await fetch(`${baseUrl}/workspace/agent`, { headers: { cookie } });

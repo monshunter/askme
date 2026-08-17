@@ -32,6 +32,12 @@ export async function persistIngestionResult(
        FROM knowledge_sources WHERE material_id=$1 AND owner_id=$2`,
       [lease.material.id, lease.material.ownerId],
     );
+    const featuredPrevious = await client.query<{ type: string; title: string; featuredAt: Date }>(
+      `SELECT type,title,featured_at AS "featuredAt"
+       FROM knowledge_items WHERE id=ANY($1::uuid[]) AND owner_id=$2 AND featured_at IS NOT NULL`,
+      [previous.rows.map((item) => item.knowledgeItemId), lease.material.ownerId],
+    );
+    const carriedFeatured = new Map(featuredPrevious.rows.map((item) => [`${item.type}::${item.title}`, item.featuredAt]));
     await client.query("DELETE FROM knowledge_sources WHERE material_id=$1 AND owner_id=$2", [lease.material.id, lease.material.ownerId]);
     for (const item of previous.rows) {
       await client.query(
@@ -67,6 +73,12 @@ export async function persistIngestionResult(
       const knowledgeItemId = created.rows[0]?.id;
       if (!knowledgeItemId) throw new AppError("KNOWLEDGE_WRITE_FAILED", "The organized knowledge could not be stored.", 500);
       knowledgeItemIds.push(knowledgeItemId);
+      const carriedKey = `${item.type}::${item.title}`;
+      const carriedAt = carriedFeatured.get(carriedKey);
+      if (carriedAt) {
+        await client.query("UPDATE knowledge_items SET featured_at=$3 WHERE id=$1 AND owner_id=$2", [knowledgeItemId, lease.material.ownerId, carriedAt]);
+        carriedFeatured.delete(carriedKey);
+      }
       await client.query("INSERT INTO knowledge_sources(knowledge_item_id,material_id,owner_id) VALUES ($1,$2,$3)", [
         knowledgeItemId,
         lease.material.id,

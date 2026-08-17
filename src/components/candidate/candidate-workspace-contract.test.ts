@@ -76,6 +76,16 @@ describe("Candidate Workspace consolidation contract", () => {
     expect(publicationControlsSource.indexOf('t("publish.manage.visit")')).toBeLessThan(publicationControlsSource.indexOf('t("publish.manage.revoke")'));
   });
 
+  it("curates public highlights from the Candidate Agent page", () => {
+    expect(agentPageSource).toContain("loadHighlightCuration");
+    expect(agentPageSource).toContain("initialHighlights");
+    expect(agentClientSource).toContain('requestApi<ApiEnvelope<HighlightCuration>>(`/api/agent/highlights?page=');
+    expect(agentClientSource).toContain('requestApi<ApiEnvelope<{ featured: FeaturedHighlightItem[] }>>("/api/agent/highlights"');
+    expect(agentClientSource).toContain('t("agent.highlights.title")');
+    expect(agentClientSource).toContain('t("agent.highlights.rotate")');
+    expect(agentClientSource).toContain('t("agent.highlights.limit")');
+  });
+
   it("uses one owner-scoped source viewer from every Candidate material surface", () => {
     for (const source of [dashboardPageSource, materialsClientSource, knowledgeClientSource, privacyClientSource, agentClientSource]) {
       expect(source).toContain("CandidateSourceLink");
