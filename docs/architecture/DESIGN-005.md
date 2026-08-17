@@ -85,6 +85,16 @@ flowchart LR
 
 Web 负责同步命令、问答 API、Candidate/Admin Trace 和 Citation projection。Worker 负责材料/Repository 文档解析、Parent–Child、Embedding、索引激活和失败 reconcile。普通 RAG 不启动 BoxLite；只有实现级源码问题经过既有 deterministic gate 后创建 `conversation_analysis` run。
 
+### 3.1 本地 host-native Runner 生命周期
+
+macOS 的 BoxLite 依赖宿主 `Hypervisor.framework`，因此本地 Compose 只拥有 PostgreSQL、Web、普通 Worker 和共享 Artifact；`Code Agent Runner` 必须继续作为宿主进程运行，不能为统一进程列表而下沉到 Docker Desktop 容器。Repository 同步成功只证明 immutable Revision 与 Artifact 已保存，只有新鲜 Runner heartbeat、Artifact 可读写、BoxLite 可用且 provenance 匹配时，Repository Analysis 才能从 `pending` 获得 lease。
+
+本地 detached 部署入口在 Compose 服务启动后，以同一调用环境执行 `nohup scripts/agent-runner.sh >> data/agent-runner/nohup.log 2>&1 &`。Runner 使用项目内 PID/lock 避免同一 checkout 重复启动，不安装 LaunchAgent、systemd unit 或其他系统服务；进程异常退出后由人工重新执行本地部署或 Runner 命令恢复。只需要 Compose 的自动化可以显式设置 `ASKME_SKIP_AGENT_RUNNER=1`，但此时 readiness 必须诚实保持 Code Agent degraded，不能宣称 Repository Analysis 可用。
+
+Runner 与 Compose 使用同一配置优先级：当前进程环境高于项目 `.env`，项目 `.env` 高于 `~/.env`，最后使用本地默认值；宿主数据库 URL 必须由同一组 PostgreSQL 配置安全构造，不能由 Runner shell 重新实现一套不同优先级。Runner 不继承 GitHub 一次性 Token，AI Secret 不写入日志、数据库或 Artifact。启动是否成功只由 `runner/artifact/boxlite/provenance=ready` 和 `codeAgent=ready` 判断，不能用前台进程存在替代应用 readiness。
+
+Runner 退出后 PID/lock 在正常退出路径清理；异常遗留由下次启动在确认旧 PID 不存活后精确回收。未获得 lease 的 run 保持 `pending` 等待恢复，已有过期 lease 按现有 lease/reconcile 规则重领，microVM 仍遵守 cleanup-before-terminal。Runner 停止时 Compose 与业务数据不受影响；再次执行本地部署入口即可恢复，不需要重建 Revision、重复同步仓库或删除 run。`README.md` 必须同时给出整套环境、Compose-only、手工 Runner 恢复、日志和 readiness 命令，避免只启动部分进程后把同步成功误认为分析可用。
+
 ## 4. 组件与依赖方向
 
 | 组件 | 单一职责 |

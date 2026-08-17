@@ -110,11 +110,11 @@ describe("runtime config", () => {
       cpus: 1,
       memoryMib: 1_024,
       diskSizeGb: 2,
-      globalConcurrency: 2,
+      globalConcurrency: 3,
       dailyQuotas: { global: 1_000, candidate: 50, repository: 10 },
       budgets: {
-        repositoryAnalysis: { analysisTimeoutMs: 1_200_000, maxRounds: 50, maxToolCalls: 80 },
-        conversationAnalysis: { analysisTimeoutMs: 120_000, maxRounds: 50, maxToolCalls: 80 },
+        repositoryAnalysis: { analysisTimeoutMs: 1_800_000, maxRounds: 100, maxToolCalls: 300 },
+        conversationAnalysis: { analysisTimeoutMs: 120_000, maxRounds: 100, maxToolCalls: 300 },
       },
     });
   });

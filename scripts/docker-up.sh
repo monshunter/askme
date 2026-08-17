@@ -20,3 +20,18 @@ if [[ -f "${project_root}/.env" ]]; then
 fi
 
 docker compose "${env_files[@]}" up --build "$@"
+
+detached=false
+for argument in "$@"; do
+  if [[ "${argument}" == "-d" || "${argument}" == "--detach" ]]; then
+    detached=true
+    break
+  fi
+done
+
+if [[ "${detached}" == true && "${ASKME_SKIP_AGENT_RUNNER:-0}" != "1" ]]; then
+  runner_state_root="${ASKME_AGENT_RUNNER_STATE_ROOT:-${project_root}/data/agent-runner}"
+  mkdir -p "${runner_state_root}"
+  nohup "${project_root}/scripts/agent-runner.sh" >> "${runner_state_root}/nohup.log" 2>&1 &
+  printf '%s\n' "Askme Agent Runner start requested with nohup (launcher PID $!, log ${runner_state_root}/nohup.log)."
+fi

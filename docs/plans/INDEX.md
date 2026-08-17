@@ -29,4 +29,5 @@
 | PLAN-024 | PLAN-024：修复公共 Agent 无关证据误答 | [PLAN-024.md](PLAN-024.md) |
 | PLAN-025 | PLAN-025：交付成熟 Entity-grounded RAG 与真实质量闭环 | [PLAN-025.md](PLAN-025.md) |
 | PLAN-026 | PLAN-026：交付 Query-understood RAG 与无实体问题真实闭环 | [PLAN-026.md](PLAN-026.md) |
+| PLAN-027 | PLAN-027：修复 Repository Analysis Runner 生命周期并恢复公开仓库分析 | [PLAN-027.md](PLAN-027.md) |
 <!-- AGENT-HARNESS:END INDEX -->

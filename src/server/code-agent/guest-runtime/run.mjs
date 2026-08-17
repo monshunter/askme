@@ -12,7 +12,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-import { repositoryHardSourceToolLimit, repositorySourceToolLimit } from "./budget-policy.mjs";
+import { repositorySourceToolsShouldLock } from "./budget-policy.mjs";
 import { boundedCitationRanges, sourceLines } from "./citation-ranges.mjs";
 import { parseFinalJson, selectFinalAssistantText } from "./final-output.mjs";
 import { missingFactualSectionCitations } from "./wiki-markdown-policy.mjs";
@@ -135,14 +135,21 @@ async function walkFiles(input, maxFiles = 50_000) {
 
 function createTools(budget, limits, purpose, onSourceToolsLocked) {
   const sourceToolNames = new Set(["ls", "find", "grep", "read"]);
-  const sourceToolLimit = purpose === "repository_analysis" ? repositorySourceToolLimit(limits.maxToolCalls) : limits.maxToolCalls;
-  const hardSourceToolLimit = purpose === "repository_analysis" ? repositoryHardSourceToolLimit(limits.maxToolCalls) : limits.maxToolCalls;
   let sourceToolsLocked = false;
   const lockSourceTools = () => {
     if (sourceToolsLocked) return;
     sourceToolsLocked = true;
     onSourceToolsLocked();
   };
+  const shouldLockSourceTools = () => purpose === "repository_analysis"
+    && repositorySourceToolsShouldLock({
+      maxRounds: limits.maxRounds,
+      maxToolCalls: limits.maxToolCalls,
+      rounds: budget.state.rounds,
+      toolCalls: budget.state.toolCalls,
+      examinedPathCount: budget.state.examinedPaths.size,
+      minimumExaminedPaths: limits.minimumExaminedPaths,
+    });
   const wrap = (name, label, description, parameters, execute) => ({
     name,
     label,
@@ -152,23 +159,20 @@ function createTools(budget, limits, purpose, onSourceToolsLocked) {
     executionMode: "sequential",
     async execute(_toolCallId, params, signal) {
       if (signal?.aborted) throw new Error("tool call aborted");
-      if (purpose === "repository_analysis" && sourceToolNames.has(name)
-        && (budget.state.toolCalls >= hardSourceToolLimit
-          || (budget.state.toolCalls >= sourceToolLimit && budget.state.examinedPaths.size >= limits.minimumExaminedPaths))) {
+      if (sourceToolNames.has(name) && shouldLockSourceTools()) {
         lockSourceTools();
-        return textResult("[source tools locked: the remaining tool-call budget is reserved for write_wiki; write every Wiki page now and return the final manifest]", { sourceToolsLocked: true });
+        return textResult("[source tools locked: the remaining round and tool-call budget is reserved for write_wiki; write every Wiki page now and return the final manifest]", { sourceToolsLocked: true });
       }
       budget.startTool();
       const result = await execute(params, signal);
-      if (purpose === "repository_analysis" && sourceToolNames.has(name)
-        && (budget.state.toolCalls >= hardSourceToolLimit
-          || (budget.state.toolCalls >= sourceToolLimit && budget.state.examinedPaths.size >= limits.minimumExaminedPaths))) lockSourceTools();
-      const remaining = limits.maxToolCalls - budget.state.toolCalls;
+      if (sourceToolNames.has(name) && shouldLockSourceTools()) lockSourceTools();
+      const remainingCalls = limits.maxToolCalls - budget.state.toolCalls;
+      const remainingRounds = limits.maxRounds - budget.state.rounds;
       const guidance = sourceToolsLocked
-        ? `\n[source tools locked: ${remaining} calls remain for write_wiki and the final manifest]`
-        : remaining <= 10
-          ? `\n[budget warning: ${remaining} tool calls remain; stop exploring now, ${purpose === "repository_analysis" ? "write every Wiki page and return the final manifest" : "return the final supported answer"}]`
-        : `\n[budget: ${remaining} tool calls remain]`;
+        ? `\n[source tools locked: ${remainingRounds} rounds and ${remainingCalls} calls remain for write_wiki and the final manifest]`
+        : remainingCalls <= 10 || remainingRounds <= 10
+          ? `\n[budget warning: ${remainingRounds} rounds and ${remainingCalls} tool calls remain; stop exploring now, ${purpose === "repository_analysis" ? "write every Wiki page and return the final manifest" : "return the final supported answer"}]`
+        : `\n[budget: ${remainingRounds} rounds and ${remainingCalls} tool calls remain]`;
       result.content[0].text = budget.emit(`${result.content[0].text}${guidance}`);
       return result;
     },

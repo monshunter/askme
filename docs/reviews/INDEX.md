@@ -132,4 +132,18 @@
 | REVIEW-127 | REVIEW-127：DESIGN-005 Agentic Query Understanding Design Review | [REVIEW-127.md](REVIEW-127.md) |
 | REVIEW-128 | REVIEW-128：PLAN-026 Query-understood RAG 部署前 Change Review | [REVIEW-128.md](REVIEW-128.md) |
 | REVIEW-129 | REVIEW-129：PLAN-026 Query-understood RAG 最终 Change Review | [REVIEW-129.md](REVIEW-129.md) |
+| REVIEW-130 | REVIEW-130：PLAN-027 Repository Analysis Runner 生命周期 Plan Review | [REVIEW-130.md](REVIEW-130.md) |
+| REVIEW-131 | REVIEW-131：DESIGN-005 本地 host-native Runner 生命周期 Design Review | [REVIEW-131.md](REVIEW-131.md) |
+| REVIEW-132 | REVIEW-132：host-native Runner launchd 会话服务运行 Reconcile Review | [REVIEW-132.md](REVIEW-132.md) |
+| REVIEW-133 | REVIEW-133：DESIGN-005 前台 host-native Runner 生命周期 Design Review | [REVIEW-133.md](REVIEW-133.md) |
+| REVIEW-134 | REVIEW-134：PLAN-027 前台 Runner Reconcile Plan Review | [REVIEW-134.md](REVIEW-134.md) |
+| REVIEW-135 | REVIEW-135：PLAN-027 nohup Runner 范围调整 Plan Review | [REVIEW-135.md](REVIEW-135.md) |
+| REVIEW-136 | REVIEW-136：DESIGN-005 nohup host-native Runner 生命周期 Design Review | [REVIEW-136.md](REVIEW-136.md) |
+| REVIEW-137 | REVIEW-137：PLAN-027 仓库分析预算与重复任务范围调整 Plan Review | [REVIEW-137.md](REVIEW-137.md) |
+| REVIEW-138 | REVIEW-138：PLAN-027 Runner 默认并发范围调整 Plan Review | [REVIEW-138.md](REVIEW-138.md) |
+| REVIEW-139 | REVIEW-139：PLAN-027 UI/E2E 排除范围调整 Plan Review | [REVIEW-139.md](REVIEW-139.md) |
+| REVIEW-140 | REVIEW-140：PLAN-027 Repository Analysis 收敛策略调整 Plan Review | [REVIEW-140.md](REVIEW-140.md) |
+| REVIEW-141 | REVIEW-141：PLAN-027 Repository Analysis Runner 最终 Change Review | [REVIEW-141.md](REVIEW-141.md) |
+| REVIEW-142 | REVIEW-142：PLAN-027 最终数据边界 Reconcile Plan Review | [REVIEW-142.md](REVIEW-142.md) |
+| REVIEW-143 | REVIEW-143：PLAN-027 Repository Analysis Runner 最终 Reconcile Change Review | [REVIEW-143.md](REVIEW-143.md) |
 <!-- AGENT-HARNESS:END INDEX -->

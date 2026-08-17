@@ -199,3 +199,11 @@ Status: 已完成
 Plans:
 - [x] [PLAN-026：交付 Query-understood RAG 与无实体问题真实闭环](docs/plans/PLAN-026.md)
 ---
+
+---
+ID: OBJ-022
+Objective: 修复本地代码仓库分析因 host-native Runner 生命周期缺失而永久 pending 的问题，并恢复两个公开仓库的可审核 Wiki
+Status: 已完成
+Plans:
+- [x] [PLAN-027：修复 Repository Analysis Runner 生命周期并恢复公开仓库分析](docs/plans/PLAN-027.md)
+---

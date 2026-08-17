@@ -371,8 +371,8 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
     maxTokens: integer(`ASKME_AI_${id.toUpperCase()}_MAX_TOKENS`, defaultMaxTokens, 1, 1_000_000),
     contextWindow: integer(`ASKME_AI_${id.toUpperCase()}_CONTEXT_WINDOW`, defaultContextWindow, 1, 2_000_000),
   });
-  const maxRounds = integer("ASKME_CODE_AGENT_MAX_ROUNDS", 50, 1, 100);
-  const maxToolCalls = integer("ASKME_CODE_AGENT_MAX_TOOL_CALLS", 80, 1, 1_000);
+  const maxRounds = integer("ASKME_CODE_AGENT_MAX_ROUNDS", 100, 1, 100);
+  const maxToolCalls = integer("ASKME_CODE_AGENT_MAX_TOOL_CALLS", 300, 1, 1_000);
   const maxAggregateToolOutputBytes = integer("ASKME_CODE_AGENT_MAX_TOOL_OUTPUT_BYTES", 1024 * 1024, 1_024, 16 * 1024 * 1024);
   const maxReadBytes = integer("ASKME_CODE_AGENT_MAX_READ_BYTES", 64 * 1024, 1_024, 1024 * 1024);
   const maxReadLines = integer("ASKME_CODE_AGENT_MAX_READ_LINES", 500, 1, 10_000);
@@ -496,7 +496,7 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       cpus: integer("ASKME_CODE_AGENT_CPUS", 1, 1, 16),
       memoryMib: integer("ASKME_CODE_AGENT_MEMORY_MIB", 1_024, 128, 32_768),
       diskSizeGb: integer("ASKME_CODE_AGENT_DISK_GIB", 2, 1, 100),
-      globalConcurrency: integer("ASKME_CODE_AGENT_GLOBAL_CONCURRENCY", 2, 2, 100),
+      globalConcurrency: integer("ASKME_CODE_AGENT_GLOBAL_CONCURRENCY", 3, 2, 100),
       leaseMs: codeAgentLeaseMs,
       heartbeatMs: codeAgentHeartbeatMs,
       pollMs: integer("ASKME_CODE_AGENT_POLL_MS", 1_000, 100, 60_000),
@@ -508,7 +508,7 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
       budgets: {
         repositoryAnalysis: {
           ...baseBudget,
-          analysisTimeoutMs: integer("ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS", 1_200_000, 1_000, 3_600_000),
+          analysisTimeoutMs: integer("ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS", 1_800_000, 1_000, 3_600_000),
         },
         conversationAnalysis: {
           ...baseBudget,

@@ -55,7 +55,7 @@
     "verify:docker-lifecycle": "scripts/verify-docker-lifecycle.sh",
     "verify:surface-matrix": "tsx scripts/verify-surface-matrix.ts",
     "worker": "tsx src/worker.ts",
-    "agent-runner": "tsx src/agent-runner.ts",
+    "agent-runner": "tsx scripts/start-agent-runner.ts",
     "agent-image:build": "scripts/build-code-agent-image.sh"
   },
   "dependencies": {

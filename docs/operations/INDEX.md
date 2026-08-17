@@ -13,4 +13,5 @@
 | OP-008 | OP-008：PLAN-024 公共 Agent 相关性修复部署与真实验收 | [OP-008.md](OP-008.md) |
 | OP-009 | OP-009：PLAN-025 Entity-grounded RAG V3 重建、部署与真实验收 | [OP-009.md](OP-009.md) |
 | OP-010 | OP-010：PLAN-026 Query-understood RAG V4 重建、部署与真实验收 | [OP-010.md](OP-010.md) |
+| OP-011 | OP-011：PLAN-027 Repository Analysis Runner 恢复与公开仓库验收 | [OP-011.md](OP-011.md) |
 <!-- AGENT-HARNESS:END INDEX -->

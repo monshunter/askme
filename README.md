@@ -6,7 +6,7 @@ Askme 是个人职业知识库 Agent。Candidate 用真实职业资料建立 Car
 
 ## 本地启动
 
-前置条件：Docker Engine 与 Docker Compose。
+前置条件：Docker Engine、Docker Compose、Node.js 22+，以及已经安装的项目依赖。完整环境包含 PostgreSQL、Web、普通 Worker、Mailpit 和宿主 Code Agent Runner；只启动 Compose 不足以消费 Repository Analysis。
 
 ```bash
 scripts/docker-up.sh -d
@@ -14,12 +14,33 @@ docker compose ps
 curl -fsS http://127.0.0.1:3000/api/health/ready
 ```
 
+`scripts/docker-up.sh -d` 会先启动 Compose，再以跨 Linux/macOS 的 `nohup scripts/agent-runner.sh &` 启动宿主 Runner。Runner 的 PID/lock 与日志位于已忽略的 `data/agent-runner/`；完整 readiness 必须同时看到 `codeAgent=ready`，以及 `runner`、`artifact`、`boxlite`、`provenance` 全部为 `ready`。可用以下命令检查后台日志：
+
+```bash
+tail -f data/agent-runner/nohup.log
+```
+
+Runner 默认全局并发为 3，调度时保留 1 个对话分析槽，因此最多同时执行 2 个仓库分析；仓库分析默认硬边界为 30 分钟、100 个模型轮次和 300 次工具调用。需要按机器容量调整时，在项目 `.env` 设置 `ASKME_CODE_AGENT_GLOBAL_CONCURRENCY`、`ASKME_CODE_AGENT_REPOSITORY_ANALYSIS_TIMEOUT_MS`、`ASKME_CODE_AGENT_MAX_ROUNDS` 或 `ASKME_CODE_AGENT_MAX_TOOL_CALLS`。
+
+Runner 意外退出时无需重同步仓库或删除 pending run，直接手工恢复：
+
+```bash
+nohup scripts/agent-runner.sh >> data/agent-runner/nohup.log 2>&1 &
+curl -fsS http://127.0.0.1:3000/api/health/ready
+```
+
+仅需 Compose、并明确接受 Code Agent degraded 时才使用：
+
+```bash
+ASKME_SKIP_AGENT_RUNNER=1 scripts/docker-up.sh -d
+```
+
 打开 <http://127.0.0.1:3000>；本地认证邮件可在 Mailpit <http://127.0.0.1:8025> 查看。默认 local-only 账号来自 `.env.example`：
 
 - Candidate：`candidate@askme.local`
 - Platform Admin：`admin@askme.local`
 
-示例密码只用于绑定 loopback 的本地环境。需要修改时，在当前进程环境或 `~/.env` 设置 `ASKME_CANDIDATE_*`、`ASKME_ADMIN_*` 和 `ASKME_POSTGRES_*`；已存在账号不会被 bootstrap 自动改密。
+示例密码只用于绑定 loopback 的本地环境。需要修改时，在当前进程环境、项目 `.env` 或 `~/.env` 设置 `ASKME_CANDIDATE_*`、`ASKME_ADMIN_*` 和 `ASKME_POSTGRES_*`；优先级依次为当前进程、项目 `.env`、`~/.env`、本地默认值，已存在账号不会被 bootstrap 自动改密。
 
 ## DeepSeek
 
