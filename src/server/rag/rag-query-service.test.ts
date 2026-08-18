@@ -39,6 +39,7 @@ describe("retrieveRagForQuestion", () => {
         row(overlapId, "2022年4月至2024年10月任职富途控股，担任云原生平台工程师"),
       ] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -83,6 +84,7 @@ describe("retrieveRagForQuestion", () => {
       if (sql.includes("FROM knowledge_items")) return Promise.resolve({ rows: [{ materialId, entities: [{ type: "organization", canonicalName: "富途控股", aliases: [] }] }] });
       if (sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -129,6 +131,7 @@ describe("retrieveRagForQuestion", () => {
       if (sql.includes("FROM knowledge_items")) return Promise.resolve({ rows: [{ materialId, entities: [{ type: "project", canonicalName: "Askme", aliases: [] }] }] });
       if (sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -217,6 +220,7 @@ describe("retrieveRagForQuestion", () => {
       if (sql.includes("FROM knowledge_items")) return Promise.resolve({ rows: [{ materialId, entities: [{ type: "project", canonicalName: "Askme", aliases: [] }] }] });
       if (sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -262,6 +266,7 @@ describe("retrieveRagForQuestion", () => {
       if (sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag_query_traces")) return Promise.resolve({ rows: [{ resolved: [{ canonicalName: "Askme", type: "project" }], missing: [], ambiguous: [] }] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -300,6 +305,7 @@ describe("retrieveRagForQuestion", () => {
         { canonicalName: "Askme", type: "project" },
         { canonicalName: "OneCat", type: "project" },
       ], missing: [], ambiguous: [] }] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -325,8 +331,8 @@ describe("retrieveRagForQuestion", () => {
     expect(query.mock.calls.some((call) => String(call[0]).includes("rag-route:"))).toBe(false);
   });
 
-  it("falls back to an overview material query for a career_summary question with no supported evidence", async () => {
-    const overviewId = "55555555-5555-4555-8555-555555555555";
+  it("anchors the pinned public profile when retrieval finds no supported evidence", async () => {
+    const profileId = "55555555-5555-4555-8555-555555555555";
     const row = (evidenceId: string, parentContent: string) => ({
       evidenceId,
       parentId: `parent-${evidenceId}`,
@@ -334,7 +340,7 @@ describe("retrieveRagForQuestion", () => {
       sourceVersionId: "33333333-3333-4333-8333-333333333333",
       indexVersionId: "44444444-4444-4444-8444-444444444444",
       sourceKind: "material",
-      sourceId: overviewId,
+      sourceId: profileId,
       repositoryId: null,
       sourceRevision: "revision",
       evidenceFamilyId: `family-${evidenceId}`,
@@ -354,14 +360,7 @@ describe("retrieveRagForQuestion", () => {
     let routeCalls = 0;
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
-      if (sql.includes("rag-route:exact")) {
-        routeCalls += 1;
-        return Promise.resolve({ rows: routeCalls > 8 ? [row(overviewId, "## 职业概述 自2017年起从事后台研发与平台工作，负责核心项目交付")] : [] });
-      }
-      if (sql.includes("rag-route:vector")) {
-        routeCalls += 1;
-        return Promise.resolve({ rows: routeCalls > 8 ? [row(overviewId, "## 职业概述 自2017年起从事后台研发与平台工作，负责核心项目交付")] : [] });
-      }
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [row(profileId, "## 职业概述 自2017年起从事后台研发与平台工作，负责核心项目交付")] });
       if (sql.includes("rag-route:")) {
         routeCalls += 1;
         return Promise.resolve({ rows: [] });
@@ -378,7 +377,13 @@ describe("retrieveRagForQuestion", () => {
       }), inputTokens: 10, outputTokens: 10,
     });
     const answerabilityComplete = vi.fn().mockResolvedValue({
-      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [overviewId] }] }), inputTokens: 5, outputTokens: 5,
+      content: JSON.stringify({ aspects: [
+        { aspectId: "a1", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a2", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a3", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a4", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a5", status: "supported", evidenceIds: [profileId] },
+      ] }), inputTokens: 5, outputTokens: 5,
     });
     const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
     const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
@@ -392,13 +397,14 @@ describe("retrieveRagForQuestion", () => {
     });
 
     expect(result.coverage).not.toBe("none");
-    expect(result.candidates.map((item) => item.evidenceId)).toEqual([overviewId]);
-    expect(result.plan.mustTerms).toEqual([]);
-    expect(result.plan.exactPhrases).toEqual([]);
-    expect(result.plan.semanticQueries).toEqual(["候选人的职业概述、主要工作经历、核心技能与项目总结"]);
+    // the anchored profile is the only evidence and it leads the packet
+    expect(result.candidates.map((item) => item.evidenceId)).toEqual([profileId]);
+    // no overview fallback mutation of the original plan
+    expect(result.plan.mustTerms).toEqual(["自我介绍"]);
+    expect(result.plan.semanticQueries).not.toContain("候选人的职业概述、主要工作经历、核心技能与项目总结");
     expect(result.plan.desiredEvidenceTypes).toEqual(["material", "knowledge"]);
-    expect(result.degradations).toContain("overview_fallback");
-    expect(routeCalls).toBeGreaterThan(8);
+    expect(result.degradations).toContain("anchored_profile");
+    expect(routeCalls).toBeLessThanOrEqual(8);
     expect(answerabilityComplete).toHaveBeenCalledOnce();
   });
 
@@ -412,6 +418,7 @@ describe("retrieveRagForQuestion", () => {
         routeCalls += 1;
         return Promise.resolve({ rows: [] });
       }
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -432,12 +439,12 @@ describe("retrieveRagForQuestion", () => {
 
     expect(result.coverage).toBe("none");
     expect(result.entityResolution.scope).toEqual({ materialIds: [materialId], repositoryIds: [] });
-    expect(result.degradations).not.toContain("overview_fallback");
+    expect(result.degradations).not.toContain("anchored_profile");
     expect(routeCalls).toBeLessThanOrEqual(8);
   });
 
-  it("keeps insufficient evidence when the overview fallback evidence still fails the gate", async () => {
-    const overviewId = "55555555-5555-4555-8555-555555555555";
+  it("keeps the anchored profile out of the answer when the gate rejects it", async () => {
+    const profileId = "55555555-5555-4555-8555-555555555555";
     const row = (evidenceId: string, parentContent: string) => ({
       evidenceId,
       parentId: `parent-${evidenceId}`,
@@ -445,7 +452,7 @@ describe("retrieveRagForQuestion", () => {
       sourceVersionId: "33333333-3333-4333-8333-333333333333",
       indexVersionId: "44444444-4444-4444-8444-444444444444",
       sourceKind: "material",
-      sourceId: overviewId,
+      sourceId: profileId,
       repositoryId: null,
       sourceRevision: "revision",
       evidenceFamilyId: `family-${evidenceId}`,
@@ -465,10 +472,7 @@ describe("retrieveRagForQuestion", () => {
     let routeCalls = 0;
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
-      if (sql.includes("rag-route:exact") || sql.includes("rag-route:vector")) {
-        routeCalls += 1;
-        return Promise.resolve({ rows: routeCalls > 8 ? [row(overviewId, "## 职业概述 自2017年起从事后台研发与平台工作")] : [] });
-      }
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [row(profileId, "## 职业概述 自2017年起从事后台研发与平台工作")] });
       if (sql.includes("rag-route:")) {
         routeCalls += 1;
         return Promise.resolve({ rows: [] });
@@ -485,7 +489,13 @@ describe("retrieveRagForQuestion", () => {
       }), inputTokens: 10, outputTokens: 10,
     });
     const answerabilityComplete = vi.fn().mockResolvedValue({
-      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "unsupported", evidenceIds: [] }] }), inputTokens: 5, outputTokens: 5,
+      content: JSON.stringify({ aspects: [
+        { aspectId: "a1", status: "unsupported", evidenceIds: [] },
+        { aspectId: "a2", status: "unsupported", evidenceIds: [] },
+        { aspectId: "a3", status: "unsupported", evidenceIds: [] },
+        { aspectId: "a4", status: "unsupported", evidenceIds: [] },
+        { aspectId: "a5", status: "unsupported", evidenceIds: [] },
+      ] }), inputTokens: 5, outputTokens: 5,
     });
     const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
     const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
@@ -498,15 +508,16 @@ describe("retrieveRagForQuestion", () => {
       embeddingClient: { embed }, rerankClient: { rerank }, answerabilityClient: { complete: answerabilityComplete },
     });
 
+    // the profile was injected into the packet but the gate found no supported aspect
     expect(result.coverage).toBe("none");
     expect(result.candidates).toEqual([]);
-    expect(result.degradations).toContain("overview_fallback");
-    expect(routeCalls).toBeGreaterThan(8);
+    expect(result.degradations).toContain("anchored_profile");
+    expect(routeCalls).toBeLessThanOrEqual(8);
     expect(answerabilityComplete).toHaveBeenCalledOnce();
   });
 
-  it("uses an English overview query for an English career_summary question", async () => {
-    const overviewId = "55555555-5555-4555-8555-555555555555";
+  it("anchors the pinned profile for an English career_summary question", async () => {
+    const profileId = "55555555-5555-4555-8555-555555555555";
     const row = (evidenceId: string, parentContent: string) => ({
       evidenceId,
       parentId: `parent-${evidenceId}`,
@@ -514,7 +525,7 @@ describe("retrieveRagForQuestion", () => {
       sourceVersionId: "33333333-3333-4333-8333-333333333333",
       indexVersionId: "44444444-4444-4444-8444-444444444444",
       sourceKind: "material",
-      sourceId: overviewId,
+      sourceId: profileId,
       repositoryId: null,
       sourceRevision: "revision",
       evidenceFamilyId: `family-${evidenceId}`,
@@ -534,10 +545,7 @@ describe("retrieveRagForQuestion", () => {
     let routeCalls = 0;
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
-      if (sql.includes("rag-route:exact") || sql.includes("rag-route:vector")) {
-        routeCalls += 1;
-        return Promise.resolve({ rows: routeCalls > 8 ? [row(overviewId, "## Career Overview 10 years of backend and platform engineering work experience delivering core projects")] : [] });
-      }
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [row(profileId, "## Career Overview 10 years of backend and platform engineering work experience delivering core projects")] });
       if (sql.includes("rag-route:")) {
         routeCalls += 1;
         return Promise.resolve({ rows: [] });
@@ -554,7 +562,13 @@ describe("retrieveRagForQuestion", () => {
       }), inputTokens: 10, outputTokens: 10,
     });
     const answerabilityComplete = vi.fn().mockResolvedValue({
-      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [overviewId] }] }), inputTokens: 5, outputTokens: 5,
+      content: JSON.stringify({ aspects: [
+        { aspectId: "a1", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a2", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a3", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a4", status: "supported", evidenceIds: [profileId] },
+        { aspectId: "a5", status: "supported", evidenceIds: [profileId] },
+      ] }), inputTokens: 5, outputTokens: 5,
     });
     const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
     const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
@@ -567,8 +581,80 @@ describe("retrieveRagForQuestion", () => {
       embeddingClient: { embed }, rerankClient: { rerank }, answerabilityClient: { complete: answerabilityComplete },
     });
 
-    expect(result.plan.semanticQueries).toEqual(["the candidate's career overview, key work experience, core skills, and project summary"]);
+    expect(result.plan.semanticQueries).not.toContain("the candidate's career overview, key work experience, core skills, and project summary");
     expect(result.coverage).not.toBe("none");
+    expect(result.candidates.map((item) => item.evidenceId)).toEqual([profileId]);
+    expect(result.degradations).toContain("anchored_profile");
+    expect(routeCalls).toBeLessThanOrEqual(8);
+  });
+
+  it("anchors the profile first and deduplicates chunks retrieval also surfaced", async () => {
+    const profileId = "55555555-5555-4555-8555-555555555555";
+    const otherId = "99999999-9999-4999-8999-999999999999";
+    const row = (evidenceId: string, parentContent: string) => ({
+      evidenceId,
+      parentId: `parent-${evidenceId}`,
+      stableKey: "a".repeat(64),
+      sourceVersionId: "33333333-3333-4333-8333-333333333333",
+      indexVersionId: "44444444-4444-4444-8444-444444444444",
+      sourceKind: "material",
+      sourceId: profileId,
+      repositoryId: null,
+      sourceRevision: "revision",
+      evidenceFamilyId: `family-${evidenceId}`,
+      visibility: "citation_allowed",
+      title: "02-简历.md",
+      path: null,
+      commitSha: null,
+      revisionId: null,
+      sourceContentHash: null,
+      structurePath: "Overview",
+      content: parentContent,
+      parentContent,
+      tokenCount: 10,
+      sourceRange: { lineStart: 1, lineEnd: 2 },
+      contentChecksum: "f".repeat(64),
+    });
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [row(profileId, "## 职业概述 自2017年起从事后台研发与平台工作")] });
+      // retrieval surfaces the same profile chunk plus one other material
+      if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(profileId, "## 职业概述 自2017年起从事后台研发与平台工作"), row(otherId, "## 技能 Kubernetes 与云原生工程能力")] });
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const plannerComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        intent: "career_summary", subject: "profile_owner", queryMode: "discovery", knowledgeScope: "general",
+        standaloneQuery: "麻烦你做一个自我介绍", entityMentions: [],
+        constraints: { timeRange: null }, requestedFields: ["summary"], confidence: 0.95, ambiguities: [],
+        mustTerms: ["自我介绍"], shouldTerms: ["自我介绍"], semanticQueries: ["麻烦你做一个自我介绍"],
+        desiredEvidenceTypes: ["material", "knowledge", "approved_wiki", "repository_document"],
+      }), inputTokens: 10, outputTokens: 10,
+    });
+    const answerabilityComplete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({ aspects: [
+        { aspectId: "a1", status: "supported", evidenceIds: [profileId, otherId] },
+        { aspectId: "a2", status: "supported", evidenceIds: [profileId, otherId] },
+        { aspectId: "a3", status: "supported", evidenceIds: [profileId, otherId] },
+        { aspectId: "a4", status: "supported", evidenceIds: [profileId, otherId] },
+        { aspectId: "a5", status: "supported", evidenceIds: [profileId, otherId] },
+      ] }), inputTokens: 5, outputTokens: 5,
+    });
+    const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }, { index: 1, score: 0.8 }], inputTokens: 2 });
+    const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
+
+    const result = await retrieveRagForQuestion({
+      pool: { query } as never, config: getRuntimeConfig(), ownerId: "66666666-6666-4666-8666-666666666666",
+      consumer: "candidate_preview", question: "麻烦你做一个自我介绍", currentDate: "2026-08-15",
+    }, {
+      plannerClient: { complete: plannerComplete },
+      embeddingClient: { embed }, rerankClient: { rerank }, answerabilityClient: { complete: answerabilityComplete },
+    });
+
+    // the profile leads the packet exactly once; its retrieval duplicate is dropped
+    expect(result.candidates.map((item) => item.evidenceId)).toEqual([profileId, otherId]);
+    expect(result.candidates.filter((item) => item.evidenceId === profileId)).toHaveLength(1);
+    expect(result.degradations).toContain("anchored_profile");
   });
 
   it("keeps a previous resolved plus missing entity ambiguous instead of attaching the pronoun to the resolved one", async () => {
@@ -582,6 +668,7 @@ describe("retrieveRagForQuestion", () => {
         missing: [{ text: "MoonBase", type: "project" }],
         ambiguous: [],
       }] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const complete = vi.fn().mockResolvedValue({
@@ -632,6 +719,7 @@ describe("retrieveRagForQuestion", () => {
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(overviewId, "## 职业概述 自2017年起从事后台研发与平台工作，负责核心项目交付")] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -644,7 +732,13 @@ describe("retrieveRagForQuestion", () => {
       }), inputTokens: 10, outputTokens: 10,
     });
     const answerabilityComplete = vi.fn().mockResolvedValue({
-      content: JSON.stringify({ aspects: [{ aspectId: "a1", status: "supported", evidenceIds: [overviewId] }] }), inputTokens: 5, outputTokens: 5,
+      content: JSON.stringify({ aspects: [
+        { aspectId: "a1", status: "supported", evidenceIds: [overviewId] },
+        { aspectId: "a2", status: "supported", evidenceIds: [overviewId] },
+        { aspectId: "a3", status: "supported", evidenceIds: [overviewId] },
+        { aspectId: "a4", status: "supported", evidenceIds: [overviewId] },
+        { aspectId: "a5", status: "supported", evidenceIds: [overviewId] },
+      ] }), inputTokens: 5, outputTokens: 5,
     });
     const rerank = vi.fn().mockResolvedValue({ rankings: [{ index: 0, score: 0.9 }], inputTokens: 2 });
     const embed = vi.fn().mockResolvedValue({ vectors: [Array.from({ length: 1024 }, () => 0)], inputTokens: 1 });
@@ -660,7 +754,6 @@ describe("retrieveRagForQuestion", () => {
     expect(result.coverage).toBe("full");
     expect(result.plan.desiredEvidenceTypes).toEqual(["material", "knowledge"]);
     expect(result.degradations).toContain("profile_evidence_scope");
-    expect(result.degradations).not.toContain("overview_fallback");
     // every retrieval round asked only for the material source kind, never repository docs
     const routeCalls = query.mock.calls.filter((call) => String(call[0]).includes("rag-route:"));
     expect(routeCalls.length).toBeGreaterThan(0);
@@ -698,6 +791,7 @@ describe("retrieveRagForQuestion", () => {
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(overviewId, "## 职业背景 2017 年起从事后台研发与平台工作，负责核心项目交付")] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -759,6 +853,7 @@ describe("retrieveRagForQuestion", () => {
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(skillId, "## 技能 具备 Kubernetes、云原生与控制器工程能力")] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -820,6 +915,7 @@ describe("retrieveRagForQuestion", () => {
     const query = vi.fn().mockImplementation((sql: string) => {
       if (sql.includes("FROM knowledge_items") || sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row(projectId, "## 项目经历 负责 Askme 与 EasyInterview 的架构设计")] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({
@@ -879,6 +975,7 @@ describe("retrieveRagForQuestion", () => {
       if (sql.includes("FROM knowledge_items")) return Promise.resolve({ rows: [{ materialId, entities: [{ type: "organization", canonicalName: "富途控股", aliases: [] }] }] });
       if (sql.includes("FROM repositories")) return Promise.resolve({ rows: [] });
       if (sql.includes("rag-route:")) return Promise.resolve({ rows: [row("11111111-1111-4111-8111-111111111111", "## 职责 负责 1000+ 节点 Kubernetes 集群的日常运维与治理")] });
+      if (sql.includes("FROM agent_settings")) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected SQL: ${sql}`);
     });
     const plannerComplete = vi.fn().mockResolvedValue({

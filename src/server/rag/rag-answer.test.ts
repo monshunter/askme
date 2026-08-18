@@ -350,6 +350,32 @@ describe("generateVerifiedRagAnswer", () => {
     expect(result.answer).toContain("### 取得哪些成就");
     expect(result.claims).toHaveLength(2);
   });
+
+  it("tolerates the verifier echoing the claim key back into its JSON response", async () => {
+    const item = evidence("11111111-1111-4111-8111-111111111111", "候选人在富途控股担任云原生平台工程师。");
+    const generator = { complete: vi.fn().mockResolvedValue({
+      content: JSON.stringify({ coverage: "full", claims: [{ claimId: "c1", aspectId: "a1", text: "候选人在富途控股担任云原生平台工程师。", evidenceIds: [item.evidenceId] }], unsupportedAspectIds: [] }),
+      inputTokens: 1, outputTokens: 1,
+    }) };
+    const verifier = { complete: vi.fn().mockResolvedValue({
+      // the model echoes the supplied claim alongside the strict-schema fields
+      content: JSON.stringify({ claimId: "c1", claim: "候选人在富途控股担任云原生平台工程师。", verdict: "entailed", narrowedText: null }),
+      inputTokens: 1, outputTokens: 1,
+    }) };
+
+    const result = await generateVerifiedRagAnswer({
+      question: "你在富途控股的经历是什么？",
+      evidence: [item],
+      coverage: "full",
+      unsupportedAspects: [],
+      settings: { answerTone: "professional", privacySafeMode: true },
+      generatorClient: generator,
+      verifierClient: verifier,
+    });
+
+    expect(result.outcome).toBe("answered");
+    expect(result.claims).toHaveLength(1);
+  });
 });
 
 describe("persistRagAnswerCitations", () => {

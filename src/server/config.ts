@@ -194,6 +194,8 @@ export type RuntimeConfig = {
       maxTokens: number;
       outputReserveTokens: number;
       safetyMarginTokens: number;
+      maxPacketChars: number;
+      profileMaxChars: number;
     };
     chunking: {
       childTargetTokens: number;
@@ -472,6 +474,11 @@ export function loadConfigFromSources(processEnv: EnvSource, userEnvFile: string
         maxTokens: integer("ASKME_RAG_EVIDENCE_MAX_TOKENS", 200_000, 1_000, 200_000),
         outputReserveTokens: integer("ASKME_RAG_OUTPUT_RESERVE_TOKENS", 8_000, 1_000, 200_000),
         safetyMarginTokens: integer("ASKME_RAG_SAFETY_MARGIN_TOKENS", 4_000, 0, 200_000),
+        // Character cap for the retrieved-evidence packet sent to the answer generator.
+        // The anchored profile document gets its own allowance on top (profileMaxChars),
+        // so deep repository questions never lose their evidence budget to it.
+        maxPacketChars: integer("ASKME_RAG_EVIDENCE_MAX_PACKET_CHARS", 64_000, 1_000, 1_000_000),
+        profileMaxChars: integer("ASKME_RAG_EVIDENCE_PROFILE_MAX_CHARS", 4_000, 500, 100_000),
       },
       chunking: {
         childTargetTokens,

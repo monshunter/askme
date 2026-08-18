@@ -110,6 +110,36 @@ describe("analyzeDeterministicQuery", () => {
     ]);
   });
 
+  it("splits a self introduction into multi-dimensional aspects so the answer renders in sections", () => {
+    const plan = analyzeDeterministicQuery("介绍一下你自己");
+
+    expect(plan.answerAspects).toEqual([
+      { aspectId: "a1", label: "概述" },
+      { aspectId: "a2", label: "技能" },
+      { aspectId: "a3", label: "教育经历" },
+      { aspectId: "a4", label: "项目" },
+      { aspectId: "a5", label: "定位" },
+    ]);
+  });
+
+  it("splits an English self introduction into English-labeled aspects", () => {
+    const plan = analyzeDeterministicQuery("Please introduce yourself");
+
+    expect(plan.answerAspects.map((aspect) => aspect.label)).toEqual(["summary", "skills", "education", "projects", "positioning"]);
+  });
+
+  it("keeps a single overview aspect for a fieldless non-introduction question", () => {
+    const plan = analyzeDeterministicQuery("你平时怎么学习的？");
+
+    expect(plan.answerAspects).toEqual([{ aspectId: "a1", label: "概述" }]);
+  });
+
+  it("does not expand when the question already names a concrete field", () => {
+    const plan = analyzeDeterministicQuery("你做过哪些项目？");
+
+    expect(plan.answerAspects).toEqual([{ aspectId: "a1", label: "项目" }]);
+  });
+
   it("keeps an incidental named project as context in a discovery question", () => {
     const plan = analyzeDeterministicQuery("看过 Askme 后，我还做过哪些项目？");
 

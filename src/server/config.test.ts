@@ -81,7 +81,7 @@ describe("runtime config", () => {
         maxChildrenPerParent: 3,
         maxRounds: 2,
       },
-      evidence: { maxTokens: 200_000, outputReserveTokens: 8_000, safetyMarginTokens: 4_000 },
+      evidence: { maxTokens: 200_000, outputReserveTokens: 8_000, safetyMarginTokens: 4_000, maxPacketChars: 64_000, profileMaxChars: 4_000 },
       chunking: { childTargetTokens: 420, childMinTokens: 80, childHardMaxTokens: 650, parentMinTokens: 900, parentMaxTokens: 1_500, overlapTokens: 48 },
       repositoryDocuments: {
         include: ["README*.md", "*.md", "docs/**/*.md", "docs/**/*.pdf"],

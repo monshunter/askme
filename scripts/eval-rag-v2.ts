@@ -251,7 +251,7 @@ async function main() {
     const fused = fuseWeightedRrf(routes, { exact: 1.5, lexical: 1, vector: 1, structured: 1.2, rrfK: 60, maxChildrenPerParent: 3 });
     const evidenceById = new Map(candidate.evidence.map((evidence) => [evidence.id, evidence]));
     const reranked = syntheticRerank(fused, resolved.plan, evidenceById);
-    const pack = buildEvidencePack(reranked, resolved.plan, { maxTokens: 200_000, outputReserveTokens: 8_000, safetyMarginTokens: 4_000 }, 262_144, false);
+    const pack = buildEvidencePack(reranked, resolved.plan, { maxTokens: 200_000, outputReserveTokens: 8_000, safetyMarginTokens: 4_000, maxPacketChars: 64_000, profileMaxChars: 4_000 }, 262_144, false);
     requiredEvidence += item.requiredEvidenceIds.length;
     initialFound += item.requiredEvidenceIds.filter((id) => fused.slice(0, 30).some((candidateEvidence) => candidateEvidence.evidenceId === id)).length;
     rerankedFound += item.requiredEvidenceIds.filter((id) => reranked.some((candidateEvidence) => candidateEvidence.evidenceId === id)).length;

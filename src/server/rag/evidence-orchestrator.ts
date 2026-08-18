@@ -75,16 +75,25 @@ export function buildEvidencePack(
   rerankDegraded: boolean,
 ) {
   const effectiveTokens = Math.max(0, Math.min(budget.maxTokens, modelContextTokens - budget.outputReserveTokens - budget.safetyMarginTokens));
+  // The retrieved-evidence packet is capped by characters as well as tokens. The
+  // anchored profile document is injected after packing and gets its own allowance
+  // (rag.evidence.profileMaxChars), so it never steals this budget from repository or
+  // material evidence.
+  const maxPacketChars = budget.maxPacketChars;
   const selected: RetrievedRagEvidence[] = [];
   const parents = new Set<string>();
   let actualTokens = 0;
+  let actualChars = 0;
   for (const candidate of candidates) {
     if (parents.has(candidate.parentId)) continue;
     const tokens = Math.max(candidate.tokenCount, deterministicTokenCount(candidate.parentContent));
     if (actualTokens + tokens > effectiveTokens) continue;
+    const chars = candidate.parentContent.length;
+    if (actualChars + chars > maxPacketChars) continue;
     selected.push(candidate);
     parents.add(candidate.parentId);
     actualTokens += tokens;
+    actualChars += chars;
   }
   const judged = judgeEvidenceCoverage(plan, selected, rerankDegraded);
   return {

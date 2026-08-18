@@ -137,9 +137,20 @@ function inferRequestedFields(question: string): RagRequestedField[] {
   return found.length > 0 ? unique(found, ragRequestedFields.length) as RagRequestedField[] : ["summary"];
 }
 
+// \u6982\u8ff0\u7c7b\u95ee\u9898\uff08\u81ea\u6211\u4ecb\u7ecd / introduce yourself / \u804c\u4e1a\u6982\u8ff0\uff09\uff1a\u65e0\u5177\u4f53\u5b57\u6bb5\u8bcd\u65f6\u4f1a\u843d\u5230\u5355\u4e00
+// "\u6982\u8ff0" aspect\uff0c\u6a21\u578b\u88ab\u8feb\u628a\u80cc\u666f\u3001\u7ecf\u5386\u3001\u6280\u80fd\u3001\u9879\u76ee\u3001\u5b9a\u4f4d\u5168\u90e8\u585e\u8fdb\u4e00\u6761 claim\uff0c\u6e32\u67d3\u51fa\u6765
+// \u662f\u4e00\u6bb5\u6bb5\u91cd\u590d\u4e3b\u8bed\u7684\u957f\u6587\uff0c\u975e\u5e38\u4e0d\u53cb\u597d\u3002\u62c6\u6210\u591a\u7ef4\u5ea6 aspect \u8ba9\u6e32\u67d3\u5c42\u6309 ### \u5c0f\u6807\u9898\u5206\u5757\uff0c
+// \u4e5f\u8feb\u4f7f\u751f\u6210\u5668\u9010\u7ef4\u5ea6\u7ec4\u7ec7\u5185\u5bb9\u3002\u5176\u4ed6\u65e0\u5b57\u6bb5\u8bcd\u7684\u95ee\u9898\uff08\u5982\u300c\u4f60\u5e73\u65f6\u600e\u4e48\u5b66\u4e60\u7684\u300d\uff09\u4fdd\u6301\u5355
+// aspect \u4e0d\u53d8\u3002
+const selfOverviewIntent = /\u81ea\u6211\u4ecb\u7ecd|\u4ecb\u7ecd(?:\u4e0b|\u4e00\u4e0b)?(?:\u6211|\u4f60|\u81ea\u5df1|\u5019\u9009\u4eba)|(?:\u6211|\u4f60)\u662f(?:\u8c01|\u505a\u4ec0\u4e48)|\u804c\u4e1a(?:\u80cc\u666f|\u6982\u8ff0|\u53d1\u5c55)|\u804c\u4e1a\u751f\u6daf|\u4e2a\u4eba\u7b80\u4ecb|\b(?:introduce|introduction)(?:\s+(?:yourself|your|me))?\b|\btell me about yourself\b|\b(?:career|professional)\s+overview\b/iu;
+const selfOverviewDimensions: RagRequestedField[] = ["summary", "skills", "education", "project_name", "positioning"];
+
 function answerAspectsForFields(fields: RagRequestedField[], question: string): RagAnswerAspect[] {
   const language = /[\u3400-\u9fff]/u.test(question) ? "zh" : "en";
-  return fields.slice(0, 8).map((field, index) => ({ aspectId: `a${index + 1}`, label: requestedFieldLabels[field][language] }));
+  const effective = fields.length === 1 && fields[0] === "summary" && selfOverviewIntent.test(question)
+    ? [...fields, ...selfOverviewDimensions.filter((field) => field !== "summary")]
+    : fields;
+  return effective.slice(0, 8).map((field, index) => ({ aspectId: `a${index + 1}`, label: requestedFieldLabels[field][language] }));
 }
 
 export function extractAnswerAspects(question: string): RagAnswerAspect[] {
